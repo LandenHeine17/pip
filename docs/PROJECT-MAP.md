@@ -13,6 +13,7 @@ Last reviewed: 2026-11-04 (phase M0; docs condensed into three living files + ar
 | `CONTRIBUTING.md` | How to make a change, for people and AI agents | Yes |
 | `docs/PROJECT-MAP.md` | This file | Yes, whenever the layout changes |
 | `docs/PIP-SPEC.md` | **What Pip does**, in plain language, plus M0 findings. The living spec | Yes: keep it short and current |
+| `docs/ARCHITECTURE.md` | **How Pip is built**: the five programs, messages, modules, data, security, tech choices, build plan. Plain language + diagrams (D-71) | Yes: keep in step with the code |
 | `docs/DECISIONS.md` | Every owner decision (`D-nn`); overrides everything | Add new ones at the end; never silently change one |
 | `docs/REQUIREMENTS.md` | Lookup tables: `PIP-NEW` requirements, Ziggletron `FEAT` dispositions, `AC` acceptance criteria | Yes, with IDs |
 | `docs/archive/` | **Frozen detailed reference**: `ziggletron-discovery/` (what Ziggletron did; for parity) and `pip-v2-proposals-2026-11/` (the full behaviour rules for every requirement, linked from REQUIREMENTS' Detail column). Decisions override it (REQUIREMENTS §0) | **No**, except fixing broken links |

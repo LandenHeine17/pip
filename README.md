@@ -9,6 +9,7 @@ A playful household voice assistant for a Raspberry Pi 5, the successor to Ziggl
 | File | What |
 |---|---|
 | [docs/PIP-SPEC.md](docs/PIP-SPEC.md) | **Start here.** What Pip does, in plain language, and what M0 has found |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How Pip is built (draft for review): programs, modules, data, security |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Every owner decision (`D-nn`); these override everything else |
 | [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | Lookup tables: requirements, Ziggletron features, acceptance criteria |
 | [CONTRIBUTING.md](CONTRIBUTING.md) · [docs/PROJECT-MAP.md](docs/PROJECT-MAP.md) | How to change things, and where everything is |
