@@ -1,0 +1,72 @@
+"""M1a step 2 tests: chime, loudness, wake words (on synthetic speech), voice, and the wake → reply flow."""
+import asyncio
+
+import numpy as np
+import pytest
+
+from pip_assistant.common import paths
+from pip_assistant.common.client import BusClient
+from pip_assistant.core.bus import Bus
+from pip_assistant.core.conversation import STEP2_LINES, Conversation
+from pip_assistant.core.health import Health
+from pip_assistant.core.trace import Trace
+from pip_assistant.ears.audio import chime, level_dbfs
+
+VOICE = paths.data_dir() / "models" / "voices" / "en_US-lessac-medium.onnx"
+needs_voice = pytest.mark.skipif(not VOICE.exists(), reason="voice model not installed (run deploy/install.sh)")
+
+
+def test_chime_and_levels():
+    c = chime(22050)
+    assert c.dtype == np.int16 and 0.3 < len(c) / 22050 < 0.4
+    assert level_dbfs(np.zeros(1280, np.int16)) == -96.0
+    assert -12 < level_dbfs((np.ones(1280) * 10000).astype(np.int16)) < -10
+
+
+def speech_16k(voice, text):
+    from scipy.signal import resample_poly
+    a = voice.speak(text)
+    a = resample_poly(a.astype(np.float32), 16000, voice.rate).astype(np.int16)
+    return np.concatenate([np.zeros(8000, np.int16), a, np.zeros(16000, np.int16)])
+
+
+@needs_voice
+@pytest.mark.parametrize("text,expected", [("Pippletron, what time is it?", "pippletron"),
+                                           ("Hey Pip, what time is it?", "hey_pip"),
+                                           ("The pizza is in the oven.", None),
+                                           ("Ziggletron, what time is it?", None)])
+def test_wake_words_on_synthetic_speech(text, expected):
+    from pip_assistant.ears.voice import make_voice
+    from pip_assistant.ears.wake import WakeDetector
+    voice = make_voice("piper", "en_US-lessac-medium", 1.0, repeatable=True)
+    det = WakeDetector(["pippletron", "hey_pip"], thresholds={"pippletron": 0.8, "hey_pip": 0.5})
+    audio, hit = speech_16k(voice, text), None
+    for i in range(0, len(audio) - 1280, 1280):
+        hit = hit or det.feed(audio[i:i + 1280])
+    assert (hit[0] if hit else None) == expected
+
+
+async def test_wake_word_gets_chime_and_reply(tmp_path):
+    sock = tmp_path / "core.sock"
+    bus = Bus(sock, Trace(tmp_path / "pip.db"), Health(["ears"], restart=False))
+    Conversation(bus)
+    await bus.start()
+    ears = BusClient("ears", socket_path=sock, heartbeat_seconds=0.2)
+    got = []
+
+    async def on_any(msg):
+        got.append((msg.type, msg.private.get("text")))
+
+    ears.on("ears.chime", on_any)
+    ears.on("ears.say", on_any)
+    task = asyncio.create_task(ears.run())
+    await asyncio.wait_for(ears.connected.wait(), 3)
+    await asyncio.sleep(0.05)
+    await ears.emit("heard.wake", {"word": "pippletron", "score": 0.9})
+    await asyncio.sleep(0.2)
+    task.cancel()
+    await bus.stop()
+    assert got[0] == ("ears.chime", None)
+    assert got[1][0] == "ears.say" and got[1][1] in STEP2_LINES
+    # the spoken words are private: not in the trace
+    assert all(line not in str(bus.trace.recent()) for line in STEP2_LINES)

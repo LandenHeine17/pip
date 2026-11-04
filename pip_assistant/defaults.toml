@@ -13,6 +13,17 @@ restart_stuck = true                    # Restart a stuck program automatically 
 [trace]
 keep_hours = 48                    # How long the decision trace (what happened, never the words) is kept.
 
+[ears]
+wake_words = ["pippletron", "hey_pip"]  # Wake-word models to listen for (D-74).
+# How sure each detector must be (0–1): higher = fewer false wakes, more misses.
+# Pippletron is strict because "Ziggletron" sounds similar (M1a step 2 finding).
+wake_thresholds = { pippletron = 0.8, hey_pip = 0.5 }
+barge_in = true                         # Stop talking straight away when someone talks over Pip.
+barge_in_dbfs = -45.0                   # How loud speech over Pip must be to count (−96 silent … 0 max).
+voice_engine = "piper"                  # Voice engine (swappable, PIP-NEW-097).
+voice = "en_US-lessac-medium"           # Voice model in ~/pip-data/models/voices (D-73).
+speech_rate = 1.0                       # 1.0 = normal; 1.2 = a bit faster; 0.8 = slower.
+
 [web]
 host = "127.0.0.1"                 # Address the dashboard listens on. On the Pi this is the Tailscale address.
 port = 8790                        # Port for the dashboard.

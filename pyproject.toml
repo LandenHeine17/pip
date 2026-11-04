@@ -7,6 +7,10 @@ license = { text = "Not yet chosen (D-70: MIT recommended before publishing)" }
 dependencies = [
   "starlette>=0.37",
   "uvicorn>=0.29",
+  "numpy>=1.26",
+  "onnxruntime>=1.17",
+  "openwakeword==0.6.0",
+  "piper-tts>=1.7",
 ]
 
 [dependency-groups]
@@ -31,6 +35,9 @@ pip_assistant = ["defaults.toml", "web/static/*"]
 [tool.uv]
 # Only use releases at least two weeks old (supply-chain caution).
 exclude-newer = "2026-10-20T00:00:00Z"
+# openWakeWord lists TensorFlow Lite for Linux, but Pip only uses its ONNX models,
+# and there is no TF Lite build for this Pi's Python. Skip it.
+override-dependencies = ["tflite-runtime; sys_platform == 'never'"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

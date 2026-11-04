@@ -7,6 +7,7 @@ from .. import __version__
 from ..common import paths, settings
 from ..common.messages import Message
 from .bus import Bus
+from .conversation import Conversation
 from .health import Health
 from .trace import Trace
 
@@ -20,6 +21,7 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
     bus = Bus(paths.core_socket(), trace, health)
     bus.core_handlers["core.health"] = lambda m: {"programs": health.snapshot(), "version": __version__}
     bus.core_handlers["core.trace"] = lambda m: {"entries": trace.recent(int(m.data.get("limit", 200)))}
+    Conversation(bus)
     return bus, trace, health
 
 

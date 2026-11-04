@@ -35,7 +35,7 @@ code{font-size:.85rem}
 <body>
 <main>
 <header>
-  <div><h1>Pip</h1><div class="sub">M1a step 1 · the skeleton: programs, messages, decision trace</div></div>
+  <div><h1>Pip</h1><div class="sub">M1a step 2 · Pip hears his name and talks back (his brain arrives in step 3)</div></div>
   <div class="sub" id="conn">Connecting…</div>
 </header>
 
@@ -70,6 +70,7 @@ function renderHealth(p){
     return `<div class="card"><div class="name">pip-${esc(n)} <span class="pill ${cls}">${label}</span></div>
       <div class="what">${esc(WHAT[n]||"")}</div>
       <div class="kv">memory ${h.rss_mb!=null?esc(h.rss_mb)+" MB":"–"} · up ${dur(h.uptime_s)}${h.seen_s_ago!=null&&n!=="core"?` · seen ${esc(h.seen_s_ago)}s ago`:""}</div>
+      ${h.activity?`<div class="kv"><b>${esc({listening:"Listening",speaking:"Speaking",muted_or_quiet:"Muted or very quiet"}[h.activity]||h.activity)}</b>${h.level_dbfs!=null?` · mic ${esc(h.level_dbfs)} dBFS`:""}${h.wake_words?` · wake words: ${esc(h.wake_words.join(", "))}`:""}</div>`:""}
       ${h.stage?`<div class="kv">${esc(h.stage)}</div>`:""}</div>`;
   }).join("") || `<div class="sub">Waiting for pip-core…</div>`;
 }
