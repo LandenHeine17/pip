@@ -23,6 +23,7 @@ class Bus:
         self.patterns: dict[str, list[str]] = {}
         self.waiting: dict[str, str] = {}      # request id -> who asked
         self.core_handlers: dict = {}           # requests addressed to "core"
+        self.core_listeners: list = []          # (pattern, coroutine) for events core itself reacts to
         self.server = None
 
     async def start(self) -> None:
@@ -116,7 +117,17 @@ class Bus:
         self._log(msg)
         await self._deliver_event(msg)
 
+    def core_listen(self, pattern: str, handler) -> None:
+        """Let a part of pip-core react to events (e.g. the conversation reacting to heard.wake)."""
+        self.core_listeners.append((pattern, handler))
+
     async def _deliver_event(self, msg: Message) -> None:
+        for pattern, handler in self.core_listeners:
+            if msg.source != "core" and fnmatch.fnmatchcase(msg.type, pattern):
+                try:
+                    await handler(msg)
+                except Exception:
+                    log.exception("core handler for %s failed", msg.type)
         for name, pats in list(self.patterns.items()):
             if name != msg.source and any(fnmatch.fnmatchcase(msg.type, p) for p in pats):
                 await self._send(name, msg)

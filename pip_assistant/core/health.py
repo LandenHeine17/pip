@@ -44,7 +44,7 @@ class Health:
             p = self.programs.get(n, {})
             out[n] = {"state": self.state(n), "rss_mb": p.get("rss_mb"), "uptime_s": p.get("uptime_s"),
                       "seen_s_ago": round(now - p["last_seen"], 1) if p else None,
-                      **{k: v for k, v in p.items() if k not in ("last_seen", "connected", "rss_mb", "uptime_s")}}
+                      **{k: v for k, v in p.items() if k not in ("last_seen", "connected", "rss_mb", "uptime_s", "state")}}
         return out
 
     def check(self) -> list[dict]:

@@ -229,7 +229,7 @@ Changing the voice from Piper to Kokoro (D-73), or speech-to-text from Groq to a
 | **TOML** settings with validation | Readable by people; errors are caught with a clear message |
 | **Unix sockets + JSON** between programs | Standard library only; easy to log and to read |
 | **Starlette + Uvicorn** for pip-web | Small, well-known, supports live updates (WebSockets) |
-| **sounddevice (PortAudio) via PipeWire** | Works with the speakerphone; Ziggletron uses it |
+| **PipeWire's `pw-record` / `pw-play`** | Simple, proven with the speakerphone in M0; stopping playback is instant |
 | **openWakeWord (ONNX)** | Trained "Pippletron" and "Hey Pip" detectors from M0 |
 | **Piper** voice | 0.3 s to start speaking *(M0)*; Kokoro available as an alternative module |
 | **Groq Whisper Turbo + word list** | Best in M0 (D-48); local Whisper as the offline fallback |
@@ -263,7 +263,7 @@ Built in small steps. Each step ends with something you can try.
 | Step | What you'll be able to do |
 |---|---|
 | 1. Skeleton: the programs start, talk, log and show health on a new dashboard. **Done 2026-11-04** (pip-builder waits for M1b) | See Pip's status and the decision trace at `http://100.118.171.118:8790` |
-| 2. Ears: speakerphone, wake words, "stop", Piper voice | Say "Pippletron" and hear a chime and a fixed reply |
+| 2. Ears: speakerphone, wake words, "stop", Piper voice. **Done 2026-11-04.** Talking over Pip stops him (the speakerphone removes his own voice). Pippletron needs strictness 0.8 because "Ziggletron" sounds similar | Say "Pippletron" and hear a chime and a fixed reply |
 | 3. Core + Groq + Claude: real answers | Ask questions and get spoken answers |
 | 4. Timers, reminders, alarms (incl. offline) | Use Pip for timers like Ziggletron |
 | 5. Memory (with approval inbox), people and voices | "Remember that…", recognised speakers |

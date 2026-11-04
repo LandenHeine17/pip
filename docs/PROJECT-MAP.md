@@ -29,6 +29,7 @@ Last reviewed: 2026-11-04 (phase M0; docs condensed into three living files + ar
 | `m0/pyproject.toml`, `uv.lock` | M0 Python environment (uv; only releases ≥2 weeks old) | Yes, via `uv` |
 | `tools/check_secrets.py`, `install_hooks.sh` | Commit check blocking secrets and phone numbers | Yes, but never weaken it |
 | `pip_assistant/` | **The Pip application** (M1a). `common/` (messages, settings, bus client), `core/` (hub, decision trace, watchdog), `ears/`, `thinker/`, `web/` (dashboard), `defaults.toml` (every setting, explained) | Yes: follow ARCHITECTURE.md; tests in `tests/` |
+| `models/` | Public-safe models shipped with Pip: wake words trained on synthetic voices only, plus openWakeWord's feature models (see `models/README.md`) | Only add models with no household data |
 | `tests/` | Automated tests for the application (`uv run pytest`) | Yes: add tests with every change |
 | `deploy/` | systemd service files (`deploy/systemd/`) and `install.sh`, which installs/updates and restarts Pip's services | Yes |
 | `pyproject.toml`, `uv.lock` | The application's Python project and pinned packages (uv; releases ≥ 2 weeks old) | Via `uv` |
