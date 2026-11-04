@@ -1,17 +1,20 @@
 diff --git a/openwakeword/train.py b/openwakeword/train.py
-index 708cdb2..6e768c4 100755
+index 708cdb2..7f4bf6e 100755
 --- a/openwakeword/train.py
 +++ b/openwakeword/train.py
-@@ -426,6 +426,8 @@ class Model(nn.Module):
+@@ -426,6 +426,11 @@ class Model(nn.Module):
          # Save ONNX model
          logging.info(f"####\nSaving ONNX mode as '{os.path.join(output_dir, model_name + '.onnx')}'")
          model_to_save = copy.deepcopy(model)
-+        # Pip M0 patch: keep a PyTorch copy first, so a failed export can't lose a finished model
-+        torch.save(model_to_save.to("cpu"), os.path.join(output_dir, model_name + ".pt"))
++        # Pip M0 patch: keep the trained weights first, so a failed export can't lose a finished model
++        try:
++            torch.save(model_to_save.to("cpu").state_dict(), os.path.join(output_dir, model_name + ".weights.pt"))
++        except Exception as e:  # never let the backup block the real export
++            logging.warning(f"Couldn't save weights backup: {e}")
          torch.onnx.export(model_to_save.to("cpu"), torch.rand(self.input_shape)[None, ],
                            os.path.join(output_dir, model_name + ".onnx"), opset_version=13)
  
-@@ -571,6 +573,22 @@ class Model(nn.Module):
+@@ -571,6 +576,22 @@ class Model(nn.Module):
  
  
  # Separate function to convert onnx models to tflite format
@@ -34,7 +37,7 @@ index 708cdb2..6e768c4 100755
  def convert_onnx_to_tflite(onnx_model_path, output_path):
      """Converts an ONNX version of an openwakeword model to the Tensorflow tflite format."""
      # imports
-@@ -871,13 +889,10 @@ if __name__ == '__main__':
+@@ -871,13 +892,10 @@ if __name__ == '__main__':
          X_train = torch.utils.data.DataLoader(IterDataset(batch_generator),
                                                batch_size=None, num_workers=n_cpus, prefetch_factor=16)
  
