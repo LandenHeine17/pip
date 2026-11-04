@@ -74,7 +74,7 @@ class Speaker:
         await self.stop()
         self._stopped = False
         self.proc = await asyncio.create_subprocess_exec(
-            self.player, "--rate", str(rate), "--channels", "1", "--format", "s16", "-",
+            self.player, "--raw", "--rate", str(rate), "--channels", "1", "--format", "s16", "-",
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
         raw = audio.astype(np.int16).tobytes()
         chunk = rate // 20 * 2  # 50 ms pieces, so stopping is quick

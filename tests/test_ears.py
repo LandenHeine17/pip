@@ -70,3 +70,30 @@ async def test_wake_word_gets_chime_and_reply(tmp_path):
     assert got[1][0] == "ears.say" and got[1][1] in STEP2_LINES
     # the spoken words are private: not in the trace
     assert all(line not in str(bus.trace.recent()) for line in STEP2_LINES)
+
+
+async def test_speaker_really_sends_the_audio(tmp_path):
+    """The player must receive every sample (pw-play needs --raw for this; M1a step 2 bug)."""
+    from pip_assistant.ears.audio import Speaker
+    out = tmp_path / "played.raw"
+    player = tmp_path / "fake-player"
+    player.write_text(f'#!/bin/sh\necho "$@" > {tmp_path}/args\ncat > {out}\n')
+    player.chmod(0o755)
+    audio = (np.sin(np.arange(22050) / 10) * 8000).astype(np.int16)
+    finished = await Speaker(player=str(player)).play(audio, 22050)
+    assert finished
+    assert out.read_bytes() == audio.tobytes()
+    assert "--raw" in (tmp_path / "args").read_text()
+
+
+async def test_speaker_stop_cuts_off(tmp_path):
+    from pip_assistant.ears.audio import Speaker
+    player = tmp_path / "slow-player"
+    player.write_text("#!/bin/sh\nsleep 5\n")
+    player.chmod(0o755)
+    sp = Speaker(player=str(player))
+    audio = np.zeros(22050 * 5, np.int16)
+    task = asyncio.create_task(sp.play(audio, 22050))
+    await asyncio.sleep(0.3)
+    await sp.stop()
+    assert await asyncio.wait_for(task, 2) is False
