@@ -50,6 +50,9 @@
 | D-44 | During M0 tests | Ziggletron may be stopped temporarily and is restarted afterwards |
 | D-45 | Tooling | uv and Python packages in a project venv; apt packages only after asking |
 | D-46 | Background noise for tests | No TV in the house. "Media" tests use a phone or laptop playing a video or podcast |
+| D-48 | Speech-to-text for addressed speech | **Groq Whisper Large V3 Turbo with a vocabulary hint**: best result in the M0 benchmark (1–7% words wrong close up; 93% names and terms; P90 0.41 s). Other cloud providers not tested (no accounts) |
+| D-49 | Microphone | No hardware upgrade. Pip is tuned for talking from nearer, and asks people to repeat when unsure. Across-the-room accuracy (35–40% words wrong) is accepted for now |
+| D-50 | Social mode on the Pi | On-device models tested (Whisper base/small, Moonshine tiny/base) aren't accurate or fast enough for continuous room transcription, so Social mode uses local triggers only (D-33). Newer local models can be re-tested later |
 | D-47 | Recording phrases | Scripted phrases written for the owner. **No personal names**: Pip's names (Pip, Hey Pip, Ziggletron), generic device names and technical words only |
 
 ## Remaining open items (answerable during M0; they don't block approval)
@@ -62,5 +65,5 @@
 | R-04 | Which local LLM for the fallback? | M0 speed test on the Pi |
 | R-05 | Kokoro or Piper voice? | M0 test + blind listening |
 | R-06 | "Pip" or "Hey Pip"? | Benchmark false-activation numbers |
-| R-07 | Which cloud STT for addressed speech? | Benchmark stage 5 |
+| R-07 | ~~Which cloud STT for addressed speech?~~ Answered by D-48 | — |
 | R-08 | Does the Claude subscription's usage allowance and terms suit an always-on household service plus the coding agent? | Owner checks the plan; usage meter data from side-by-side running |

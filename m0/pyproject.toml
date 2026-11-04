@@ -9,6 +9,9 @@ dependencies = [
   "numpy>=1.26",
   "faster-whisper>=1.1",
   "useful-moonshine-onnx>=20250101",
+  "sherpa-onnx>=1.12",
+  "sherpa-onnx-core>=1.12",
+  "sentencepiece>=0.2",
 ]
 
 [tool.uv]
