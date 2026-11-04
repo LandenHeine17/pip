@@ -82,7 +82,7 @@ def other_phrase(name):
                           f"of {best['real_clips']} other recordings (which include 'Pip', 'Ziggletron' and look-alikes)."),
               "details": {"model": MODEL.name, "thresholds": rows, "best": best}}
     out = DATA / f"results/wake-word-{name}.json"
-    tmp = out.with_suffix(".tmp"); tmp.write_text(json.dumps(result, indent=1)); os.replace(tmp, out)
+    tmp = out.with_suffix(".tmp"); tmp.write_text(json.dumps(result, indent=1, default=lambda o: o.item() if hasattr(o, "item") else str(o))); os.replace(tmp, out)
     print(result["summary"])
 
 
@@ -123,7 +123,7 @@ def main():
               "details": {"model": MODEL.name, "thresholds": rows, "best": best,
                           "scores": {i: round(s, 3) for i, s in scores.items()}}}
     out = DATA / "results/wake-word-trained.json"
-    tmp = out.with_suffix(".tmp"); tmp.write_text(json.dumps(result, indent=1)); os.replace(tmp, out)
+    tmp = out.with_suffix(".tmp"); tmp.write_text(json.dumps(result, indent=1, default=lambda o: o.item() if hasattr(o, "item") else str(o))); os.replace(tmp, out)
     print(result["summary"])
 
 

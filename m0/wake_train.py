@@ -41,6 +41,10 @@ def run(flag, stage, measure):
         done, total, note = measure(t0)
         progress(stage, done, total, note)
         time.sleep(15)
+    model_file = W / cfg["output_dir"] / f"{cfg['model_name']}.onnx"
+    if p.returncode != 0 and flag == "--train_model" and model_file.exists() and \
+            "onnx_tf" in logname.read_text(errors="replace")[-3000:]:
+        return  # only the optional TensorFlow Lite conversion failed; the ONNX model Pip uses was saved
     if p.returncode != 0:
         tail = logname.read_text(errors="replace")[-400:]
         progress(f"{stage}: failed", note=tail.replace("\n", " ")[-300:], failed=True)
