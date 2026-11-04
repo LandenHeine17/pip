@@ -1,0 +1,17 @@
+[project]
+name = "pip-m0"
+version = "0.1.0"
+description = "M0 measurement tools for Pip (not the Pip application)"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.27",
+  "jiwer>=3.0",
+  "numpy>=1.26",
+  "faster-whisper>=1.1",
+  "useful-moonshine-onnx>=20250101",
+]
+
+[tool.uv]
+# Only use releases at least two weeks old (supply-chain caution).
+exclude-newer = "2026-10-20T00:00:00Z"
+package = false
