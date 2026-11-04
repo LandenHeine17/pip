@@ -24,6 +24,7 @@ class State:
     def __init__(self):
         self.health: dict = {}
         self.trace = collections.deque(maxlen=TRACE_KEEP)
+        self.conversation = collections.deque(maxlen=50)  # live only, in memory; never stored (D-53)
         self.listeners: set[asyncio.Queue] = set()
 
     def push(self, kind: str, data: dict) -> None:
@@ -51,6 +52,9 @@ def build_app(bus, state: State) -> Starlette:
                 pass
         return JSONResponse(list(state.trace)[::-1][:200])
 
+    async def conversation(request):
+        return JSONResponse(list(state.conversation)[::-1])
+
     async def stream(request):
         q: asyncio.Queue = asyncio.Queue()
         state.listeners.add(q)
@@ -69,7 +73,7 @@ def build_app(bus, state: State) -> Starlette:
 
         return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-store"})
 
-    return Starlette(routes=[Route("/", index), Route("/api/health", health), Route("/api/trace", trace),
+    return Starlette(routes=[Route("/", index), Route("/api/health", health), Route("/api/trace", trace), Route("/api/conversation", conversation),
                              Route("/api/stream", stream)])
 
 
@@ -85,6 +89,12 @@ async def main() -> None:
         state.trace.append(msg.data)
         state.push("trace", msg.data)
 
+    async def on_line(msg: Message):
+        line = {"ts": msg.ts, **msg.data, "text": msg.private.get("text", "")}
+        state.conversation.append(line)
+        state.push("conversation", line)
+
+    bus.subscribe("conversation.line", on_line)
     bus.subscribe("health.snapshot", on_health)
     bus.subscribe("trace.entry", on_trace)
     app = build_app(bus, state)

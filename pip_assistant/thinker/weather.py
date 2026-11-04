@@ -1,0 +1,55 @@
+"""Current weather and forecast from Open-Meteo (free, no key), so weather questions need no slow
+web search, and the screen and Pip's voice use the same source (Ziggletron bug P-08).
+Only the place name and coordinates leave the Pi."""
+import time
+
+import httpx
+
+CODES = {0: "clear", 1: "mostly clear", 2: "partly cloudy", 3: "overcast", 45: "fog", 48: "freezing fog",
+         51: "light drizzle", 53: "drizzle", 55: "heavy drizzle", 61: "light rain", 63: "rain", 65: "heavy rain",
+         66: "freezing rain", 67: "heavy freezing rain", 71: "light snow", 73: "snow", 75: "heavy snow",
+         77: "snow grains", 80: "rain showers", 81: "rain showers", 82: "heavy rain showers", 85: "snow showers",
+         86: "heavy snow showers", 95: "thunderstorm", 96: "thunderstorm with hail", 99: "thunderstorm with hail"}
+
+
+class Weather:
+    def __init__(self, place: str, refresh_s: float = 1800):
+        self.place, self.refresh_s = place, refresh_s
+        self.coords = None
+        self.summary = ""
+        self.fetched = 0.0
+
+    async def text(self) -> str:
+        if time.time() - self.fetched > self.refresh_s or not self.summary:
+            try:
+                await self._fetch()
+            except Exception:
+                pass  # keep the last summary; Pip can still search if needed
+        return self.summary
+
+    async def _fetch(self) -> None:
+        async with httpx.AsyncClient(timeout=8, headers={"User-Agent": "pip-assistant"}) as http:
+            if not self.coords:
+                name, _, region = self.place.partition(",")
+                g = (await http.get("https://geocoding-api.open-meteo.com/v1/search",
+                                    params={"name": name.strip(), "count": 10, "country_code": "US"})).json()
+                best = next((r for r in g.get("results", []) if region.strip().lower() in (r.get("admin1", "").lower())),
+                            (g.get("results") or [None])[0])
+                if not best:
+                    return
+                self.coords = (best["latitude"], best["longitude"])
+            lat, lon = self.coords
+            w = (await http.get("https://api.open-meteo.com/v1/forecast", params={
+                "latitude": lat, "longitude": lon, "temperature_unit": "fahrenheit", "wind_speed_unit": "mph",
+                "current": "temperature_2m,apparent_temperature,weather_code,wind_speed_10m",
+                "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+                "forecast_days": 3, "timezone": "auto"})).json()
+        c, d = w["current"], w["daily"]
+        days = ["today", "tomorrow", "the day after tomorrow"]
+        parts = [f"Now in {self.place}: {round(c['temperature_2m'])}°F (feels {round(c['apparent_temperature'])}°F), "
+                 f"{CODES.get(c['weather_code'], 'unknown')}, wind {round(c['wind_speed_10m'])} mph."]
+        for i, day in enumerate(days):
+            parts.append(f"{day.capitalize()}: {CODES.get(d['weather_code'][i], 'unknown')}, high {round(d['temperature_2m_max'][i])}°F, "
+                         f"low {round(d['temperature_2m_min'][i])}°F, {d['precipitation_probability_max'][i]}% chance of rain or snow.")
+        self.summary = " ".join(parts)
+        self.fetched = time.time()

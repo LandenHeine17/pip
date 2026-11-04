@@ -1,0 +1,152 @@
+"""Claude through the Claude Code CLI on the owner's Pro plan (D-05, D-17).
+
+One fresh CLI process per answer (so two answers can never share a session: Ziggletron's bug P-01),
+but the *next* process is always started in advance, so it's warm and ready (~1 s saved).
+The answer streams in and is cut into spoken sentences as it arrives.
+"""
+import asyncio
+import contextlib
+import json
+import logging
+import os
+import re
+import shutil
+import tempfile
+import time
+
+log = logging.getLogger(__name__)
+
+SENTENCE_END = re.compile(r"(?<=[.!?])[\"')\]]?\s+")
+URL = re.compile(r"https?://\S+|\[([^\]]+)\]\([^)]+\)")
+
+
+def speakable(text: str) -> str:
+    """Turn text into something sensible to say out loud."""
+    text = URL.sub(lambda m: m.group(1) or "", text)
+    text = re.sub(r"[*_`#>]+", "", text)
+    text = re.sub(r"^\s*[-•]\s+", "", text, flags=re.M)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+class SentenceSplitter:
+    """Feed text pieces; get back complete sentences. Stops at a trailing 'Sources:' block."""
+
+    def __init__(self, long_after: int = 160):
+        self.buf = ""
+        self.long_after = long_after
+        self.stopped = False
+
+    def feed(self, piece: str) -> list[str]:
+        if self.stopped:
+            return []
+        self.buf += piece
+        m = re.search(r"\n\s*\**sources?\**\s*:", self.buf, re.I)
+        if m:
+            self.buf = self.buf[:m.start()]
+            self.stopped = True
+        out = []
+        while True:
+            m = SENTENCE_END.search(self.buf)
+            if not m:
+                if len(self.buf) > self.long_after and "," in self.buf[40:]:
+                    cut = self.buf.rindex(",") + 1
+                    out.append(self.buf[:cut]); self.buf = self.buf[cut:]
+                break
+            out.append(self.buf[:m.end()]); self.buf = self.buf[m.end():]
+        return [s for s in (speakable(x) for x in out) if s]
+
+    def flush(self) -> list[str]:
+        rest, self.buf = speakable(self.buf), ""
+        return [rest] if rest else []
+
+
+class ClaudeCLI:
+    def __init__(self, model: str = "", web_search: bool = True, timeout: float = 45.0):
+        self.exe = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
+        self.model, self.web_search, self.timeout = model, web_search, timeout
+        self.workdir = tempfile.mkdtemp(prefix="pip-thinker-")  # neutral folder: no project files loaded
+        self.warm: asyncio.subprocess.Process | None = None
+        self.warm_prompt: str | None = None
+        self.current: dict[str, asyncio.subprocess.Process] = {}
+
+    def _args(self, system_prompt: str) -> list[str]:
+        tools = ["--tools", "WebSearch", "--allowedTools", "WebSearch"] if self.web_search else ["--tools", ""]
+        model = ["--model", self.model] if self.model else []
+        return [self.exe, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+                "--include-partial-messages", "--system-prompt", system_prompt, *tools, *model,
+                "--no-session-persistence", "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands"]
+
+    async def _spawn(self, system_prompt: str):
+        return await asyncio.create_subprocess_exec(
+            *self._args(system_prompt), cwd=self.workdir, stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, limit=8 * 1024 * 1024)
+
+    async def prepare(self, system_prompt: str) -> None:
+        """Start the next process in advance (it waits for its question)."""
+        if self.warm and self.warm.returncode is None and self.warm_prompt == system_prompt:
+            return
+        if self.warm and self.warm.returncode is None:
+            with contextlib.suppress(ProcessLookupError):
+                self.warm.kill()
+        self.warm, self.warm_prompt = await self._spawn(system_prompt), system_prompt
+
+    async def ask(self, answer_id: str, system_prompt: str, user_text: str, on_sentence, on_searching):
+        """Stream an answer. Calls on_sentence(text) per sentence and on_searching() once if it searches.
+        Returns (full_text, info)."""
+        if self.warm and self.warm.returncode is None and self.warm_prompt == system_prompt:
+            proc, self.warm = self.warm, None
+        else:
+            proc = await self._spawn(system_prompt)
+        asyncio.create_task(self.prepare(system_prompt))  # warm up the next one now
+        self.current[answer_id] = proc
+        t0 = time.perf_counter()
+        info = {"first_sentence_s": None, "searched": False}
+        split, full = SentenceSplitter(), []
+        try:
+            proc.stdin.write((json.dumps({"type": "user", "message": {"role": "user", "content": user_text}}) + "\n").encode())
+            await proc.stdin.drain()
+            proc.stdin.close()
+
+            async def read():
+                async for raw in proc.stdout:
+                    try:
+                        ev = json.loads(raw)
+                    except ValueError:
+                        continue
+                    if ev.get("type") == "stream_event":
+                        e = ev.get("event", {})
+                        if e.get("type") == "content_block_start" and \
+                                e.get("content_block", {}).get("type") in ("server_tool_use", "tool_use"):
+                            if not info["searched"]:
+                                info["searched"] = True
+                                await on_searching()
+                        d = e.get("delta", {})
+                        if d.get("type") == "text_delta":
+                            for s in split.feed(d.get("text", "")):
+                                info["first_sentence_s"] = info["first_sentence_s"] or round(time.perf_counter() - t0, 2)
+                                full.append(s)
+                                await on_sentence(s)
+                    elif ev.get("type") == "result":
+                        info["is_error"] = ev.get("is_error", False)
+                        info["cost_usd"] = ev.get("total_cost_usd")
+            await asyncio.wait_for(read(), self.timeout)
+            for s in split.flush():
+                full.append(s)
+                await on_sentence(s)
+            await proc.wait()
+            if proc.returncode not in (0, None) and not full:
+                err = (await proc.stderr.read()).decode(errors="replace")[-200:]
+                raise RuntimeError(f"claude exited {proc.returncode}: {err}")
+        finally:
+            self.current.pop(answer_id, None)
+            if proc.returncode is None:
+                with contextlib.suppress(ProcessLookupError):
+                    proc.kill()
+        info["total_s"] = round(time.perf_counter() - t0, 2)
+        return " ".join(full), info
+
+    def cancel(self, answer_id: str | None = None) -> None:
+        for aid, proc in list(self.current.items()):
+            if answer_id is None or aid == answer_id:
+                with contextlib.suppress(ProcessLookupError):
+                    proc.kill()
