@@ -2,7 +2,7 @@
 
 A playful household voice assistant for a Raspberry Pi 5, the successor to Ziggletron.
 
-**Status:** phase M0, measuring and deciding. No Pip application code yet. Live progress: the M0 dashboard (`http://<pi-tailscale-ip>:8780`, Tailscale only).
+**Status:** M1a, building. Step 1 (skeleton) done. Pip's dashboard: `http://<pi-tailscale-ip>:8790`; M0 results: `http://<pi-tailscale-ip>:8780` (Tailscale only).
 
 ## Read
 

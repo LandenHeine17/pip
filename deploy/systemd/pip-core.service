@@ -1,0 +1,14 @@
+[Unit]
+Description=Pip: pip-core (the conductor: messages, decision trace, watchdog)
+
+
+[Service]
+ExecStart=%h/pip/.venv/bin/pip-core
+Restart=on-failure
+RestartSec=3
+MemoryMax=400M
+MemorySwapMax=0
+Nice=0
+
+[Install]
+WantedBy=default.target
