@@ -68,6 +68,9 @@ def main(which):
         run("--augment_clips", "2/3 Adding room echo and background sound", aug_measure)
     if "train" in stages:
         run("--train_model", "3/3 Training the detector", train_measure)
+    if "train" not in stages:
+        progress(f"{stages[-1]} stage done", 1, 1, finished=True)
+        return
     model = W / cfg["output_dir"] / f"{cfg['model_name']}.onnx"
     progress("Done" if model.exists() else "Finished, but no model file found", 1, 1,
              note=str(model) if model.exists() else "", finished=model.exists(), failed=not model.exists())
