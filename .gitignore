@@ -1,0 +1,24 @@
+# Secrets and private data never belong in this repo (they live in ~/pip-data)
+secrets*.toml
+*.env
+.env*
+*.key
+*.pem
+recordings/
+results/
+*.wav
+*.flac
+*.mp3
+*.ogg
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Editors / OS
+.DS_Store
+*.swp

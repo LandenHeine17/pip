@@ -1,0 +1,64 @@
+# Pip 2.0 — Decisions and Open Questions (PROPOSAL)
+
+## Decisions made by the owner (2026-11-03)
+
+| # | Topic | Decision |
+|---|---|---|
+| D-01 | Calling Pip | Test "Pip" and "Hey Pip" in the benchmark, then decide |
+| D-02 | Default listening mode | **Social** |
+| D-03 | Household | Owner + other adults; occasional guests; no children |
+| D-04 | Microphone | "rayBit" conference speakerphone |
+| D-05 | Model access | Claude subscription via Claude Code, plus a local model fallback |
+| D-06 | Cloud budget | Under $10/month |
+| D-07 | Migration | Memories (reviewed first), reminders, calendar, TV layouts. Not voice profiles |
+| D-08 | First release | Parity with Ziggletron first |
+| D-09 | Self-change in parity | Yes: sandboxed, with diff review |
+| D-10 | Dashboard | Reachable away from home (secure remote access) |
+| D-11 | Voice | Local only |
+| D-12 | Speakerphone connection | **USB, used as both mic and speaker** |
+| D-13 | Consent for Social mode | **Opt-out** for household adults; everyone is told how; guests are never included |
+| D-14 | "Stop listening" | Only the local name spotter keeps running ("Pip, start listening" works); the mic switch and mute button are the hard off |
+| D-15 | Admin access to memories | **Full read** (audited; members are told) |
+| D-16 | Default memory visibility | **Household** (private optional per memory) |
+| D-17 | Plan limits | **Subscription only**, no API key. On plan limit or outage → local fallback |
+| D-18 | Home Assistant | **Not used.** Everything runs on the Pi; Pip is the device hub |
+| D-19 | Calendar sync | Google Calendar (M3) |
+| D-20 | Music | Local music files on Pip's speaker (M3) |
+| D-21 | Unprompted drawings | Kept, off by default |
+| D-22 | Mic switch | Persists across restarts |
+| D-23 | Coding agent location | On the Pi, resource-limited |
+| D-24 | Adopted ideas | Phone notifications, household messages, daily briefing, usage meter (PIP-NEW-086…089). The mute button + LED and the NVMe SSD were later replaced or withdrawn (D-38, D-39). Not adopted: simulator, backups |
+| D-25 | Acceptance targets | Accepted as starting values (≤1 false wake/8 h, ≤2% truncation, stop ≤100 ms, first audio ≤2.5 s typical) |
+| D-26 | Ziggletron git history | Leave as is (never push it publicly; Pip gets its own repository) |
+| D-27 | Plugins | Written only by the owner or Pip's self-change → lighter permission model |
+| D-28 | Language | Python |
+| D-29 | Milestone 1 | Split into M1a and M1b |
+| D-30 | Next step | M0 measurements, then the architecture phase |
+| D-31 | Development setup | Build on the Pi; run side by side with Ziggletron |
+| D-32 | Locations | Ziggletron at `~/ziggletron` (read-only migration source); Pip project at `~/pip` |
+| D-33 | If the Pi can't transcribe the room | Social scales back to local triggers |
+| D-34 | Retention | Logs 30 d, audit 1 y, decision trace 48 h, voice review after 180 d unrecognised |
+| D-35 | Smaller defaults | Spoken diagnostics critical only; six-seven and reactions kept; 2-factor sign-in for admins |
+| D-36 | Device connection | MQTT broker on the Pi + ESPHome devices; Eightree smart outlets via the local Tuya protocol |
+| D-37 | Phone notifications | ntfy |
+| D-38 | Mute | The speakerphone's built-in mute button; no GPIO button or LED |
+| D-39 | Storage | No NVMe SSD; stay on the SD card |
+| D-40 | Benchmark providers | Groq only for now (other providers untested until accounts exist) |
+| D-41 | Benchmark speakers | The owner only for now |
+| D-42 | Repository | New **private** GitHub repo `pip` (account LandenHeine17) holding everything in `~/pip`; secrets, recordings and results excluded |
+| D-43 | M0 dashboard | A local page on the Pi, in a separate folder, reachable over Tailscale only |
+| D-44 | During M0 tests | Ziggletron may be stopped temporarily and is restarted afterwards |
+| D-45 | Tooling | uv and Python packages in a project venv; apt packages only after asking |
+
+## Remaining open items (answerable during M0; they don't block approval)
+
+| # | Question | How it gets resolved |
+|---|---|---|
+| R-01 | Exact speakerphone model; does its echo cancellation remove Pip's voice and music, and does its noise reduction remove quiet or distant speech? | M0 speakerphone test |
+| R-02 | Are the Eightree outlets Tuya-based, and can their local keys be obtained? | M0 check |
+| R-03 | Self-hosted ntfy on the Pi, or the public ntfy.sh with protected topics? | Recommended: self-hosted; confirm when M3 starts |
+| R-04 | Which local LLM for the fallback? | M0 speed test on the Pi |
+| R-05 | Kokoro or Piper voice? | M0 test + blind listening |
+| R-06 | "Pip" or "Hey Pip"? | Benchmark false-activation numbers |
+| R-07 | Which cloud STT for addressed speech? | Benchmark stage 5 |
+| R-08 | Does the Claude subscription's usage allowance and terms suit an always-on household service plus the coding agent? | Owner checks the plan; usage meter data from side-by-side running |
