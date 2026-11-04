@@ -39,7 +39,7 @@ Live results are on the dashboard (`http://100.118.171.118:8780`).
 ### Listening modes and privacy
 - **Social mode is the default** (D-02). Room speech is transcribed by Groq (D-51). A quick on-device check spots questions, and only then does Pip ask Claude whether to chime in, at most every ~3 minutes (D-52, D-58).
 - **Private mode:** "Pip, private please" stops anything being sent, for a while or until switched back.
-- **Opt-out consent** (D-13): household adults are included unless they say "Pip, leave me out". Guests are never included. Pip's notice to new people uses your wording (D-61). You tell your roommate yourself (D-67).
+- **Opt-out consent** (D-13, D-77): everyone, including guests and unknown voices, is included in room transcription unless they say "Pip, leave me out"; opted-out people's speech never leaves the Pi. A guest who opts out is remembered for that visit only. Pip's notice to new people uses your wording (D-61). You tell your roommate yourself (D-67).
 - Quiet hours 23:00–07:00: no joining in or greetings; alarms still ring (D-66).
 
 ### Personality and voice
@@ -101,5 +101,5 @@ flowchart LR
 - **Milestones:** M0 measure (now) → architecture design (you review) → **M1a** groundwork + Ziggletron's features → **M1b** safe self-changes (switch over from Ziggletron) → **M2** smarter conversation and self-knowledge → **M3** devices, lists, calendar, music → **M4** self-improvement suggestions (D-08, D-29).
 - **Made to be understood and extended** (D-70, D-71): plain-language docs and diagrams for every part; module templates so a new feature (a command, a widget, a device type) is fill-in-the-blanks; swappable speech, voice and AI services; a fresh clone of the repo works without anyone's personal data (PIP-NEW-091–097).
 - **May be open-sourced later:** nothing personal ever goes to GitHub, enforced by a commit check.
-- **How it's built:** [ARCHITECTURE.md](ARCHITECTURE.md) (draft for review).
+- **How it's built:** [ARCHITECTURE.md](ARCHITECTURE.md) (approved, D-78).
 - **Changing the project:** see [CONTRIBUTING.md](../CONTRIBUTING.md) and [PROJECT-MAP.md](PROJECT-MAP.md).

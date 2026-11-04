@@ -2,7 +2,7 @@
 
 Every decision the owner has made about Pip, numbered `D-nn`. **Decisions override everything else in the docs.** New decisions get the next number and go at the end; a changed decision is edited in place with a note of what changed and when.
 
-76 decisions. Last updated 2026-11-04.
+78 decisions. Last updated 2026-11-04.
 
 | # | Topic | Decision |
 |---|---|---|
@@ -18,7 +18,7 @@ Every decision the owner has made about Pip, numbered `D-nn`. **Decisions overri
 | D-10 | Dashboard | Reachable away from home (secure remote access) |
 | D-11 | Voice | Local only |
 | D-12 | Speakerphone connection | **USB, used as both mic and speaker** |
-| D-13 | Consent for Social mode | **Opt-out** for household adults; everyone is told how; guests are never included |
+| D-13 | Consent for Social mode | **Opt-out** for household adults; everyone is told how; guests are never included **Changed by D-77:** guests and unknown voices *are* included unless they opt out |
 | D-14 | "Stop listening" | Only the local name spotter keeps running ("Pip, start listening" works); the mic switch and mute button are the hard off |
 | D-15 | Admin access to memories | **Full read** (audited; members are told) |
 | D-16 | Default memory visibility | **Household** (private optional per memory) |
@@ -83,6 +83,8 @@ Every decision the owner has made about Pip, numbered `D-nn`. **Decisions overri
 | D-74 | Wake words | **Both "Pippletron" and "Hey Pip"**: say either. Each detector uses ~20% of one CPU core. Sensitivity finalised from the overnight false-wake checks |
 | D-75 | Offline fallback AI | **Qwen 2.5 1.5B** (local). Only simple questions, starts with "I'm offline, so this is my best guess", never claims to have done anything; actions always use Pip's offline commands |
 | D-76 | Architecture phase | Start now (2026-11-04), while the overnight false-wake checks finish; they only tune wake-word sensitivity |
+| D-77 | Room speech sent to Groq (no wake word) | Sent for **everyone**: household members, guests and unknown voices, **except anyone who has opted out**, whose speech never leaves the Pi. Anyone (guests too) can say "Pip, leave me out"; a guest's voice is remembered only for that visit, just to keep them left out. Replaces the guest part of D-13 |
+| D-78 | Architecture | **Approved** (2026-11-04) with the D-77 change. M1a building can start |
 
 ## Still open (answered by M0 tests)
 
