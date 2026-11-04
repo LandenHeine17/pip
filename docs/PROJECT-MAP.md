@@ -2,7 +2,7 @@
 
 Where everything is, what it's for, and whether you may change it. **Keep this file up to date**: any change that adds, moves or removes a folder or important file must update this map in the same commit.
 
-Last reviewed: 2026-11-04 (phase M0).
+Last reviewed: 2026-11-04 (phase M0; docs condensed into three living files + archive).
 
 ## In this repository (`~/pip`, GitHub: private repo `pip`)
 
@@ -12,14 +12,10 @@ Last reviewed: 2026-11-04 (phase M0).
 | `CLAUDE.md` | Read-first rules for Claude Code (loaded automatically) | Yes, carefully: keep it short; detail goes in `CONTRIBUTING.md` |
 | `CONTRIBUTING.md` | How to make a change, for people and AI agents | Yes |
 | `docs/PROJECT-MAP.md` | This file | Yes, whenever the layout changes |
-| `01-discovery/` | **Historical record** of Ziggletron 1.0 (what exists) | **No.** Only to fix a demonstrable factual error |
-| `pip-v2-proposals/` | **The Pip 2.0 specification** (what to build) | Yes, keeping IDs and traceability (see below) |
-| `pip-v2-proposals/17-OPEN-QUESTIONS.md` | Every owner decision (`D-nn`) and the open items | Add decisions; never silently change one |
-| `pip-v2-proposals/02-PROPOSED-FEATURE-CATALOG.md` | All requirements (`PIP-NEW-nnn`) | Add or amend with IDs |
-| `pip-v2-proposals/01-FEATURE-DECISION-MATRIX.md` | What happens to each Ziggletron feature (`FEAT-nnn`) | Update when a decision changes |
-| `pip-v2-proposals/14-ACCEPTANCE-CRITERIA.md` | Testable criteria (`AC-*`) | Add with IDs |
-| `pip-v2-proposals/15-PRIORITIZED-ROADMAP.md` | Milestones M0, M1a, M1b, M2–M4 | Update when scope changes |
-| `pip-v2-proposals/18-REQUIREMENTS-TRACEABILITY.md` | FEAT → PIP-NEW → AC mapping | Update with any new requirement |
+| `docs/PIP-SPEC.md` | **What Pip does**, in plain language, plus M0 findings. The living spec | Yes: keep it short and current |
+| `docs/DECISIONS.md` | Every owner decision (`D-nn`); overrides everything | Add new ones at the end; never silently change one |
+| `docs/REQUIREMENTS.md` | Lookup tables: `PIP-NEW` requirements, Ziggletron `FEAT` dispositions, `AC` acceptance criteria | Yes, with IDs |
+| `docs/archive/` | **Finished historical record**: `ziggletron-discovery/` (what Ziggletron did) and `pip-v2-proposals-2026-11/` (the original 20-file proposal with full reasoning) | **No**, except fixing broken links |
 | `m0/` | M0 **measurement tools** (not the Pip product) | Yes |
 | `m0/phrases.json` | Scripted test phrases (no personal names, D-47) | Add sessions; don't renumber existing IDs (recordings use them) |
 | `m0/benchmark.py`, `rescore.py` | Speech-to-text benchmark and re-scoring | Yes |

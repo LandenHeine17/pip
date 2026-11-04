@@ -5,16 +5,17 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
 ## 1. Before you change anything
 
 1. **Find out what phase we're in.** See `CLAUDE.md` → "Current phase". In M0 there is no Pip application code. Only the spec, the measurement tools and the dashboard exist.
-2. **Find the requirement.** Search `pip-v2-proposals/02-PROPOSED-FEATURE-CATALOG.md` for the feature (`PIP-NEW-nnn`), and `01-FEATURE-DECISION-MATRIX.md` for Ziggletron features (`FEAT-nnn`).
-3. **Check the owner's decisions** in `pip-v2-proposals/17-OPEN-QUESTIONS.md` (`D-nn`). Decisions override the rest of the spec. If your change contradicts one, **stop and ask the owner**.
+2. **Find the requirement.** Read the relevant part of `docs/PIP-SPEC.md`, then look it up in `docs/REQUIREMENTS.md` (`PIP-NEW-nnn`, Ziggletron's `FEAT-nnn`, acceptance criteria `AC-*`). The full reasoning, if you need it, is in `docs/archive/pip-v2-proposals-2026-11/`.
+3. **Check the owner's decisions** in `docs/DECISIONS.md` (`D-nn`). Decisions override the rest of the spec. If your change contradicts one, **stop and ask the owner**.
 4. **Read only what you need.** The map says which file covers what. You don't need to read everything.
 
 ## 2. Making the change
 
 - **Small and focused.** One purpose per change. Don't refactor unrelated code.
 - **Match what's there.** Same style, same patterns, same tools (`uv`; Python).
-- **Keep traceability.** When you change the spec, cite the IDs (FEAT, PIP-NEW, AC, D). New requirements get the next free `PIP-NEW` number and a row in `18-REQUIREMENTS-TRACEABILITY.md`.
-- **Never rewrite history.** `01-discovery/` is a record of Ziggletron; don't edit it except to fix a proven factual error.
+- **Keep traceability.** When you change the spec, cite the IDs (FEAT, PIP-NEW, AC, D). New requirements get the next free `PIP-NEW` number and a row in `docs/REQUIREMENTS.md`; new decisions get the next `D-nn` in `docs/DECISIONS.md`.
+- **Keep the docs few.** Update the three living docs (`PIP-SPEC`, `DECISIONS`, `REQUIREMENTS`) instead of adding new spec files. `docs/archive/` is a finished record: don't add to it or edit it (except to fix links).
+- **Never rewrite history.** `docs/archive/ziggletron-discovery/` is a record of Ziggletron; don't edit it except to fix a proven factual error or a broken link.
 - **Privacy and secrets:**
   - Never put credential values, phone numbers, recordings or what people said into code, commits, logs, tests or the dashboard.
   - Secrets live only in `~/pip-data/secrets.toml`.
@@ -33,7 +34,7 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
 ## 4. After the change
 
 1. **Check it works.** Run it, or its test. Report results honestly, including failures.
-2. **M0 tests:** write the result to `~/pip-data/m0/results/<id>.json` (fields: `id, ran_at, passed, summary, details`). Update `~/pip-data/m0/status.json`: to-do list, progress and findings in plain language.
+2. **M0 tests: only run a test that settles a specific decision**, and say which one. Write the result to `~/pip-data/m0/results/<id>.json` (fields: `id, ran_at, passed, summary, details`). Update `~/pip-data/m0/status.json`: to-do list, progress and findings in plain language.
 3. **Update the map** if you added, moved or removed files or folders.
 4. **Commit and push.** The pre-commit check must pass (`tools/install_hooks.sh` installs it). End commit messages with the attribution line your tool requires.
 
@@ -44,4 +45,4 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
 - Running third-party code for the first time.
 - Anything that makes sound late at night, or deletes data.
 
-Put questions in `~/pip-data/m0/questions.json` (the dashboard's "Questions for you" section) or ask in chat. Record the answers as decisions in `17-OPEN-QUESTIONS.md`.
+Put questions in `~/pip-data/m0/questions.json` (the dashboard's "Questions for you" section) or ask in chat. Record the answers as decisions in `docs/DECISIONS.md`.

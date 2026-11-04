@@ -1,6 +1,6 @@
 # Pip 2.0 — Feature Decision Matrix (PROPOSAL)
 
-A decision for every Ziggletron feature in the [catalog](../01-discovery/COMPLETE-FEATURE-CATALOG.md). The "current" column describes **Ziggletron as discovered**. The other columns are **proposals**.
+A decision for every Ziggletron feature in the [catalog](../ziggletron-discovery/COMPLETE-FEATURE-CATALOG.md). The "current" column describes **Ziggletron as discovered**. The other columns are **proposals**.
 
 **Decisions:** KEEP (as is) · IMPROVE (same design, fixes and tuning) · REDESIGN (same purpose, new behaviour) · REPLACE (superseded by a new capability) · MERGE (folded into another feature) · REMOVE · REVIEW (the owner should decide).
 **Priority:** P1 / P2 / P3 within the [roadmap](15-PRIORITIZED-ROADMAP.md). The owner chose **parity first**, so most kept features are in M1.

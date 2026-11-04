@@ -1,7 +1,7 @@
 # Pip 2.0 — Proposed Product Specification
 
 > **Status: all owner decisions recorded (2026-11-03). Ready for M0 measurements, then the architecture phase. Nothing is implemented.**
-> **Ziggletron 1.0 (what exists)** is recorded, unchanged, in [`../01-discovery/`](../01-discovery/PRODUCT-OVERVIEW.md).
+> **Ziggletron 1.0 (what exists)** is recorded, unchanged, in [`../ziggletron-discovery/`](../ziggletron-discovery/PRODUCT-OVERVIEW.md).
 > **Pip 2.0 (what we want to build)** is described here. Architecture is deliberately **not** designed yet (brief Part 14).
 
 ## Summary
@@ -59,4 +59,4 @@ All 73 decisions are listed in [17](17-OPEN-QUESTIONS.md#decisions-made-by-the-o
 
 ## Conventions
 - `FEAT-nnn` = an original Ziggletron feature (historical). `PIP-NEW-nnn` = a proposed new capability. `PIP-IDEA-nnn` = an optional idea, not proposed. `AC-*` = an acceptance criterion. `PW-nn` = a proposed workflow.
-- Evidence tags for external research: [V] vendor, [3P] third party, [I] independent benchmark, [M] prior knowledge not re-checked. Discovery tags ([R], [T], [S], [D], [X]) are as defined in [PRODUCT-OVERVIEW](../01-discovery/PRODUCT-OVERVIEW.md#evidence-tags-used-throughout).
+- Evidence tags for external research: [V] vendor, [3P] third party, [I] independent benchmark, [M] prior knowledge not re-checked. Discovery tags ([R], [T], [S], [D], [X]) are as defined in [PRODUCT-OVERVIEW](../ziggletron-discovery/PRODUCT-OVERVIEW.md#evidence-tags-used-throughout).

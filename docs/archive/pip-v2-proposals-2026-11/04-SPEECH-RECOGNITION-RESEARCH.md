@@ -15,7 +15,7 @@
 
 # Part A — Speech recognition
 
-> Proposed behaviour. Ziggletron's current hearing is described in [FEAT-001–008](../01-discovery/COMPLETE-FEATURE-CATALOG.md#a-hearing--speaker-identity) and [BEHAVIORAL-SPECIFICATION §3](../01-discovery/BEHAVIORAL-SPECIFICATION.md#3-hearing-pipeline).
+> Proposed behaviour. Ziggletron's current hearing is described in [FEAT-001–008](../ziggletron-discovery/COMPLETE-FEATURE-CATALOG.md#a-hearing--speaker-identity) and [BEHAVIORAL-SPECIFICATION §3](../ziggletron-discovery/BEHAVIORAL-SPECIFICATION.md#3-hearing-pipeline).
 > Provider facts were gathered on 2026-11-03. Each fact is tagged by how much it can be trusted:
 > **[V]** vendor documentation or announcement · **[3P]** third-party article or aggregator · **[I]** independent benchmark, still not tested on Pip's audio · **[M]** my prior knowledge, not re-checked.
 > **No figure here has been measured on Pip's hardware or in Pip's room.** The [benchmark plan](05-SPEECH-BENCHMARK-PLAN.md) exists to do that.
@@ -184,7 +184,7 @@ Keep it simple. The routing has one justified split: **local address detection a
 
 # Part B — Spoken output (TTS)
 
-> Ziggletron today: a local Piper voice (`en_US-lessac-medium`) at speech rate 1.05. It synthesises the next sentence while the current one plays, stops within about 50 ms, and strips links, markdown and emoji ([FEAT-016](../01-discovery/COMPLETE-FEATURE-CATALOG.md#feat-016--spoken-output-text-to-speech)). First sentence to first audio is about 0.15–0.2 s [D].
+> Ziggletron today: a local Piper voice (`en_US-lessac-medium`) at speech rate 1.05. It synthesises the next sentence while the current one plays, stops within about 50 ms, and strips links, markdown and emoji ([FEAT-016](../ziggletron-discovery/COMPLETE-FEATURE-CATALOG.md#feat-016--spoken-output-text-to-speech)). First sentence to first audio is about 0.15–0.2 s [D].
 > **Owner decision: local voice only.** Cloud TTS is out of scope for now. Revisit only if the budget changes (see [16-ADDITIONAL-RECOMMENDATIONS](16-ADDITIONAL-RECOMMENDATIONS.md)).
 
 ## B1. Goals, in priority order

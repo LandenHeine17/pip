@@ -1,6 +1,6 @@
 # Pip 2.0 — Security and Permissions (PROPOSAL)
 
-> Ziggletron today: no login for viewing or most controls (S-01); one shared admin password over plain HTTP (S-02); unsandboxed self-changes (S-03); voice-approved auto-merge (S-04); injection through room audio, TV and web (S-05); fully trusted plugins (S-07); phone numbers in settings (S-08); secrets in the process environment (S-09). See [KNOWN-PROBLEMS §2](../01-discovery/KNOWN-PROBLEMS-AND-LIMITATIONS.md#2-security).
+> Ziggletron today: no login for viewing or most controls (S-01); one shared admin password over plain HTTP (S-02); unsandboxed self-changes (S-03); voice-approved auto-merge (S-04); injection through room audio, TV and web (S-05); fully trusted plugins (S-07); phone numbers in settings (S-08); secrets in the process environment (S-09). See [KNOWN-PROBLEMS §2](../ziggletron-discovery/KNOWN-PROBLEMS-AND-LIMITATIONS.md#2-security).
 > Requirement IDs: PIP-NEW-027, 054–059, 083. **Owner decision:** the dashboard must be reachable away from home.
 
 ## 1. Principles
