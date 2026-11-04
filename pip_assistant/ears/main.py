@@ -89,8 +89,12 @@ class Ears:
             asyncio.create_task(self.say(text))
         return {"ok": bool(text)}
 
+    async def play_chime(self) -> None:
+        async with self.say_lock:  # chime and speech take turns, never cut each other off
+            await self.speaker.play(self.chime, self.voice.rate)
+
     async def on_chime(self, msg: Message):
-        asyncio.create_task(self.speaker.play(self.chime, self.voice.rate))
+        asyncio.create_task(self.play_chime())
         return {"ok": True}
 
     async def on_stop(self, msg: Message):
