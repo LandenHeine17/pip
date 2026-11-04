@@ -49,12 +49,14 @@
 | D-43 | M0 dashboard | A local page on the Pi, in a separate folder, reachable over Tailscale only |
 | D-44 | During M0 tests | Ziggletron may be stopped temporarily and is restarted afterwards |
 | D-45 | Tooling | uv and Python packages in a project venv; apt packages only after asking |
+| D-46 | Background noise for tests | No TV in the house. "Media" tests use a phone or laptop playing a video or podcast |
+| D-47 | Recording phrases | Scripted phrases written for the owner, including the owner's and household names, device names and technical words |
 
 ## Remaining open items (answerable during M0; they don't block approval)
 
 | # | Question | How it gets resolved |
 |---|---|---|
-| R-01 | Exact speakerphone model; does its echo cancellation remove Pip's voice and music, and does its noise reduction remove quiet or distant speech? | M0 speakerphone test |
+| R-01 | Speakerphone (Anhui LISTENAI "USB Speaker Phone"): its mute button sent no key events in a first test, and its noise reduction may output silence between words. Does mute silence the audio? Does echo cancellation remove Pip's voice? Is quiet or distant speech removed? | M0 mute test (dashboard), echo and distance tests |
 | R-02 | Are the Eightree outlets Tuya-based, and can their local keys be obtained? | M0 check |
 | R-03 | Self-hosted ntfy on the Pi, or the public ntfy.sh with protected topics? | Recommended: self-hosted; confirm when M3 starts |
 | R-04 | Which local LLM for the fallback? | M0 speed test on the Pi |

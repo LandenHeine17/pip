@@ -30,7 +30,7 @@ Aim for about 300 utterances (around 25 minutes of speech), from at least 3 spea
 | Clear, near (1 m) | "Pip, what's the weather tomorrow?" | 30 |
 | Quiet | Same phrases spoken softly | 25 |
 | Distant (3–5 m, other side of room) | Mixed commands | 30 |
-| Background TV / music | Commands with the TV at normal volume; with music | 40 |
+| Background media | Commands while a phone or laptop plays a video or podcast at normal volume a few feet away (no TV in the house, D-46) | 40 |
 | Multiple speakers | Two people talking; one addresses Pip | 25 |
 | Names and vocabulary | Household names, device names, project words | 30 |
 | Short commands | "Stop", "Pip, lights off", "Snooze" | 30 |
