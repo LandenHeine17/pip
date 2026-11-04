@@ -24,6 +24,7 @@ class Bus:
         self.waiting: dict[str, str] = {}      # request id -> who asked
         self.core_handlers: dict = {}           # requests addressed to "core"
         self.core_listeners: list = []          # (pattern, coroutine) for events core itself reacts to
+        self.core_waiting: dict = {}            # request id -> future, for requests core itself sent
         self.server = None
 
     async def start(self) -> None:
@@ -106,9 +107,17 @@ class Bus:
                 self.waiting[msg.id] = msg.source
                 await self._send(msg.target, msg)
             else:
-                await self._send(msg.source, msg.reply({"error": f"{msg.target} isn't running"}, source="core"))
+                await self._reply_to(msg.source, msg.reply({"error": f"{msg.target} isn't running"}, source="core"))
         elif msg.kind == "reply":
             asker = self.waiting.pop(msg.id, msg.target)
+            await self._reply_to(asker, msg)
+
+    async def _reply_to(self, asker: str, msg: Message) -> None:
+        if asker == "core":
+            fut = self.core_waiting.get(msg.id)
+            if fut and not fut.done():
+                fut.set_result(msg)
+        else:
             await self._send(asker, msg)
 
     async def publish(self, msg: Message) -> None:

@@ -8,6 +8,7 @@ from ..common import paths, settings
 from ..common.messages import Message
 from .bus import Bus
 from .conversation import Conversation
+from .stt import make_stt
 from .health import Health
 from .trace import Trace
 
@@ -21,7 +22,12 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
     bus = Bus(paths.core_socket(), trace, health)
     bus.core_handlers["core.health"] = lambda m: {"programs": health.snapshot(), "version": __version__}
     bus.core_handlers["core.trace"] = lambda m: {"entries": trace.recent(int(m.data.get("limit", 200)))}
-    Conversation(bus)
+    try:
+        stt = make_stt(cfg)
+    except Exception as e:  # Pip still runs (wake words, health) without speech-to-text
+        log.warning("speech-to-text unavailable: %s", e)
+        stt = None
+    Conversation(bus, cfg, stt)
     return bus, trace, health
 
 

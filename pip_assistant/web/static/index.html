@@ -28,6 +28,10 @@ th{color:var(--muted);font-weight:600;border-top:0}
 td.t{white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums}
 code{font-size:.85rem}
 .k-event{color:var(--accent)} .k-command{color:var(--warn)} .k-request,.k-reply{color:var(--good)}
+.line{padding:8px 10px;border-radius:10px;margin:6px 0;max-width:85%}
+.line.you{background:var(--idlebg);margin-left:auto}
+.line.pip{background:var(--goodbg)}
+.line .meta{font-size:.78rem;color:var(--muted)}
 .fresh{animation:fresh 1.5s ease-out}
 @keyframes fresh{from{background:var(--goodbg)}to{background:transparent}}
 </style>
@@ -35,7 +39,7 @@ code{font-size:.85rem}
 <body>
 <main>
 <header>
-  <div><h1>Pip</h1><div class="sub">M1a step 2 · Pip hears his name and talks back (his brain arrives in step 3)</div></div>
+  <div><h1>Pip</h1><div class="sub">M1a step 3 · Pip hears you, thinks with Claude, and answers out loud</div></div>
   <div class="sub" id="conn">Connecting…</div>
 </header>
 
@@ -43,6 +47,12 @@ code{font-size:.85rem}
   <h2>Programs</h2>
   <div class="cards" id="programs"></div>
   <div class="sub" style="margin-top:8px">Each program sends a heartbeat every 2 s. One that goes quiet is shown as stuck and restarted automatically.</div>
+</section>
+
+<section>
+  <h2>Conversation</h2>
+  <div class="sub" style="margin-bottom:8px">What Pip heard and said, live. Kept in memory only, never saved.</div>
+  <div id="conv"><div class="sub">Say "Pippletron" or "Hey Pip" and ask something.</div></div>
 </section>
 
 <section>
@@ -82,6 +92,13 @@ function row(e, fresh){
 }
 let rows = [];
 function renderTrace(){ $("trace").innerHTML = rows.length ? rows.map((e,i) => row(e, i===0 && e._fresh)).join("") : `<tr><td colspan="5" class="sub">Nothing yet.</td></tr>`; }
+let conv = [];
+function renderConv(){
+  $("conv").innerHTML = conv.length ? conv.slice(0,30).map(l => `<div class="line ${l.who==="pip"?"pip":"you"}">
+    <div class="meta">${l.who==="pip"?"Pip":"You"} · ${new Date(l.ts*1000).toLocaleTimeString()}${l.stt_s!=null?` · heard in ${l.stt_s}s`:""}${l.first_s!=null?` · first words after ${l.first_s}s`:""}</div>
+    ${esc(l.text)}</div>`).join("") : `<div class="sub">Say "Pippletron" or "Hey Pip" and ask something.</div>`;
+}
+async function loadConv(){ try{ conv = await (await fetch("/api/conversation",{cache:"no-store"})).json(); renderConv(); }catch(e){} }
 async function loadHealth(){
   try{
     const h = await (await fetch("/api/health",{cache:"no-store"})).json(); renderHealth(h.programs||{});
@@ -95,10 +112,11 @@ function live(){
   const es = new EventSource("/api/stream");
   es.onopen = () => { $("conn").textContent = "Live"; };
   es.addEventListener("health", ev => { renderHealth(JSON.parse(ev.data)); $("conn").textContent = "Live"; });
+  es.addEventListener("conversation", ev => { conv.unshift(JSON.parse(ev.data)); renderConv(); });
   es.addEventListener("trace", ev => { const e = JSON.parse(ev.data); e._fresh = true; rows.unshift(e); rows = rows.slice(0,200); renderTrace(); });
   es.onerror = () => { $("conn").textContent = "Reconnecting…"; };
 }
-loadTrace(); loadHealth(); if(!location.search.includes("nolive")) live();
+loadConv(); loadTrace(); loadHealth(); if(!location.search.includes("nolive")) live();
 </script>
 </body>
 </html>

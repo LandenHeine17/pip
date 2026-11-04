@@ -24,6 +24,31 @@ voice_engine = "piper"                  # Voice engine (swappable, PIP-NEW-097).
 voice = "en_US-lessac-medium"           # Voice model in ~/pip-data/models/voices (D-73).
 speech_rate = 1.0                       # 1.0 = normal; 1.2 = a bit faster; 0.8 = slower.
 
+[listen]
+speech_dbfs = -50.0                # Louder than this counts as speech when cutting out what you said.
+end_silence_seconds = 0.8          # A pause this long means you've finished speaking.
+max_utterance_seconds = 12.0       # Longest single request.
+wait_for_speech_seconds = 4.0      # In the follow-up window, how long to wait for you to start talking.
+after_wake_seconds = 2.0           # After the wake word, how long to wait for a question (else it came before the name).
+
+[stt]
+provider = "groq"                  # Speech-to-text service (swappable, PIP-NEW-008; D-48).
+model = "whisper-large-v3-turbo"
+timeout_seconds = 6.0
+# Words that help speech-to-text spell names and terms right (from the M0 benchmark).
+word_list = "Pip, Hey Pip, Pippletron, Pippy, Pips, Ziggletron. Raspberry Pi, ESP32, ESPHome, MQTT, Tailscale, Groq, Claude, Eightree plug, desk lamp, Lincoln, Nebraska."
+
+[conversation]
+follow_up_seconds = 8.0            # After Pip answers, talk again within this time without saying his name.
+keep_minutes = 10.0                # How long Pip remembers the current conversation (in memory only).
+max_turns = 10                     # How many recent exchanges Pip keeps in mind.
+
+[thinker]
+model = ""                         # Claude model for answers ("" = your plan's default).
+timeout_seconds = 45.0             # Give up on an answer after this long.
+web_search = true                  # Let Claude look things up for current facts.
+location = "Lincoln, Nebraska"     # Where Pip lives (D-63).
+
 [web]
 host = "127.0.0.1"                 # Address the dashboard listens on. On the Pi this is the Tailscale address.
 port = 8790                        # Port for the dashboard.
