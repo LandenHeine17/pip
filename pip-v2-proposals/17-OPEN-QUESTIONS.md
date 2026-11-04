@@ -41,7 +41,7 @@
 | D-35 | Smaller defaults | Spoken diagnostics critical only; six-seven and reactions kept; 2-factor sign-in for admins |
 | D-36 | Device connection | MQTT broker on the Pi + ESPHome devices; Eightree smart outlets via the local Tuya protocol |
 | D-37 | Phone notifications | ntfy |
-| D-38 | Mute | The speakerphone's built-in mute button; no GPIO button or LED |
+| D-38 | Mute | The speakerphone's built-in mute button; no GPIO button or LED. Detection refined 2026-11-04: long digital silence = "muted or very quiet" (a silent room can also read as zeros) |
 | D-39 | Storage | No NVMe SSD; stay on the SD card |
 | D-40 | Benchmark providers | Groq only for now (other providers untested until accounts exist) |
 | D-41 | Benchmark speakers | The owner only for now |
