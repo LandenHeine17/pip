@@ -10,7 +10,7 @@ Pip is the second-generation household voice assistant replacing Ziggletron. It 
 ## Rules you must not break
 1. Never put credentials, phone numbers, recordings or what people said into the repo, commit messages, logs or the dashboard. Secrets live only in `~/pip-data/secrets.toml`. The pre-commit check enforces this; never bypass it.
 2. Owner decisions (`D-nn` in `docs/DECISIONS.md`) override everything else. If a change would contradict one, ask the owner.
-3. Don't modify `docs/archive/` (finished historical record; only fix broken links), `~/ziggletron` or `~/ziggletron-v2`. Living docs are `docs/PIP-SPEC.md`, `docs/DECISIONS.md`, `docs/REQUIREMENTS.md`.
+3. Living docs: `docs/PIP-SPEC.md`, `docs/DECISIONS.md`, `docs/REQUIREMENTS.md`. `docs/archive/` holds the **detailed behaviour rules** you need when building a feature (follow the Detail link in REQUIREMENTS) plus Ziggletron's record. It's frozen: don't edit it (only fix links), and where it conflicts with `DECISIONS.md` the decision wins (see REQUIREMENTS §0). Don't modify `~/ziggletron` or `~/ziggletron-v2`.
 4. Ziggletron (`ziggletron.service`) may be stopped temporarily for M0 tests. Say so first, and always restart it (D-44).
 5. Heavy jobs on the Pi run under a memory cap (`systemd-run --user -p MemoryMax=4500M`). An uncapped job froze the Pi once. No sound between 23:00 and 07:00.
 6. Python tooling: `uv`; releases at least two weeks old; system (apt) packages only with the owner's OK.

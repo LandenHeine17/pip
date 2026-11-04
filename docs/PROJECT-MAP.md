@@ -15,7 +15,7 @@ Last reviewed: 2026-11-04 (phase M0; docs condensed into three living files + ar
 | `docs/PIP-SPEC.md` | **What Pip does**, in plain language, plus M0 findings. The living spec | Yes: keep it short and current |
 | `docs/DECISIONS.md` | Every owner decision (`D-nn`); overrides everything | Add new ones at the end; never silently change one |
 | `docs/REQUIREMENTS.md` | Lookup tables: `PIP-NEW` requirements, Ziggletron `FEAT` dispositions, `AC` acceptance criteria | Yes, with IDs |
-| `docs/archive/` | **Finished historical record**: `ziggletron-discovery/` (what Ziggletron did) and `pip-v2-proposals-2026-11/` (the original 20-file proposal with full reasoning) | **No**, except fixing broken links |
+| `docs/archive/` | **Frozen detailed reference**: `ziggletron-discovery/` (what Ziggletron did; for parity) and `pip-v2-proposals-2026-11/` (the full behaviour rules for every requirement, linked from REQUIREMENTS' Detail column). Decisions override it (REQUIREMENTS §0) | **No**, except fixing broken links |
 | `m0/` | M0 **measurement tools** (not the Pip product) | Yes |
 | `m0/phrases.json` | Scripted test phrases (no personal names, D-47) | Add sessions; don't renumber existing IDs (recordings use them) |
 | `m0/benchmark.py`, `rescore.py` | Speech-to-text benchmark and re-scoring | Yes |

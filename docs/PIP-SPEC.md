@@ -1,6 +1,8 @@
 # Pip: what it does
 
-The short, living description of Pip 2.0. Read this first. Detail lives in [REQUIREMENTS.md](REQUIREMENTS.md) (lookup tables) and [DECISIONS.md](DECISIONS.md) (the owner's decisions, `D-nn`, which override everything). The full reasoning behind each item is archived in [archive/pip-v2-proposals-2026-11/](archive/pip-v2-proposals-2026-11/README.md); what Ziggletron did is archived in [archive/ziggletron-discovery/](archive/ziggletron-discovery/PRODUCT-OVERVIEW.md).
+The short, living description of Pip 2.0. Read this first.
+
+**How the docs fit together (for building):** this page says *what* Pip does → [REQUIREMENTS.md](REQUIREMENTS.md) lists every requirement, and its **Detail** link opens the exact behaviour rules in the archived proposal ([archive/pip-v2-proposals-2026-11/](archive/pip-v2-proposals-2026-11/README.md)) → [DECISIONS.md](DECISIONS.md) (`D-nn`) **overrides** anything older, and REQUIREMENTS §0 lists the archived passages that have been overridden. What Ziggletron did (for parity) is in [archive/ziggletron-discovery/](archive/ziggletron-discovery/PRODUCT-OVERVIEW.md).
 
 *Last updated 2026-11-04 · Phase M0 (measuring; no Pip code yet).*
 
