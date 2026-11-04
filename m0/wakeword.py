@@ -65,7 +65,7 @@ def detect(kws, audio: np.ndarray) -> list[str]:
 def clips():
     phrases = {p["id"]: p for p in json.loads(b.PHRASES.read_text())["phrases"]}
     manifest = json.loads((b.REC / "manifest.json").read_text())
-    ids = sorted(i for i in manifest if i in phrases)
+    ids = sorted(i for i in manifest if i in phrases and phrases[i]["session"] in "ABC")
     audio = {i: b.load(i) for i in ids}
     total_audio = sum(len(a) for a in audio.values()) / 16000
     rows = []

@@ -241,7 +241,7 @@ def main(argv):
     names = argv or list(ENGINES)
     phrases = {p["id"]: p for p in json.loads(PHRASES.read_text())["phrases"]}
     manifest = json.loads((REC / "manifest.json").read_text())
-    ids = sorted(i for i in manifest if i in phrases)
+    ids = sorted(i for i in manifest if i in phrases and phrases[i]["session"] in "ABC")
     if limit:
         ids = ids[::max(1, len(ids) // limit)][:limit]
     print(f"{len(ids)} recordings")

@@ -13,6 +13,10 @@
   "C": {
    "title": "Session C · With background sound",
    "where": "Stand about 1–2 m away. Play a video or podcast on your phone or laptop at normal volume, about 1 m from the speakerphone."
+  },
+  "D": {
+   "title": "Session D · Pippletron (about 3 minutes)",
+   "where": "First 10 lines close to the speakerphone, the rest from across the room. The last 6 do NOT say Pippletron."
   }
  },
  "phrases": [
@@ -1640,6 +1644,204 @@
    "category": "negative",
    "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
    "text": "Okay, I'm going to bed now.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "D001",
+   "session": "D",
+   "category": "clear",
+   "how": "Normal voice, close.",
+   "text": "Pippletron, what time is it?",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D002",
+   "session": "D",
+   "category": "clear",
+   "how": "Normal voice, close.",
+   "text": "Pippletron, set a timer for ten minutes.",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D003",
+   "session": "D",
+   "category": "clear",
+   "how": "Normal voice, close.",
+   "text": "Hey Pippletron, what's the weather tomorrow?",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D004",
+   "session": "D",
+   "category": "clear",
+   "how": "Normal voice, close.",
+   "text": "Pippletron, stop.",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D005",
+   "session": "D",
+   "category": "clear",
+   "how": "Normal voice, close.",
+   "text": "What's on my calendar today, Pippletron?",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D006",
+   "session": "D",
+   "category": "clear",
+   "how": "Normal voice, close.",
+   "text": "Pippletron, add milk to the shopping list.",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D007",
+   "session": "D",
+   "category": "clear",
+   "how": "Normal voice, close.",
+   "text": "Pippletron, tell me a joke.",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D008",
+   "session": "D",
+   "category": "clear",
+   "how": "Normal voice, close.",
+   "text": "Okay Pippletron, turn the volume down.",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D009",
+   "session": "D",
+   "category": "clear",
+   "how": "Normal voice, close.",
+   "text": "Pippletron, how long is left on the timer?",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D010",
+   "session": "D",
+   "category": "clear",
+   "how": "Normal voice, close.",
+   "text": "Pippletron, good night.",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D011",
+   "session": "D",
+   "category": "distant",
+   "how": "Normal voice, across the room.",
+   "text": "Pippletron, what time is it?",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D012",
+   "session": "D",
+   "category": "distant",
+   "how": "Normal voice, across the room.",
+   "text": "Pippletron, cancel the timer.",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D013",
+   "session": "D",
+   "category": "distant",
+   "how": "Normal voice, across the room.",
+   "text": "Hey Pippletron, are you listening?",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D014",
+   "session": "D",
+   "category": "distant",
+   "how": "Normal voice, across the room.",
+   "text": "Pippletron, snooze for five minutes.",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D015",
+   "session": "D",
+   "category": "distant",
+   "how": "Normal voice, across the room.",
+   "text": "Pippletron, what's the weather like?",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D016",
+   "session": "D",
+   "category": "distant",
+   "how": "Normal voice, across the room.",
+   "text": "Pippletron, never mind.",
+   "wake": "pippletron",
+   "entities": []
+  },
+  {
+   "id": "D017",
+   "session": "D",
+   "category": "negative",
+   "how": "Across the room. These do NOT call Pippletron.",
+   "text": "Ziggletron, what time is it?",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "D018",
+   "session": "D",
+   "category": "negative",
+   "how": "Across the room. These do NOT call Pippletron.",
+   "text": "Hey Ziggletron, set a timer.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "D019",
+   "session": "D",
+   "category": "negative",
+   "how": "Across the room. These do NOT call Pippletron.",
+   "text": "That was a total skeleton of a plan.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "D020",
+   "session": "D",
+   "category": "negative",
+   "how": "Across the room. These do NOT call Pippletron.",
+   "text": "Pass me the pepperoni.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "D021",
+   "session": "D",
+   "category": "negative",
+   "how": "Across the room. These do NOT call Pippletron.",
+   "text": "The triple ton truck went by.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "D022",
+   "session": "D",
+   "category": "negative",
+   "how": "Across the room. These do NOT call Pippletron.",
+   "text": "Hey Pippy, what's up?",
    "wake": "none",
    "entities": []
   }

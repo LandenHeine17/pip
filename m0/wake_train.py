@@ -12,15 +12,16 @@ from pathlib import Path
 import yaml
 
 W = Path.home() / "pip-data/m0/wake-train"
-TASK = Path.home() / "pip-data/m0/tasks/wake-train.json"
-CFG = W / "hey_pip.yml"
+CFG = W / os.environ.get("WAKE_CFG", "hey_pip.yml")
 cfg = yaml.safe_load(CFG.read_text())
+TASK = Path.home() / f"pip-data/m0/tasks/wake-train-{cfg['model_name']}.json"
+LABEL = cfg["target_phrase"][0].title()
 OUT = W / cfg["output_dir"] / cfg["model_name"]
 
 
 def progress(stage, done=0, total=0, note="", finished=False, failed=False):
     TASK.parent.mkdir(parents=True, exist_ok=True)
-    obj = {"name": "Wake-word training: \"Hey Pip\"", "stage": stage, "done": done, "total": total, "note": note,
+    obj = {"name": f"Wake-word training: \"{LABEL}\"", "stage": stage, "done": done, "total": total, "note": note,
            "finished": finished, "failed": failed, "updated": time.time()}
     tmp = TASK.with_suffix(".tmp"); tmp.write_text(json.dumps(obj)); os.replace(tmp, TASK)
 
@@ -31,7 +32,8 @@ def count(sub):
 
 
 def run(flag, stage, measure):
-    log = open(W / f"train-{flag.strip('-')}.log", "a")
+    logname = W / f"train-{cfg['model_name']}-{flag.strip('-')}.log"
+    log = open(logname, "a")
     p = subprocess.Popen([sys.executable, "-W", "ignore", str(W / "openwakeword/openwakeword/train.py"),
                           "--training_config", str(CFG), flag], cwd=W, stdout=log, stderr=subprocess.STDOUT)
     t0 = time.time()
@@ -40,7 +42,7 @@ def run(flag, stage, measure):
         progress(stage, done, total, note)
         time.sleep(15)
     if p.returncode != 0:
-        tail = (W / f"train-{flag.strip('-')}.log").read_text(errors="replace")[-400:]
+        tail = logname.read_text(errors="replace")[-400:]
         progress(f"{stage}: failed", note=tail.replace("\n", " ")[-300:], failed=True)
         sys.exit(p.returncode)
 

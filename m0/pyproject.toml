@@ -12,6 +12,8 @@ dependencies = [
   "sherpa-onnx>=1.12",
   "sherpa-onnx-core>=1.12",
   "sentencepiece>=0.2",
+  "piper-tts>=1.7",
+  "kokoro-onnx>=0.6",
 ]
 
 [tool.uv]
