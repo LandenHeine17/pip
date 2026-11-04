@@ -1,5 +1,5 @@
 diff --git a/openwakeword/train.py b/openwakeword/train.py
-index 708cdb2..7f4bf6e 100755
+index 708cdb2..2de5b72 100755
 --- a/openwakeword/train.py
 +++ b/openwakeword/train.py
 @@ -426,6 +426,11 @@ class Model(nn.Module):
@@ -37,7 +37,27 @@ index 708cdb2..7f4bf6e 100755
  def convert_onnx_to_tflite(onnx_model_path, output_path):
      """Converts an ONNX version of an openwakeword model to the Tensorflow tflite format."""
      # imports
-@@ -871,13 +892,10 @@ if __name__ == '__main__':
+@@ -707,7 +728,8 @@ if __name__ == '__main__':
+             adversarial_texts = config["custom_negative_phrases"]
+             for target_phrase in config["target_phrase"]:
+                 adversarial_texts.extend(generate_adversarial_texts(
+-                    input_text=target_phrase,
++                    # Pip M0 patch: optional dictionary-word spelling for phrases the CMU dictionary lacks
++                    input_text=config.get("adversarial_phrase_for", {}).get(target_phrase, target_phrase),
+                     N=config["n_samples"]//len(config["target_phrase"]),
+                     include_partial_phrase=1.0,
+                     include_input_words=0.2))
+@@ -730,7 +752,8 @@ if __name__ == '__main__':
+             adversarial_texts = config["custom_negative_phrases"]
+             for target_phrase in config["target_phrase"]:
+                 adversarial_texts.extend(generate_adversarial_texts(
+-                    input_text=target_phrase,
++                    # Pip M0 patch: optional dictionary-word spelling for phrases the CMU dictionary lacks
++                    input_text=config.get("adversarial_phrase_for", {}).get(target_phrase, target_phrase),
+                     N=config["n_samples_val"]//len(config["target_phrase"]),
+                     include_partial_phrase=1.0,
+                     include_input_words=0.2))
+@@ -871,13 +894,10 @@ if __name__ == '__main__':
          X_train = torch.utils.data.DataLoader(IterDataset(batch_generator),
                                                batch_size=None, num_workers=n_cpus, prefetch_factor=16)
  
