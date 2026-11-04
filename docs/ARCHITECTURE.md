@@ -1,6 +1,6 @@
 # Pip architecture
 
-How Pip is built: the parts, how they talk, where data lives, and how new features plug in. Written so you can understand Pip from this page and its diagrams without reading code (D-71). **Status: draft for the owner's review (2026-11-04). Nothing is built until it's approved.**
+How Pip is built: the parts, how they talk, where data lives, and how new features plug in. Written so you can understand Pip from this page and its diagrams without reading code (D-71). **Status: approved by the owner on 2026-11-04 (D-78), with the D-77 privacy change.**
 
 What Pip *does* is in [PIP-SPEC.md](PIP-SPEC.md). Requirement IDs (`PIP-NEW-nnn`) are in [REQUIREMENTS.md](REQUIREMENTS.md), and decisions (`D-nn`) in [DECISIONS.md](DECISIONS.md). Numbers marked *(M0)* were measured on this Pi; numbers marked *(est.)* are estimates to check while building.
 
@@ -114,21 +114,21 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     S["Someone speaks"] --> W{"Wake word?"}
-    W -- yes --> UP["Send to Groq, then answer<br/>(anyone, guests included)"]
+    W -- yes --> UP["Send to Groq, then answer<br/>(anyone)"]
     W -- no --> M{"Mode"}
     M -- Private --> DROP["Nothing leaves the Pi"]
-    M -- Social --> ID{"Who is it?<br/>(recognised on the Pi)"}
-    ID -- "household member,<br/>not opted out" --> ROOM["Send to Groq → room context;<br/>question check may ask Claude to chime in"]
-    ID -- "guest, unknown,<br/>or opted out" --> DROP
+    M -- Social --> ID{"Has this speaker opted out?<br/>(recognised on the Pi)"}
+    ID -- "no: household member,<br/>guest or unknown voice" --> ROOM["Send to Groq → room context;<br/>question check may ask Claude to chime in"]
+    ID -- "yes, opted out" --> DROP
 ```
 
-**This resolves a conflict between two decisions, so please review it.** D-51 says Groq transcribes room speech like Ziggletron did; D-13 says guests and opted-out people are never included. So Pip **identifies the speaker on the Pi first** (a fraction of a second) and only uploads *unaddressed* speech from recognised household members who haven't opted out. Anyone who says the wake word is heard, guests included.
+**Owner decision D-77:** in Social mode, speech nobody addressed to Pip is sent to Groq for **everyone** (household members, guests and unknown voices), **except people who have opted out**, whose speech never leaves the Pi. Pip recognises the speaker on the Pi first (a fraction of a second) to check for opt-outs. Anyone can say "Pip, leave me out". For a guest, Pip remembers their voice **for that visit only**, just to keep leaving them out, then forgets it.
 
 What else leaves the Pi:
 
 | To | What | When |
 |---|---|---|
-| Groq | Audio of addressed requests, and (Social mode) household room speech as above | As it happens |
+| Groq | Audio of addressed requests, and (Social mode) room speech from everyone who hasn't opted out | As it happens |
 | Claude | The text of the conversation, relevant memories, the allowed actions | Each answer or chime-in check |
 | Open-Meteo | "Lincoln, Nebraska" | Weather updates |
 | Google | Calendar events (M3, D-19) | Sync |
@@ -273,7 +273,6 @@ Built in small steps. Each step ends with something you can try.
 
 Then **M1b** adds the safe self-change pipeline, and you switch over from Ziggletron.
 
-## 15. Questions for you
+## 15. Review
 
-1. **The privacy resolution in §6:** only household members who haven't opted out have unaddressed room speech sent to Groq; guests and opted-out people only when they say the wake word. Is that right?
-2. **Anything here you want explained differently**, or that doesn't match how you picture Pip?
+Approved 2026-11-04 (D-78). The one change requested is in §6 (D-77).
