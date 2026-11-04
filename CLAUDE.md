@@ -5,7 +5,7 @@ Pip is the second-generation household voice assistant replacing Ziggletron. It 
 **Before making any change, read [`CONTRIBUTING.md`](CONTRIBUTING.md) (how to change things) and [`docs/PROJECT-MAP.md`](docs/PROJECT-MAP.md) (where everything is).** What Pip does: [`docs/PIP-SPEC.md`](docs/PIP-SPEC.md). They're written so you can work well without knowing the whole project.
 
 ## Current phase
-**M0: measure and decide.** No Pip application code exists yet. It comes after M0 results and the architecture phase. `m0/` holds measurement tools, not the product. Progress and to-dos: the dashboard at `http://100.118.171.118:8780` (data in `~/pip-data/m0/status.json`).
+**Architecture design** (M0 measurements are done; two overnight false-wake checks are finishing). No Pip application code exists yet: it starts in M1a, after the owner approves `docs/ARCHITECTURE.md`. `m0/` holds measurement tools, not the product. Progress and to-dos: the dashboard at `http://100.118.171.118:8780` (data in `~/pip-data/m0/status.json`).
 
 ## Rules you must not break
 1. Never put credentials, phone numbers, recordings or what people said into the repo, commit messages, logs or the dashboard. Secrets live only in `~/pip-data/secrets.toml`. The pre-commit check enforces this; never bypass it.
