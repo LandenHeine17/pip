@@ -5,7 +5,7 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
 ## 1. Before you change anything
 
 1. **Find out what phase we're in.** See `CLAUDE.md` → "Current phase". In M0 there is no Pip application code. Only the spec, the measurement tools and the dashboard exist.
-2. **Find the requirement.** Read the relevant part of `docs/PIP-SPEC.md`, then look it up in `docs/REQUIREMENTS.md` (`PIP-NEW-nnn`, Ziggletron's `FEAT-nnn`, acceptance criteria `AC-*`). The full reasoning, if you need it, is in `docs/archive/pip-v2-proposals-2026-11/`.
+2. **Find the requirement.** Read the relevant part of `docs/PIP-SPEC.md`, then look it up in `docs/REQUIREMENTS.md` (`PIP-NEW-nnn`, Ziggletron's `FEAT-nnn`, acceptance criteria `AC-*`). **When building a feature, open its Detail link**: the archived proposal holds the exact rules, edge cases and examples. Check REQUIREMENTS §0 (overridden passages) and `docs/DECISIONS.md` first; decisions win.
 3. **Check the owner's decisions** in `docs/DECISIONS.md` (`D-nn`). Decisions override the rest of the spec. If your change contradicts one, **stop and ask the owner**.
 4. **Read only what you need.** The map says which file covers what. You don't need to read everything.
 
@@ -14,7 +14,7 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
 - **Small and focused.** One purpose per change. Don't refactor unrelated code.
 - **Match what's there.** Same style, same patterns, same tools (`uv`; Python).
 - **Keep traceability.** When you change the spec, cite the IDs (FEAT, PIP-NEW, AC, D). New requirements get the next free `PIP-NEW` number and a row in `docs/REQUIREMENTS.md`; new decisions get the next `D-nn` in `docs/DECISIONS.md`.
-- **Keep the docs few.** Update the three living docs (`PIP-SPEC`, `DECISIONS`, `REQUIREMENTS`) instead of adding new spec files. `docs/archive/` is a finished record: don't add to it or edit it (except to fix links).
+- **Keep the docs few.** Update the three living docs (`PIP-SPEC`, `DECISIONS`, `REQUIREMENTS`) instead of adding new spec files. `docs/archive/` is frozen: don't add to it or edit it (except to fix links). If a new decision overrides an archived passage, add a row to REQUIREMENTS §0. In the architecture phase, component pages in `docs/architecture/` will carry the detailed rules forward, so the archive matters less over time.
 - **Never rewrite history.** `docs/archive/ziggletron-discovery/` is a record of Ziggletron; don't edit it except to fix a proven factual error or a broken link.
 - **Privacy and secrets:**
   - Never put credential values, phone numbers, recordings or what people said into code, commits, logs, tests or the dashboard.
