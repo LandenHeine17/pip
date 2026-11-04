@@ -1,26 +1,18 @@
-# Pip — guidance for Claude Code
+# Pip: read this first
 
-Pip is the second-generation household voice assistant replacing Ziggletron. It runs on a Raspberry Pi 5 (8 GB, SD card, aarch64, Python 3.13).
+Pip is the second-generation household voice assistant replacing Ziggletron. It runs on a Raspberry Pi 5 (8 GB RAM, SD card, aarch64, Python 3.13) in a shared dorm room.
 
-## Where things are
-| Path | What |
-|---|---|
-| `01-discovery/` | Historical record of Ziggletron 1.0. **Never rewrite** (only fix demonstrable factual errors) |
-| `pip-v2-proposals/` | The Pip 2.0 specification. Requirements: `02-PROPOSED-FEATURE-CATALOG.md` (PIP-NEW IDs); decisions: `17-OPEN-QUESTIONS.md` (D-nn); roadmap: `15-PRIORITIZED-ROADMAP.md`; acceptance: `14-ACCEPTANCE-CRITERIA.md` |
-| `m0/` | M0 measurement tools (Pi load test, speakerphone check, speech benchmark) |
-| `tools/` | Repository tooling (secret and phone-number check) |
-| `~/pip-data/` | **Outside the repo.** Secrets (`secrets.toml`, mode 600), M0 results and consented recordings. Never commit or copy into the repo |
-| `~/pip-dashboard/` | **Outside the repo.** Local M0 dashboard (Tailscale only) |
-| `~/ziggletron`, `~/ziggletron-v2` | Not part of this project. Do not modify. Ignore unless asked |
+**Before making any change, read [`CONTRIBUTING.md`](CONTRIBUTING.md) (how to change things) and [`docs/PROJECT-MAP.md`](docs/PROJECT-MAP.md) (where everything is).** They're written so you can work well without knowing the whole project.
 
 ## Current phase
-**M0: measure and decide.** No Pip application code until M0 results and the architecture phase are done. Tools in `m0/` are measurement scripts, not the product.
+**M0: measure and decide.** No Pip application code exists yet. It comes after M0 results and the architecture phase. `m0/` holds measurement tools, not the product. Progress and to-dos: the dashboard at `http://100.118.171.118:8780` (data in `~/pip-data/m0/status.json`).
 
-## Rules
-- Never put credential values, phone numbers or private recordings in the repo, commit messages, logs or the dashboard. The pre-commit check (`tools/check_secrets.py`) enforces this; don't bypass it.
-- Commit messages describe changes; never paste spoken or private requests verbatim.
-- Keep requirements traceable: reference FEAT-nnn / PIP-NEW-nnn / AC-* / D-nn IDs when changing the spec.
-- The spec is implementation-independent; architecture decisions go in a separate architecture document (not yet written).
-- Python tooling: `uv` with the project venv. System (apt) packages only after asking the owner.
-- Ziggletron (`ziggletron.service`) may be stopped temporarily for M0 measurements, and must be restarted afterwards (D-44). Say so before stopping it.
-- After running an M0 test, write its result JSON to `~/pip-data/m0/results/` so the dashboard shows it, and update `~/pip-data/m0/status.json` (next actions, progress).
+## Rules you must not break
+1. Never put credentials, phone numbers, recordings or what people said into the repo, commit messages, logs or the dashboard. Secrets live only in `~/pip-data/secrets.toml`. The pre-commit check enforces this; never bypass it.
+2. Owner decisions (`D-nn` in `pip-v2-proposals/17-OPEN-QUESTIONS.md`) override everything else. If a change would contradict one, ask the owner.
+3. Don't modify `01-discovery/` (historical record), `~/ziggletron` or `~/ziggletron-v2`.
+4. Ziggletron (`ziggletron.service`) may be stopped temporarily for M0 tests. Say so first, and always restart it (D-44).
+5. Heavy jobs on the Pi run under a memory cap (`systemd-run --user -p MemoryMax=4500M`). An uncapped job froze the Pi once. No sound between 23:00 and 07:00.
+6. Python tooling: `uv`; releases at least two weeks old; system (apt) packages only with the owner's OK.
+7. The owner understands Pip from docs and diagrams, not code (D-71). Keep plain-language docs in step with every change, and keep `docs/PROJECT-MAP.md` current.
+8. After an M0 test: write `~/pip-data/m0/results/<id>.json` and update `~/pip-data/m0/status.json`.
