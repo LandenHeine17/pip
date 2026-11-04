@@ -21,7 +21,9 @@ Pip is a playful companion living in a dorm room on a Raspberry Pi 5, with a USB
 | Is the name easy to detect? | "Pip" alone is too short. Trained **"Hey Pip"**: 85% heard up close, 14% across the room, 0 false wakes. Trained **"Pippletron"**: **100% up close**, 33% across the room, 1 false wake (on "Hey Ziggletron") in 181 clips. "Hey Pip" v2 (trained with half your recordings) did *worse* (67% vs 89% up close on the same clips). All-day false-wake checks for both are running | D-68 |
 | Which voice? | **Piper "lessac"** (starts in 0.3 s). Your favourite, Kokoro "puck", adds 2–3 s per answer on this Pi | D-73 |
 | Can self-changes be sandboxed? | Yes, with no installs: secrets, recordings, the repo and the internet were all blocked | — |
-| Still running | Pippletron test, Hey Pip v2, local AI model speed, Pi load test, overnight false-wake check | — |
+| Local AI fallback usable? | Yes for simple questions: first word ~0.6 s, reply ~4.5 s. **Qwen 2.5 1.5B** recommended (Llama 3.2 1B gave an unsafe food answer). Both falsely claimed to set a timer, so the fallback may **never** claim actions; real actions use Pip's offline commands | D-05 |
+| Which wake word? | **Both "Pippletron" and "Hey Pip"** | D-74 |
+| Still running | Pi load test; overnight false-wake checks for both wake words (until 07:30) | — |
 
 Live results are on the dashboard (`http://100.118.171.118:8780`).
 
