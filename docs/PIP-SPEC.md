@@ -18,7 +18,7 @@ Pip is a playful companion living in a dorm room on a Raspberry Pi 5, with a USB
 | Across the room? | 35–40% of words wrong (speakerphone position). Accepted: talk from nearer; Pip asks you to repeat when unsure | D-49 |
 | Can the Pi transcribe the room itself? | No, the on-device models were too slow or inaccurate, so room speech goes to Groq, like Ziggletron | D-50, D-51 |
 | Can Pip be interrupted? | Yes. Echo cancellation removes Pip's own voice almost completely, and speech over him was understood 6/6 | — |
-| Is the name easy to detect? | "Pip" alone is too short. A trained "Hey Pip" detector hears 85% up close with no false wakes, but little at a distance. v2 (trained with your recordings) and Pippletron are being tested | D-68 |
+| Is the name easy to detect? | "Pip" alone is too short. Trained **"Hey Pip"**: 85% heard up close, 14% across the room, 0 false wakes. Trained **"Pippletron"**: **100% up close**, 33% across the room, 1 false wake (on "Hey Ziggletron") in 181 clips. "Hey Pip" v2 (trained with your recordings) is being tested | D-68 |
 | Which voice? | **Piper "lessac"** (starts in 0.3 s). Your favourite, Kokoro "puck", adds 2–3 s per answer on this Pi | D-73 |
 | Can self-changes be sandboxed? | Yes, with no installs: secrets, recordings, the repo and the internet were all blocked | — |
 | Still running | Pippletron test, Hey Pip v2, local AI model speed, Pi load test, overnight false-wake check | — |
