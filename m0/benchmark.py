@@ -143,7 +143,8 @@ class Moonshine:
 
     def __call__(self, audio):
         t0 = time.perf_counter()
-        tokens = self.m.generate(audio[None, :])
+        max_len = max(8, int(len(audio) / 16000 * 6))  # ~6 tokens per second: stops repetition loops
+        tokens = self.m.generate(audio[None, :], max_len=max_len)
         return self.tok.decode_batch(tokens)[0], time.perf_counter() - t0
 
 
@@ -163,13 +164,38 @@ def has_wake(norm: str) -> bool:
     return re.search(r"\bpip\b", norm) is not None
 
 
+WAKE_RE = re.compile(r"^(?:(?:hey|so|ok|okay)\s+)?pip\b\s*|\s*\bpip$")
+
+
+def strip_wake(norm: str) -> str:
+    """Remove the wake phrase at the start or end: a separate on-device detector handles it."""
+    return WAKE_RE.sub("", norm).strip()
+
+
+def body_pair(r):
+    """Reference and hypothesis with the wake-phrase region removed from both.
+
+    If the phrase calls Pip, whatever the engine wrote where the name was (e.g. "hip hip", "hit")
+    is dropped by aligning on the first/last real word of the reference."""
+    ref, hyp = strip_wake(r["ref_n"]).split(), strip_wake(r["hyp_n"]).split()
+    if r["wake"] != "none" and ref and hyp:
+        if r["ref_n"].split()[0] in ("pip", "hey") and ref[0] in hyp[:3]:
+            hyp = hyp[hyp.index(ref[0]):]
+        if r["ref_n"].split()[-1] == "pip" and ref[-1] in hyp[-3:]:
+            k = len(hyp) - 1 - hyp[::-1].index(ref[-1])
+            hyp = hyp[:k + 1]
+    return " ".join(ref), " ".join(hyp)
+
+
 def score(rows):
     import jiwer
     speech = [r for r in rows]
-    refs = [r["ref_n"] or "empty" for r in speech]
-    hyps = [r["hyp_n"] or "" for r in speech]
-    wer = jiwer.wer(refs, hyps)
-    out = {"wer": round(100 * wer, 1)}
+    pairs = [body_pair(r) for r in speech]
+    refs = [p[0] or "empty" for p in pairs]
+    hyps = [p[1] for p in pairs]
+    hyps_wake = [r["hyp_n"] for r in speech]
+    out = {"wer": round(100 * jiwer.wer(refs, hyps), 1),
+           "wer_with_wake": round(100 * jiwer.wer([r["ref_n"] or "empty" for r in speech], hyps_wake), 1)}
     called = [r for r in rows if r["wake"] != "none"]
     neg = [r for r in rows if r["category"] == "negative"]
     out["wake_recall"] = round(100 * sum(has_wake(r["hyp_n"]) for r in called) / len(called), 1) if called else None
@@ -178,7 +204,7 @@ def score(rows):
     ents = [(e, r) for r in rows for e in r["entities"]]
     out["entity_acc"] = round(100 * sum(normalise(e) in r["hyp_n"] for e, r in ents) / len(ents), 1) if ents else None
     def truncated(r):
-        rw, hw = r["ref_n"].split(), r["hyp_n"].split()
+        rw, hw = (x.split() for x in body_pair(r))
         if not rw:
             return False
         return (not hw) or (rw[0] not in hw[:3]) or (rw[-1] not in hw[-3:])
@@ -199,7 +225,7 @@ def verdict(engine_local: bool, s: dict):
 
 def summary(name, s, local):
     speed = f"real-time factor {s['rtf']}" if local else f"P90 {s['latency_p90']} s"
-    return (f"WER {s['wer']}% · wake word heard {s['wake_recall']}% · false 'Pip' in {s['false_wake']}/{s['negatives']} "
+    return (f"Words wrong {s['wer']}% (not counting the name) · wake word heard {s['wake_recall']}% · false 'Pip' in {s['false_wake']}/{s['negatives']} "
             f"look-alikes · names/terms {s['entity_acc']}% · cut-off {s['truncated_pct']}% · {speed}")
 
 # ------------------------------------------------------------------ main
@@ -248,7 +274,8 @@ def main(argv):
             result = {"id": rid, "engine": n, "name": label, "ran_at": time.strftime("%Y-%m-%d %H:%M"),
                       "passed": verdict(is_local, overall), "summary": summary(label, overall, is_local),
                       "details": {"overall": overall, "by_category": by_cat,
-                                  "mistakes": [{"id": r["id"], "said": r["ref"], "heard": r["hyp"]} for r in worst]}}
+                                  "mistakes": [{"id": r["id"], "said": r["ref"], "heard": r["hyp"]} for r in worst],
+                                  "clips": [{k: r[k] for k in ("id", "hyp", "seconds", "audio_s")} for r in rows]}}
             if limit:
                 print("   (trial run, not saved)"); del eng; continue
             tmp = RESULTS / f"{rid}.tmp"
