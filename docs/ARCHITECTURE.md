@@ -240,8 +240,8 @@ Changing the voice from Piper to Kokoro (D-73), or speech-to-text from Groq to a
 ## 13. Repository layout
 
 ```
-pip/
-├── pip/                      the application
+pip/                          (the repo)
+├── pip_assistant/            the application (not "pip/": that name belongs to Python's installer)
 │   ├── ears/                 pip-ears program
 │   ├── core/                 pip-core program (conductor, scheduler, memory, trace)
 │   ├── thinker/              pip-thinker program
@@ -250,7 +250,7 @@ pip/
 │   ├── common/               shared bits: messages, settings, database
 │   └── modules/              skills, widgets, providers (+ _template/)
 ├── models/                   generic, public-safe models
-├── deploy/                   systemd service files, install and update scripts
+├── deploy/                   systemd service files (deploy/systemd/) and install.sh
 ├── tests/                    cross-program and replay tests
 ├── docs/                     PIP-SPEC, ARCHITECTURE, DECISIONS, REQUIREMENTS, PROJECT-MAP
 └── m0/                       measurement tools (kept for re-runs)
@@ -262,7 +262,7 @@ Built in small steps. Each step ends with something you can try.
 
 | Step | What you'll be able to do |
 |---|---|
-| 1. Skeleton: the five programs start, talk, log and show health on a new dashboard | See Pip's status and the decision trace |
+| 1. Skeleton: the programs start, talk, log and show health on a new dashboard. **Done 2026-11-04** (pip-builder waits for M1b) | See Pip's status and the decision trace at `http://100.118.171.118:8790` |
 | 2. Ears: speakerphone, wake words, "stop", Piper voice | Say "Pippletron" and hear a chime and a fixed reply |
 | 3. Core + Groq + Claude: real answers | Ask questions and get spoken answers |
 | 4. Timers, reminders, alarms (incl. offline) | Use Pip for timers like Ziggletron |

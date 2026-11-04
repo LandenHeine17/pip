@@ -28,13 +28,18 @@ Last reviewed: 2026-11-04 (phase M0; docs condensed into three living files + ar
 | `m0/patches/` | Patches applied to third-party tools we run (e.g. openWakeWord low-memory fix) | Yes; document why in the patch commit |
 | `m0/pyproject.toml`, `uv.lock` | M0 Python environment (uv; only releases ≥2 weeks old) | Yes, via `uv` |
 | `tools/check_secrets.py`, `install_hooks.sh` | Commit check blocking secrets and phone numbers | Yes, but never weaken it |
-| *(future)* `pip/` or `src/` | The Pip application | **Doesn't exist yet**: created after the architecture phase |
+| `pip_assistant/` | **The Pip application** (M1a). `common/` (messages, settings, bus client), `core/` (hub, decision trace, watchdog), `ears/`, `thinker/`, `web/` (dashboard), `defaults.toml` (every setting, explained) | Yes: follow ARCHITECTURE.md; tests in `tests/` |
+| `tests/` | Automated tests for the application (`uv run pytest`) | Yes: add tests with every change |
+| `deploy/` | systemd service files (`deploy/systemd/`) and `install.sh`, which installs/updates and restarts Pip's services | Yes |
+| `pyproject.toml`, `uv.lock` | The application's Python project and pinned packages (uv; releases ≥ 2 weeks old) | Via `uv` |
 | *(future)* `docs/architecture/` | Architecture overview, diagrams, component pages, design decisions | Created in the architecture phase |
 
 ## Outside the repository (never commit these)
 
 | Path | What it is | Notes |
 |---|---|---|
+| `~/pip-data/settings.toml` | Your Pip settings (override `pip_assistant/defaults.toml`) | Edit freely; unknown or wrong settings are reported at start-up |
+| `~/pip-data/pip.db` | Pip's database (decision trace now; memories, timers etc. later) | Private |
 | `~/pip-data/secrets.toml` | API keys (mode 600) | **Never read into logs, prompts, commits or the dashboard** |
 | `~/pip-data/m0/recordings/` | The owner's consented test recordings | Private. Deleted after 30 days. Never commit or upload except to the STT provider under test |
 | `~/pip-data/m0/results/*.json` | One result file per M0 test | The dashboard reads these |
@@ -50,5 +55,6 @@ Last reviewed: 2026-11-04 (phase M0; docs condensed into three living files + ar
 | Unit | What | Notes |
 |---|---|---|
 | `ziggletron.service` | The current assistant | Keep running unless a test needs the mic or CPU |
-| `pip-dashboard.service` | M0 dashboard | Restart after editing `~/pip-dashboard` |
+| `pip-dashboard.service` | M0 dashboard (port 8780) | Restart after editing `~/pip-dashboard` |
+| `pip-core`, `pip-ears`, `pip-thinker`, `pip-web` `.service` | **Pip itself** (dashboard on port 8790). Installed by `deploy/install.sh` | `sh deploy/install.sh` after code changes |
 | `pip-*` transient units (`systemd-run`) | Long M0 jobs | **Don't survive a reboot.** Run heavy jobs with a memory cap (`-p MemoryMax=4500M`), because the Pi froze once from running out of memory |

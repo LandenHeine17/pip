@@ -1,0 +1,18 @@
+# Pip's default settings. Your own settings go in ~/pip-data/settings.toml and override these.
+# Every setting has a short explanation. A setting you don't mention keeps its default.
+
+[pip]
+name = "Pip"                       # What Pip calls himself.
+
+[programs]
+expected = ["ears", "thinker", "web"]   # Programs pip-core expects to hear from.
+heartbeat_seconds = 2.0                 # How often each program says "I'm alive".
+stuck_after_seconds = 10.0              # No heartbeat for this long means a program is stuck.
+restart_stuck = true                    # Restart a stuck program automatically (only when run as a service).
+
+[trace]
+keep_hours = 48                    # How long the decision trace (what happened, never the words) is kept.
+
+[web]
+host = "127.0.0.1"                 # Address the dashboard listens on. On the Pi this is the Tailscale address.
+port = 8790                        # Port for the dashboard.

@@ -1,0 +1,15 @@
+[Unit]
+Description=Pip: pip-web (dashboard and TV page)
+After=pip-core.service
+Wants=pip-core.service
+
+[Service]
+ExecStart=%h/pip/.venv/bin/pip-web
+Restart=on-failure
+RestartSec=3
+MemoryMax=300M
+MemorySwapMax=0
+Nice=0
+
+[Install]
+WantedBy=default.target

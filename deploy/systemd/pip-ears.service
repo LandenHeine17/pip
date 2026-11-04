@@ -1,0 +1,15 @@
+[Unit]
+Description=Pip: pip-ears (listening and speaking)
+After=pip-core.service
+Wants=pip-core.service
+
+[Service]
+ExecStart=%h/pip/.venv/bin/pip-ears
+Restart=on-failure
+RestartSec=3
+MemoryMax=600M
+MemorySwapMax=0
+Nice=0
+
+[Install]
+WantedBy=default.target

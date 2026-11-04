@@ -1,0 +1,15 @@
+[Unit]
+Description=Pip: pip-thinker (Claude and the offline fallback)
+After=pip-core.service
+Wants=pip-core.service
+
+[Service]
+ExecStart=%h/pip/.venv/bin/pip-thinker
+Restart=on-failure
+RestartSec=3
+MemoryMax=2G
+MemorySwapMax=0
+Nice=0
+
+[Install]
+WantedBy=default.target

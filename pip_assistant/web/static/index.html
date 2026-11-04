@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip Dashboard</title>
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--ink:#1d1f23;--muted:#6b6f76;--line:#e4e2dc;--good:#1f7a4d;--goodbg:#e3f3ea;--bad:#b3261e;--badbg:#fbe7e5;--warn:#8a5a00;--warnbg:#fdf1d8;--idle:#5b6270;--idlebg:#eceef1;--accent:#3a5bd9}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14161a;--card:#1d2026;--ink:#e9eaec;--muted:#9aa0a8;--line:#2c3038;--good:#5fd39a;--goodbg:#173326;--bad:#ff8a80;--badbg:#3a1d1b;--warn:#f2c060;--warnbg:#3a2e14;--idle:#a8afba;--idlebg:#262a31;--accent:#8ea6ff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px;margin:4px 0 16px}
+h1{font-size:1.5rem;margin:0} h2{font-size:1.1rem;margin:0 0 10px}
+.sub{color:var(--muted);font-size:.9rem}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px;min-width:0}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.card{border:1px solid var(--line);border-radius:10px;padding:12px}
+.card .name{font-weight:650}
+.card .what{color:var(--muted);font-size:.85rem;margin:2px 0 8px}
+.pill{display:inline-block;font-size:.8rem;font-weight:600;padding:2px 8px;border-radius:999px}
+.ok{background:var(--goodbg);color:var(--good)} .stuck{background:var(--warnbg);color:var(--warn)} .missing{background:var(--badbg);color:var(--bad)}
+.kv{font-size:.88rem;color:var(--muted);margin-top:6px;font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th,td{text-align:left;padding:6px;border-top:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;border-top:0}
+td.t{white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums}
+code{font-size:.85rem}
+.k-event{color:var(--accent)} .k-command{color:var(--warn)} .k-request,.k-reply{color:var(--good)}
+.fresh{animation:fresh 1.5s ease-out}
+@keyframes fresh{from{background:var(--goodbg)}to{background:transparent}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div><h1>Pip</h1><div class="sub">M1a step 1 · the skeleton: programs, messages, decision trace</div></div>
+  <div class="sub" id="conn">Connecting…</div>
+</header>
+
+<section>
+  <h2>Programs</h2>
+  <div class="cards" id="programs"></div>
+  <div class="sub" style="margin-top:8px">Each program sends a heartbeat every 2 s. One that goes quiet is shown as stuck and restarted automatically.</div>
+</section>
+
+<section>
+  <h2>Decision trace</h2>
+  <div class="sub" style="margin-bottom:8px">Every message between Pip's programs: <i>what</i> happened, never the words said. Kept 48 hours.</div>
+  <div class="scroll"><table>
+    <thead><tr><th>Time</th><th>Kind</th><th>What</th><th>From → to</th><th>Details</th></tr></thead>
+    <tbody id="trace"><tr><td colspan="5" class="sub">Nothing yet.</td></tr></tbody>
+  </table></div>
+</section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const WHAT = {core:"The conductor: routes messages, keeps the trace, watches health",
+  ears:"Microphone, wake words, “stop”, Pip’s voice", thinker:"Claude and the offline fallback",
+  web:"This dashboard and the TV page"};
+const ORDER = ["core","ears","thinker","web"];
+const STATE = {ok:["ok","Running"], stuck:["stuck","Stuck"], missing:["missing","Not running"]};
+function dur(s){ if(s==null) return "–"; s=Math.round(s); return s<60?`${s}s`:s<3600?`${Math.floor(s/60)}m`:`${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`; }
+function renderHealth(p){
+  const names = [...ORDER.filter(n => p[n]), ...Object.keys(p).filter(n => !ORDER.includes(n))];
+  $("programs").innerHTML = names.map(n => {
+    const h = p[n], [cls,label] = STATE[h.state] || ["missing", h.state];
+    return `<div class="card"><div class="name">pip-${esc(n)} <span class="pill ${cls}">${label}</span></div>
+      <div class="what">${esc(WHAT[n]||"")}</div>
+      <div class="kv">memory ${h.rss_mb!=null?esc(h.rss_mb)+" MB":"–"} · up ${dur(h.uptime_s)}${h.seen_s_ago!=null&&n!=="core"?` · seen ${esc(h.seen_s_ago)}s ago`:""}</div>
+      ${h.stage?`<div class="kv">${esc(h.stage)}</div>`:""}</div>`;
+  }).join("") || `<div class="sub">Waiting for pip-core…</div>`;
+}
+function row(e, fresh){
+  const t = new Date(e.ts*1000).toLocaleTimeString();
+  const det = Object.keys(e.data||{}).length ? `<code>${esc(JSON.stringify(e.data))}</code>` : "";
+  return `<tr class="${fresh?"fresh":""}"><td class="t">${t}</td><td class="k-${esc(e.kind)}">${esc(e.kind)}</td><td>${esc(e.type)}</td>
+    <td>${esc(e.source||"?")}${e.target?" → "+esc(e.target):""}</td><td>${det}</td></tr>`;
+}
+let rows = [];
+function renderTrace(){ $("trace").innerHTML = rows.length ? rows.map((e,i) => row(e, i===0 && e._fresh)).join("") : `<tr><td colspan="5" class="sub">Nothing yet.</td></tr>`; }
+async function loadHealth(){
+  try{
+    const h = await (await fetch("/api/health",{cache:"no-store"})).json(); renderHealth(h.programs||{});
+    $("conn").textContent = h.connected ? `Connected · v${h.version}` : "pip-core not reachable";
+  }catch(e){ $("conn").textContent = "Dashboard unreachable"; }
+}
+async function loadTrace(){
+  try{ rows = await (await fetch("/api/trace",{cache:"no-store"})).json(); renderTrace(); }catch(e){}
+}
+function live(){
+  const es = new EventSource("/api/stream");
+  es.onopen = () => { $("conn").textContent = "Live"; };
+  es.addEventListener("health", ev => { renderHealth(JSON.parse(ev.data)); $("conn").textContent = "Live"; });
+  es.addEventListener("trace", ev => { const e = JSON.parse(ev.data); e._fresh = true; rows.unshift(e); rows = rows.slice(0,200); renderTrace(); });
+  es.onerror = () => { $("conn").textContent = "Reconnecting…"; };
+}
+loadTrace(); loadHealth(); if(!location.search.includes("nolive")) live();
+</script>
+</body>
+</html>
