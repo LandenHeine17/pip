@@ -2,7 +2,7 @@
 
 Every decision the owner has made about Pip, numbered `D-nn`. **Decisions override everything else in the docs.** New decisions get the next number and go at the end; a changed decision is edited in place with a note of what changed and when.
 
-73 decisions. Last updated 2026-11-04.
+74 decisions. Last updated 2026-11-04.
 
 | # | Topic | Decision |
 |---|---|---|
@@ -79,6 +79,8 @@ Every decision the owner has made about Pip, numbered `D-nn`. **Decisions overri
 | D-71 | How the owner works with the code | Understands Pip **from docs and diagrams**, edits **configuration** directly, and may add simple modules only if that's easy without understanding everything. The architecture must therefore offer a documented module template, plain-language settings, and diagrams kept up to date |
 | D-72 | Personal data on the Pi | The owner's recordings and anything learned from his voice (e.g. wake-word models trained on his clips) **may be kept on the Pi indefinitely** and used for training. The only hard rule: **nothing personal is uploaded to GitHub**. Replaces the 30-day expiry for the owner's M0 recordings |
 | D-73 | Pip's voice (for now) | **Piper "lessac"** (Ziggletron's voice): starts speaking in ~0.3 s. The owner's blind favourite was Kokoro "puck" (4/10 vs 3/10), but it adds ~2–3 s before every answer on the Pi. Swappable later (PIP-NEW-097), e.g. if faster hardware or a Kokoro speed-up appears |
+
+| D-74 | Wake words | **Both "Pippletron" and "Hey Pip"**: say either. Each detector uses ~20% of one CPU core. Sensitivity finalised from the overnight false-wake checks |
 
 ## Still open (answered by M0 tests)
 
