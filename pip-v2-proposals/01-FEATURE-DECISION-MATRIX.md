@@ -10,7 +10,7 @@ A decision for every Ziggletron feature in the [catalog](../01-discovery/COMPLET
 
 | FEAT | Name | Current purpose | Decision | New expected behaviour | Reasoning | Depends on | Risks | Pri | Approval? |
 |---|---|---|---|---|---|---|---|---|---|
-| 001 | Continuous listening | Cut room audio into utterances | REDESIGN | Speakerphone AEC → RAM buffer → local VAD and name spotter; nothing leaves before the address decision (PIP-NEW-001/002) | V-01: all speech uploaded | Hardware; PIP-NEW-001 | Spotter false activations with "Pip" | P1 | Yes |
+| 001 | Continuous listening | Cut room audio into utterances | REDESIGN (**owner: keep cloud transcription of the room in Social mode, D-51**) | Speakerphone AEC → RAM buffer → local VAD and name spotter; nothing leaves before the address decision (PIP-NEW-001/002) | V-01: all speech uploaded | Hardware; PIP-NEW-001 | Spotter false activations with "Pip" | P1 | Yes |
 | 002 | STT with fallback | Utterance → text | REDESIGN | Benchmark-chosen provider for addressed speech; local room transcription; 2–3 s timeouts; non-blocking (PIP-NEW-008/013) | R-01, R-04, budget | Benchmark | Pi CPU for local room STT | P1 | Yes (provider) |
 | 003 | Called by name | Decide it was addressed | REDESIGN | Local spotter for "Pip"/"Hey Pip"; clause rule kept | Wake detection must be local | PIP-NEW-001 | Short name | P1 | Yes (wake form) |
 | 004 | Name merely mentioned | Avoid replying when talked about | IMPROVE | Classified locally; model consulted only in Social/Room-Aware with consent | Fewer model calls | 003 | — | P2 | — |
@@ -33,7 +33,7 @@ A decision for every Ziggletron feature in the [catalog](../01-discovery/COMPLET
 | 016 | TTS | Speak | IMPROVE | Local only; Kokoro vs Piper; cached phrases; pronunciation list (PIP-NEW-014/015) | Owner: local only | Pi CPU | Kokoro speed | P1 | — |
 | 017 | Barge-in and stop phrases | Interrupt Pip | REDESIGN | Local keywords; wait/resume; "actually"; ducking (PIP-NEW-006/016/021) | Faster; offline | AEC | False stops from TV | P1 | Yes |
 | 018 | Cut-off awareness | Don't repeat | KEEP | Unchanged | Works | — | — | P1 | — |
-| 019 | Joining conversations | Participate | REDESIGN | Modes; local gates and triggers; budgets; back-off; consent (PIP-NEW-003/004/018) | V-02; cost; naturalness | 013 | Too silent or too chatty; tuning needed | P1 | Yes |
+| 019 | Joining conversations | Participate | REDESIGN (**owner: Ziggletron's way + local question check, D-52**) | Modes; local gates and triggers; budgets; back-off; consent (PIP-NEW-003/004/018) | V-02; cost; naturalness | 013 | Too silent or too chatty; tuning needed | P1 | Yes |
 | 020 | "Anything to add?" button | Prompt a join | KEEP | Respects mode and consent | Useful for testing | 019 | — | P3 | — |
 | 021 | Welcome-back greeting | Greet returnees | IMPROVE | Recognised household voices only; at most once per 4 h; can be switched off | U-01 | 010 | — | P3 | Yes |
 | 022 | Editable personality | Shape tone | IMPROVE | Dashboard editor, preview, history, sliders | U-07 | Settings UI | — | P2 | — |
@@ -106,7 +106,7 @@ A decision for every Ziggletron feature in the [catalog](../01-discovery/COMPLET
 | FEAT | Name | Current purpose | Decision | New expected behaviour | Reasoning | Depends on | Risks | Pri | Approval? |
 |---|---|---|---|---|---|---|---|---|---|
 | 066 | Status and controls | Observe and control | REDESIGN | Home section (PIP-NEW-052) | S-01 | 054 | — | P1 | — |
-| 067 | Conversation feed | Transparency | REDESIGN | Members only; RAM only; respects consent (unconsented speakers' lines not shown) | S-01, V-05 | 054 | — | P1 | Yes |
+| 067 | Conversation feed | Transparency | KEEP (**owner: no login, D-53**) | Members only; RAM only; respects consent (unconsented speakers' lines not shown) | S-01, V-05 | 054 | — | P1 | Yes |
 | 068 | Prompts inspector | Explainability | REDESIGN | Developer section, admin only; memories redacted unless the viewer may see them | S-01 | 054 | — | P2 | — |
 | 069 | Logs viewer | Diagnostics | REDESIGN | Structured, redacted logs (PIP-NEW-059) | V-05 | 059 | — | P1 | — |
 | 070 | Latency and quota | Tuning | IMPROVE | Into the Speech panel and Developer section | — | 010 | — | P2 | — |

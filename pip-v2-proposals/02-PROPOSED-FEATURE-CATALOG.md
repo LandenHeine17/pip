@@ -44,7 +44,7 @@ Columns: ID · Name · What it does · Milestone · Priority · Privacy note · 
 | PIP-NEW-010 | Speech panel | Latency, failures, fallback time, usage and estimated cost per provider; transcript "was that right?" | M1 | P2 | Aggregates only | 04 §5 |
 | PIP-NEW-011 | Benchmark recording mode and tool | Opt-in, announced, auto-expiring test recordings; repeatable benchmark runs | M0/M1 | P1 | Consent and expiry | [05](05-SPEECH-BENCHMARK-PLAN.md) |
 | PIP-NEW-012 | Media speech detection | Recognises TV/radio speech, so it can't wake Pip, stop alarms or trigger joining | M1 | P1 | — | 03 §2.1 |
-| PIP-NEW-013 | Continuous local room transcription | On-device streaming STT for room context in Social/Room-Aware modes (budget decision) | M1 (pending Pi measurement) | P1 | Audio stays local | 04 §6 |
+| PIP-NEW-013 | ~~Continuous local room transcription~~ **Replaced by D-51** (Groq transcribes room speech in Social mode) | On-device streaming STT for room context in Social/Room-Aware modes (budget decision) | M1 (pending Pi measurement) | P1 | Audio stays local | 04 §6 |
 
 ### B. Voice output
 
@@ -59,7 +59,7 @@ Columns: ID · Name · What it does · Milestone · Priority · Privacy note · 
 
 | ID | Name | What it does | M | P | Privacy | Spec |
 |---|---|---|---|---|---|---|
-| PIP-NEW-018 | Opportunity-triggered joining | Local gates and triggers before any model call; budgets; back-off when ignored | M1 (basic gates), M2 (full) | P1 | Cuts cloud exposure | 03 §2 |
+| PIP-NEW-018 | Opportunity-triggered joining (**owner version, D-52:** a fast local question check gates a Claude "anything to add?" call; ≤ every ~3 min; no budget or back-off) | Local gates and triggers before any model call; budgets; back-off when ignored | M1 (basic gates), M2 (full) | P1 | Cuts cloud exposure | 03 §2 |
 | PIP-NEW-019 | Offer-before-answer | In Room-Aware mode, offers help without sending anything ("I can look that up") | M2 | P2 | Nothing sent until "yes" | 03 §2.2 |
 | PIP-NEW-020 | Person-bound follow-up | Follow-up window applies to the person Pip was talking to | M2 | P2 | — | 03 §2.3 |
 | PIP-NEW-021 | Correction handling | "Actually…" amends the previous request or action instead of duplicating it | M2 | P2 | — | 03 §3 |

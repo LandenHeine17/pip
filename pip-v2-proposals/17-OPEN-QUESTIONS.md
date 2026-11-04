@@ -55,6 +55,23 @@
 | D-50 | Social mode on the Pi | On-device models tested (Whisper base/small, Moonshine tiny/base) aren't accurate or fast enough for continuous room transcription, so Social mode uses local triggers only (D-33). Newer local models can be re-tested later |
 | D-47 | Recording phrases | Scripted phrases written for the owner. **No personal names**: Pip's names (Pip, Hey Pip, Ziggletron), generic device names and technical words only |
 
+| D-51 | Cloud transcription of the room (f001) | **Keep Ziggletron's way:** in Social mode, everything heard is transcribed by Groq (not only addressed speech). Private mode still sends nothing. The local wake-word detector is still used to decide when Pip is addressed, because Whisper often drops "Pip". Estimated cost $1–4/month; uses the Groq free-tier daily request allowance |
+| D-52 | Joining in (f019) | **Ziggletron's way plus a local question check** (owner's idea): a fast on-device check spots questions and invitations in the Groq transcript, and only then is Claude asked whether to chime in; at most every ~3 min (D-58). No per-hour budget or back-off. Interpretation being confirmed (dashboard follow-up) |
+| D-53 | Conversation feed (f067) | **Keep Ziggletron's way:** no login needed to view it. The dashboard is still reachable only on the owner's devices (Tailscale/localhost) |
+| D-54 | Approved behaviour changes | Yes to: person-bound follow-up (f005), guest voices only with consent (f011), admin powers from dashboard login (f014), wait/actually/ducking (f017), recognised-only greetings (f021), memory approval and no silent loss (f028), dashboard approval of code changes (f073), sandboxed coding terminal (f077), plugin permissions (f079) |
+| D-55 | Personality tone | Playful and jokey |
+| D-56 | Answer length | Medium (a few sentences) |
+| D-57 | Jokes | Sometimes |
+| D-58 | Joining frequency (Social) | Often: at most every ~3 minutes |
+| D-59 | Pronoun | He |
+| D-60 | Extra names | "Pippy", "Pips", "Pippletron" (plus "Pip", "Hey Pip") |
+| D-61 | Opt-out notice | Owner's wording: "Hello I am Pip, I will transcribe audio to be temporarily saved for the session, if you would like to be left out, just let me know" (final wording being confirmed) |
+| D-62 | Screen | A monitor is connected for the animated face (the TV-face features apply to it) |
+| D-63 | Room and location | Pip's room is "the dorm"; location Lincoln, Nebraska (US units) |
+| D-64 | Household | Owner + 1 other adult (roommate), occasional guests |
+| D-65 | Claude plan | **Pro.** Tightest usage limits: the usage meter, the local question check and quota-saving rules are essential |
+| D-66 | Quiet hours, notifications, Eightree | Quiet hours 23:00–07:00; ntfy self-hosted on the Pi; Eightree plugs not set up yet (later) |
+
 ## Remaining open items (answerable during M0; they don't block approval)
 
 | # | Question | How it gets resolved |

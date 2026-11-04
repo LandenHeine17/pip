@@ -6,6 +6,7 @@
 > - **Social is the default mode.**
 > - The household is the owner plus other adults (no children); guests are occasional.
 > - Cloud budget is under $10/month, so in Social mode **room speech is transcribed on the Pi**, and only text context reaches the model provider, under the consent rules in §1.2.
+> - **Owner answers (2026-11-04):** room speech in Social mode is transcribed by Groq as in Ziggletron (D-51), and chime-ins are gated by a fast local question check (D-52). This replaces the "transcribed on the Pi" plan above. Personality: playful, medium-length answers, jokes sometimes, joins often (≤ every ~3 min), "he", also answers to Pippy, Pips and Pippletron (D-55–D-60). Pip lives in a dorm with one roommate (D-64).
 > - **Consent is opt-out for household adults** (owner decision D-13). Guests are never included. Admins can read all memories (D-15, see [06](06-MEMORY-AND-DATA-POLICY.md)).
 
 > Ziggletron today: every utterance is transcribed (cloud when enabled). Join checks send the last 40 lines to the model every 15–120 s depending on chattiness. Interruptions are classified after transcription. See [FEAT-003–005, 017–021](../01-discovery/COMPLETE-FEATURE-CATALOG.md), [W2–W5](../01-discovery/USER-WORKFLOWS.md), and V-01/V-02 in [KNOWN-PROBLEMS](../01-discovery/KNOWN-PROBLEMS-AND-LIMITATIONS.md#3-privacy).
