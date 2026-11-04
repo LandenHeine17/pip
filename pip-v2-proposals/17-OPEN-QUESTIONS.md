@@ -50,13 +50,13 @@
 | D-44 | During M0 tests | Ziggletron may be stopped temporarily and is restarted afterwards |
 | D-45 | Tooling | uv and Python packages in a project venv; apt packages only after asking |
 | D-46 | Background noise for tests | No TV in the house. "Media" tests use a phone or laptop playing a video or podcast |
-| D-47 | Recording phrases | Scripted phrases written for the owner, including the owner's and household names, device names and technical words |
+| D-47 | Recording phrases | Scripted phrases written for the owner. **No personal names**: Pip's names (Pip, Hey Pip, Ziggletron), generic device names and technical words only |
 
 ## Remaining open items (answerable during M0; they don't block approval)
 
 | # | Question | How it gets resolved |
 |---|---|---|
-| R-01 | Speakerphone (Anhui LISTENAI "USB Speaker Phone"): its mute button sent no key events in a first test, and its noise reduction may output silence between words. Does mute silence the audio? Does echo cancellation remove Pip's voice? Is quiet or distant speech removed? | M0 mute test (dashboard), echo and distance tests |
+| R-01 | Speakerphone (Anhui LISTENAI "USB Speaker Phone"). **Mute: answered (2026-11-03).** Mute sends no button events, but the audio becomes exact digital silence (all zeros). A quiet room is near-silent but not zero, so Pip can detect mute from the audio. **Still open:** does echo cancellation remove Pip's voice, and is quiet or distant speech removed? | Echo and distance tests (M0) |
 | R-02 | Are the Eightree outlets Tuya-based, and can their local keys be obtained? | M0 check |
 | R-03 | Self-hosted ntfy on the Pi, or the public ntfy.sh with protected topics? | Recommended: self-hosted; confirm when M3 starts |
 | R-04 | Which local LLM for the fallback? | M0 speed test on the Pi |

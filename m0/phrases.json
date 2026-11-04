@@ -1,0 +1,1647 @@
+{
+ "version": 1,
+ "note": "Scripted M0 benchmark phrases (D-47: no personal names). Reference transcript = text.",
+ "sessions": {
+  "A": {
+   "title": "Session A · Close to the speakerphone",
+   "where": "Sit or stand about an arm's length (0.5–1 m) from the speakerphone."
+  },
+  "B": {
+   "title": "Session B · Across the room",
+   "where": "Stand about 3 metres (10 feet) away, on the far side of the room."
+  },
+  "C": {
+   "title": "Session C · With background sound",
+   "where": "Stand about 1–2 m away. Play a video or podcast on your phone or laptop at normal volume, about 1 m from the speakerphone."
+  }
+ },
+ "phrases": [
+  {
+   "id": "A001",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Pip, what's the weather tomorrow?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A002",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Hey Pip, set a timer for ten minutes.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A003",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Pip, remind me to call the dentist at four thirty.",
+   "wake": "pip",
+   "entities": [
+    "four thirty"
+   ]
+  },
+  {
+   "id": "A004",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "What time is it, Pip?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A005",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Hey Pip, how long is left on the pasta timer?",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A006",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Pip, add milk and eggs to the shopping list.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A007",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Hey Pip, set an alarm for seven fifteen tomorrow morning.",
+   "wake": "hey pip",
+   "entities": [
+    "seven fifteen"
+   ]
+  },
+  {
+   "id": "A008",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Pip, what's on my calendar this week?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A009",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Can you turn the volume down a little, Pip?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A010",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Hey Pip, cancel the pasta timer.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A011",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Pip, how many days until Christmas?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A012",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Pip, what's twelve times thirteen?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A013",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Hey Pip, remember that the bins go out on Tuesday night.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A014",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Pip, what do you remember about the bins?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A015",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Hey Pip, snooze that for five minutes.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A016",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Pip, stop listening for an hour.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A017",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Hey Pip, put the weather on the screen.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A018",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Pip, tell me a short joke.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A019",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "So Pip, what should I make for dinner tonight?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A020",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Hey Pip, what was the last thing I asked you?",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A021",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Pip, set a timer for one hour and twenty minutes.",
+   "wake": "pip",
+   "entities": [
+    "one hour and twenty minutes"
+   ]
+  },
+  {
+   "id": "A022",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Hey Pip, read me my reminders.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A023",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Pip, how do you spell necessary?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A024",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Hey Pip, what's the capital of Australia?",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A025",
+   "session": "A",
+   "category": "clear",
+   "how": "Normal voice.",
+   "text": "Pip, why did you say that?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A026",
+   "session": "A",
+   "category": "quiet",
+   "how": "Quiet voice, as if someone nearby is sleeping.",
+   "text": "Pip, set a timer for five minutes.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A027",
+   "session": "A",
+   "category": "quiet",
+   "how": "Quiet voice, as if someone nearby is sleeping.",
+   "text": "Hey Pip, what time is it?",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A028",
+   "session": "A",
+   "category": "quiet",
+   "how": "Quiet voice, as if someone nearby is sleeping.",
+   "text": "Pip, turn the volume down.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A029",
+   "session": "A",
+   "category": "quiet",
+   "how": "Quiet voice, as if someone nearby is sleeping.",
+   "text": "Hey Pip, stop.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A030",
+   "session": "A",
+   "category": "quiet",
+   "how": "Quiet voice, as if someone nearby is sleeping.",
+   "text": "Pip, remind me to take my medicine at nine.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A031",
+   "session": "A",
+   "category": "quiet",
+   "how": "Quiet voice, as if someone nearby is sleeping.",
+   "text": "Hey Pip, what's the weather like right now?",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A032",
+   "session": "A",
+   "category": "quiet",
+   "how": "Quiet voice, as if someone nearby is sleeping.",
+   "text": "Pip, cancel that.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A033",
+   "session": "A",
+   "category": "quiet",
+   "how": "Quiet voice, as if someone nearby is sleeping.",
+   "text": "Hey Pip, add bread to the shopping list.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A034",
+   "session": "A",
+   "category": "quiet",
+   "how": "Quiet voice, as if someone nearby is sleeping.",
+   "text": "Pip, good night.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A035",
+   "session": "A",
+   "category": "quiet",
+   "how": "Quiet voice, as if someone nearby is sleeping.",
+   "text": "Hey Pip, how long is left on the timer?",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A036",
+   "session": "A",
+   "category": "quiet",
+   "how": "Quiet voice, as if someone nearby is sleeping.",
+   "text": "Pip, private please.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A037",
+   "session": "A",
+   "category": "quiet",
+   "how": "Quiet voice, as if someone nearby is sleeping.",
+   "text": "Hey Pip, start listening.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A038",
+   "session": "A",
+   "category": "quiet",
+   "how": "Quiet voice, as if someone nearby is sleeping.",
+   "text": "Pip, snooze.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A039",
+   "session": "A",
+   "category": "quiet",
+   "how": "Quiet voice, as if someone nearby is sleeping.",
+   "text": "Hey Pip, what's next on my calendar?",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A040",
+   "session": "A",
+   "category": "quiet",
+   "how": "Quiet voice, as if someone nearby is sleeping.",
+   "text": "Pip, never mind.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A041",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Pip, stop.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A042",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Hey Pip.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A043",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Stop.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "A044",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Wait.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "A045",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Go on.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "A046",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Pip, wait.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A047",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Never mind.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "A048",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Okay, thanks.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "A049",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Snooze.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "A050",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Got it.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "A051",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Pip, louder.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A052",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Pip, quieter.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A053",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Hey Pip, yes.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A054",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "No.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "A055",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Pip, undo that.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A056",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Hey Pip, pause.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "A057",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Actually, no.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "A058",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Pip, what?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "A059",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "I'm up.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "A060",
+   "session": "A",
+   "category": "short",
+   "how": "Normal voice. These are short on purpose.",
+   "text": "Turn it off.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "B001",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Pip, what's the weather tomorrow?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B002",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Hey Pip, set a timer for fifteen minutes.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B003",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Pip, what time is it?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B004",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Hey Pip, add coffee to the shopping list.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B005",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Pip, turn on the desk lamp.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B006",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Hey Pip, turn off the living room lights.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B007",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Pip, remind me to water the plants at six.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B008",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Hey Pip, what's on my calendar today?",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B009",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Pip, stop.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B010",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Hey Pip, cancel the timer.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B011",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Pip, how long is left on the timer?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B012",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Hey Pip, make it a little brighter.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B013",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Pip, set the room lights to something warmer.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B014",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Hey Pip, turn everything off except the lamp.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B015",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Pip, play some music.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B016",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Hey Pip, skip this song.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B017",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Pip, pause the music.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B018",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Hey Pip, what did I just ask you?",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B019",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Pip, snooze for ten minutes.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B020",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Hey Pip, are you listening?",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B021",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Pip, private please.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B022",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Hey Pip, good morning.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B023",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Pip, how warm is it outside?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B024",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Hey Pip, read me the shopping list.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B025",
+   "session": "B",
+   "category": "distant",
+   "how": "Normal speaking voice. Don't shout.",
+   "text": "Pip, never mind.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B026",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Pip, how hot is the Raspberry Pi running?",
+   "wake": "pip",
+   "entities": [
+    "Raspberry Pi"
+   ]
+  },
+  {
+   "id": "B027",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Hey Pip, is the ESP32 sensor online?",
+   "wake": "hey pip",
+   "entities": [
+    "ESP32"
+   ]
+  },
+  {
+   "id": "B028",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Pip, check if Tailscale is connected.",
+   "wake": "pip",
+   "entities": [
+    "Tailscale"
+   ]
+  },
+  {
+   "id": "B029",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Hey Pip, which speech model are you using, Groq or Moonshine?",
+   "wake": "hey pip",
+   "entities": [
+    "Groq",
+    "Moonshine"
+   ]
+  },
+  {
+   "id": "B030",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Pip, turn on the Eightree plug.",
+   "wake": "pip",
+   "entities": [
+    "Eightree"
+   ]
+  },
+  {
+   "id": "B031",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Hey Pip, turn off the Eightree plug in the bedroom.",
+   "wake": "hey pip",
+   "entities": [
+    "Eightree"
+   ]
+  },
+  {
+   "id": "B032",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Pip, is the MQTT broker running?",
+   "wake": "pip",
+   "entities": [
+    "MQTT"
+   ]
+  },
+  {
+   "id": "B033",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Hey Pip, restart the ESPHome device.",
+   "wake": "hey pip",
+   "entities": [
+    "ESPHome"
+   ]
+  },
+  {
+   "id": "B034",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Pip, how does your Kokoro voice compare with Piper?",
+   "wake": "pip",
+   "entities": [
+    "Kokoro",
+    "Piper"
+   ]
+  },
+  {
+   "id": "B035",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Hey Pip, what's your Whisper latency today?",
+   "wake": "hey pip",
+   "entities": [
+    "Whisper"
+   ]
+  },
+  {
+   "id": "B036",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Ziggletron, what time is it?",
+   "wake": "none",
+   "entities": [
+    "Ziggletron"
+   ]
+  },
+  {
+   "id": "B037",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Pip, do you remember Ziggletron?",
+   "wake": "pip",
+   "entities": [
+    "Ziggletron"
+   ]
+  },
+  {
+   "id": "B038",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Hey Pip, show the dashboard on the screen.",
+   "wake": "hey pip",
+   "entities": [
+    "dashboard"
+   ]
+  },
+  {
+   "id": "B039",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Pip, open the GitHub repo.",
+   "wake": "pip",
+   "entities": [
+    "GitHub"
+   ]
+  },
+  {
+   "id": "B040",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Hey Pip, what's the CPU temperature?",
+   "wake": "hey pip",
+   "entities": [
+    "CPU"
+   ]
+  },
+  {
+   "id": "B041",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Pip, turn on the desk lamp and the floor lamp.",
+   "wake": "pip",
+   "entities": [
+    "desk lamp",
+    "floor lamp"
+   ]
+  },
+  {
+   "id": "B042",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Hey Pip, set the bedroom light to forty percent.",
+   "wake": "hey pip",
+   "entities": [
+    "bedroom light",
+    "forty percent"
+   ]
+  },
+  {
+   "id": "B043",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Pip, is the Python test suite passing?",
+   "wake": "pip",
+   "entities": [
+    "Python"
+   ]
+  },
+  {
+   "id": "B044",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Hey Pip, how much free space is on the SD card?",
+   "wake": "hey pip",
+   "entities": [
+    "SD card"
+   ]
+  },
+  {
+   "id": "B045",
+   "session": "B",
+   "category": "vocab",
+   "how": "Normal voice. These contain technical words and device names.",
+   "text": "Pip, what's my Groq quota?",
+   "wake": "pip",
+   "entities": [
+    "Groq"
+   ]
+  },
+  {
+   "id": "B046",
+   "session": "B",
+   "category": "pauses",
+   "how": "Say these with natural hesitations and pauses where the dots are. Don't rush.",
+   "text": "Pip, set a timer for… um… twelve minutes.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B047",
+   "session": "B",
+   "category": "pauses",
+   "how": "Say these with natural hesitations and pauses where the dots are. Don't rush.",
+   "text": "Hey Pip, remind me to… uh… call the bank tomorrow.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B048",
+   "session": "B",
+   "category": "pauses",
+   "how": "Say these with natural hesitations and pauses where the dots are. Don't rush.",
+   "text": "Pip, set a timer for ten… no, fifteen minutes.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B049",
+   "session": "B",
+   "category": "pauses",
+   "how": "Say these with natural hesitations and pauses where the dots are. Don't rush.",
+   "text": "Hey Pip, add… eggs, milk… and butter to the list.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B050",
+   "session": "B",
+   "category": "pauses",
+   "how": "Say these with natural hesitations and pauses where the dots are. Don't rush.",
+   "text": "Pip, what's the… what's the weather on Saturday?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B051",
+   "session": "B",
+   "category": "pauses",
+   "how": "Say these with natural hesitations and pauses where the dots are. Don't rush.",
+   "text": "Hey Pip, turn on the… the desk lamp.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B052",
+   "session": "B",
+   "category": "pauses",
+   "how": "Say these with natural hesitations and pauses where the dots are. Don't rush.",
+   "text": "Pip, actually, make that twenty minutes.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B053",
+   "session": "B",
+   "category": "pauses",
+   "how": "Say these with natural hesitations and pauses where the dots are. Don't rush.",
+   "text": "Hey Pip, remind me at… let's say five o'clock.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B054",
+   "session": "B",
+   "category": "pauses",
+   "how": "Say these with natural hesitations and pauses where the dots are. Don't rush.",
+   "text": "Pip, how long until… my next alarm?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B055",
+   "session": "B",
+   "category": "pauses",
+   "how": "Say these with natural hesitations and pauses where the dots are. Don't rush.",
+   "text": "Hey Pip, set an alarm for… seven. No, seven thirty.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B056",
+   "session": "B",
+   "category": "pauses",
+   "how": "Say these with natural hesitations and pauses where the dots are. Don't rush.",
+   "text": "Pip, what's the name of… that actor in… the space movie?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B057",
+   "session": "B",
+   "category": "pauses",
+   "how": "Say these with natural hesitations and pauses where the dots are. Don't rush.",
+   "text": "Hey Pip, um, never mind.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B058",
+   "session": "B",
+   "category": "pauses",
+   "how": "Say these with natural hesitations and pauses where the dots are. Don't rush.",
+   "text": "Pip, turn the volume to… fifty percent.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "B059",
+   "session": "B",
+   "category": "pauses",
+   "how": "Say these with natural hesitations and pauses where the dots are. Don't rush.",
+   "text": "Hey Pip, cancel the… the bread reminder.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "B060",
+   "session": "B",
+   "category": "pauses",
+   "how": "Say these with natural hesitations and pauses where the dots are. Don't rush.",
+   "text": "Pip, wait… go on.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C001",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Pip, what's the weather tomorrow?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C002",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Hey Pip, set a timer for ten minutes.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "C003",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Pip, stop.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C004",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Hey Pip, what time is it?",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "C005",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Pip, turn the volume down.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C006",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Hey Pip, add milk to the shopping list.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "C007",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Pip, cancel the timer.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C008",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Hey Pip, remind me to call mum at six.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "C009",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Pip, pause the music.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C010",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Hey Pip, turn off the desk lamp.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "C011",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Pip, snooze.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C012",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Hey Pip, how long is left on the timer?",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "C013",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Pip, private please.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C014",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Hey Pip, what's on my calendar tomorrow?",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "C015",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Pip, never mind.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C016",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Okay, thanks.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C017",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Stop.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C018",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Hey Pip, set an alarm for six forty-five.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "C019",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Pip, what's twenty percent of eighty?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C020",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Hey Pip, good night.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "C021",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Pip, turn on the Eightree plug.",
+   "wake": "pip",
+   "entities": [
+    "Eightree"
+   ]
+  },
+  {
+   "id": "C022",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Hey Pip, what did you just say?",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "C023",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Pip, wait.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C024",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Hey Pip, go on.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "C025",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Pip, read me my reminders.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C026",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Hey Pip, turn it off.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "C027",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Pip, how warm is it in here?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C028",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Hey Pip, start listening.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "C029",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Pip, what's the capital of Canada?",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C030",
+   "session": "C",
+   "category": "media",
+   "how": "Background video or podcast playing at normal volume.",
+   "text": "Hey Pip, set a timer for three minutes.",
+   "wake": "hey pip",
+   "entities": []
+  },
+  {
+   "id": "C031",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "I'll give the waiter a good tip.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C032",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "Can you pick that up for me?",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C033",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "Don't peep at the presents.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C034",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "Watch out for the pit in the road.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C035",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "The pipe under the sink is leaking.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C036",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "That apple has a big pip in it.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C037",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "Pippin is a kind of apple.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C038",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "Pick a number between one and ten.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C039",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "The kettle just went pip pip pip.",
+   "wake": "pip",
+   "entities": []
+  },
+  {
+   "id": "C040",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "I think the timer on the oven is broken.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C041",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "What's the weather going to be like tomorrow?",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C042",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "Let's set a reminder on my phone instead.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C043",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "Turn the music down a bit, would you?",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C044",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "I saw a little bird outside, it went peep.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C045",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "Stop it, that's enough.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C046",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "Can you hear that noise?",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C047",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "We should get a new lamp for the desk.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C048",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "Tip the box over so I can see.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C049",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "My friend Philip is coming over.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C050",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "The pizza is in the oven.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C051",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "Who left the lights on?",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C052",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "I keep thinking about that movie.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C053",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "That's a pretty pithy comment.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C054",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "Hey, can you pass me that?",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "C055",
+   "session": "C",
+   "category": "negative",
+   "how": "Background still playing. These do NOT call Pip, so Pip should ignore them.",
+   "text": "Okay, I'm going to bed now.",
+   "wake": "none",
+   "entities": []
+  }
+ ]
+}
