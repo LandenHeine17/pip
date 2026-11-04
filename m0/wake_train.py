@@ -59,7 +59,7 @@ def aug_measure(t0):
 
 
 def train_measure(t0):
-    return 0, 0, f"training, {int(time.time() - t0) // 60} min so far (usually 30–90 min on the Pi)"
+    return 0, 0, f"training, {int(time.time() - t0) // 60} min so far (usually about 10 min on the Pi)"
 
 
 def main(which):

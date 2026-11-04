@@ -16,7 +16,7 @@ Pip is a companion for one room. It follows the room conversation locally, is ca
 - No offline voice commands.
 
 ## Owner decisions applied
-All 69 decisions are listed in [17](17-OPEN-QUESTIONS.md#decisions-made-by-the-owner-2026-11-03). The ones that shape the product most:
+All 71 decisions are listed in [17](17-OPEN-QUESTIONS.md#decisions-made-by-the-owner-2026-11-03). The ones that shape the product most:
 - **Listening:** Social mode by default, with opt-out consent. As with Ziggletron, room speech is transcribed by Groq (D-51); a local wake-word detector decides when Pip is addressed; a fast local question check gates chime-ins (D-52).
 - **Hardware:** a USB speakerphone as mic and speaker, using its own mute button; SD card storage (no SSD).
 - **Model:** Claude subscription only (via Claude Code), with a local fallback; local voice only.
@@ -54,7 +54,7 @@ All 69 decisions are listed in [17](17-OPEN-QUESTIONS.md#decisions-made-by-the-o
 | 14 | [ACCEPTANCE-CRITERIA](14-ACCEPTANCE-CRITERIA.md) | AC-* measurable criteria |
 | 15 | [PRIORITIZED-ROADMAP](15-PRIORITIZED-ROADMAP.md) | M0, M1a, M1b, M2–M4 with dependencies |
 | 16 | [ADDITIONAL-RECOMMENDATIONS](16-ADDITIONAL-RECOMMENDATIONS.md) | PIP-IDEA-001…016 and simplifications |
-| 17 | [OPEN-QUESTIONS](17-OPEN-QUESTIONS.md) | Decisions D-01…D-69; open items R-01…R-08 for M0 |
+| 17 | [OPEN-QUESTIONS](17-OPEN-QUESTIONS.md) | Decisions D-01…D-71; open items R-01…R-08 for M0 |
 | 18 | [REQUIREMENTS-TRACEABILITY](18-REQUIREMENTS-TRACEABILITY.md) | FEAT → PIP-NEW → AC; problem coverage |
 
 ## Conventions

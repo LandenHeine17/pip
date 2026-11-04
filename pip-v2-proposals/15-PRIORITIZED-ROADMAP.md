@@ -36,7 +36,7 @@ flowchart LR
 | Project setup: private GitHub repo `pip`, CLAUDE.md, secret/phone-number commit check | Repository |
 | Local M0 dashboard on the Pi (separate folder `~/pip-dashboard`, Tailscale only) | Progress, tests and diagnostics at a glance |
 
-Then the **architecture phase**: Python, using the approved spec.
+Then the **architecture phase**: Python, using the approved spec. It must deliver diagrams, a plain-language overview and a module template the owner can follow without reading all the code (D-71, PIP-NEW-091/092).
 
 ## M1a — Foundations + parity core
 

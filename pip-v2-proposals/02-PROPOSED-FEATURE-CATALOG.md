@@ -177,3 +177,12 @@ Columns: ID · Name · What it does · Milestone · Priority · Privacy note · 
 | PIP-NEW-088 | Daily briefing | An optional routine: weather, events, tasks, reminders (from PIP-IDEA-007) | M3 | P3 | Opt-in per person | [07 §7](07-SMART-HOME-AND-INTEGRATIONS.md#7-routines-pip-new-041) |
 | PIP-NEW-089 | Usage meter | Model requests per day by kind, with plan-limit warnings, which matter because the plan is subscription only (from PIP-IDEA-011) | M1b | P1 | — | 12 §3 |
 | PIP-NEW-090 | Local music playback | Local music library on Pip's speaker, with ducking (FEAT-088 redesign) | M3 | P3 | — | [07 §9](07-SMART-HOME-AND-INTEGRATIONS.md#9-music-playback-feat-088-redesigned-owner-decision-d-20) |
+
+### M. Understandability and openness (owner decisions D-70, D-71)
+
+| ID | Name | What it does | M | P | Privacy | Spec |
+|---|---|---|---|---|---|---|
+| PIP-NEW-091 | Docs and diagrams as the main way to understand Pip | An architecture overview, a diagram of how a request flows through Pip, one page per component, and a written reason for each major design choice. Kept up to date: the verification pipeline flags code changes that affect a documented component without touching its page | M1a | P1 | — | Architecture document (to be written) |
+| PIP-NEW-092 | Easy module template | Adding a simple feature (a new action, a TV widget, a device type) means copying a documented template, filling in a few clearly marked parts, and adding a capability-registry entry. Each template comes with a worked example and its own test | M1a | P1 | Modules declare permissions (FEAT-079) | Architecture document |
+| PIP-NEW-093 | Plain-language configuration | Every setting has a one-line explanation, a safe default and validation, whether it's changed in the Settings page or the file (FEAT-080, PIP-NEW-053) | M1a | P1 | Secrets never in config files | 08 §2 |
+| PIP-NEW-094 | Always publishable | The repo stays safe to publish: secret and phone-number check on every commit (done in M0), an open-source licence file before publishing, no personal data in tests or examples | M0 (started) | P2 | Protects household data | 11 §8 |
