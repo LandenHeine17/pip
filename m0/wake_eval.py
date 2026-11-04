@@ -87,10 +87,14 @@ def other_phrase(name):
 
 
 def main():
-    if MODEL.stem != "hey_pip":
+    if not MODEL.stem.startswith("hey_pip"):
         return other_phrase(MODEL.stem)
     phrases = {p["id"]: p for p in json.loads(PHRASES.read_text())["phrases"]}
     ids = sorted(i for i in json.loads((REC / "manifest.json").read_text()) if i in phrases and phrases[i]["session"] in "ABC")
+    split = MODEL.parent / MODEL.stem / "split.json"
+    if split.exists():  # trained on some real clips: test only on the held-out ones
+        held = set(json.loads(split.read_text())["test"])
+        ids = [i for i in ids if i in held]
     m = Model(wakeword_models=[str(MODEL)], inference_framework="onnx")
     t0 = time.perf_counter()
     scores = {i: peak_score(m, load(i)) for i in ids}
@@ -114,15 +118,17 @@ def main():
     clean = [r for r in rows if r["false"] == 0]
     best = max(clean, key=lambda r: r["hey_pip"]) if clean else min(rows, key=lambda r: (r["false"], -r["hey_pip"]))
     passed = best["hey_pip"] >= 95 and best["false"] == 0
-    result = {"id": "wake-word-trained", "ran_at": time.strftime("%Y-%m-%d %H:%M"),
+    rid = "wake-word-trained" if MODEL.stem == "hey_pip" else f"wake-word-{MODEL.stem}"
+    result = {"id": rid, "ran_at": time.strftime("%Y-%m-%d %H:%M"),
               "passed": True if passed else (False if best["hey_pip"] < 80 else None),
-              "summary": (f"Trained 'Hey Pip' detector at threshold {best['threshold']}: heard 'Hey Pip' in {best['hey_pip']}% "
+              "summary": ((f"[v2, trained with half your recordings; tested on the other half] " if split.exists() else "") +
+                          f"Trained 'Hey Pip' detector at threshold {best['threshold']}: heard 'Hey Pip' in {best['hey_pip']}% "
                           f"(close {best['hey_pip_close']}%, across room {best['hey_pip_far']}%, with video {best['hey_pip_media']}%); "
                           f"false wakes on {best['false']}/{best['no_call']} phrases that don't call Pip. "
                           f"Bare 'Pip' (not trained for it): {best['plain_pip']}%. Speed {dt / audio_s:.3f}× real time."),
               "details": {"model": MODEL.name, "thresholds": rows, "best": best,
                           "scores": {i: round(s, 3) for i, s in scores.items()}}}
-    out = DATA / "results/wake-word-trained.json"
+    out = DATA / f"results/{rid}.json"
     tmp = out.with_suffix(".tmp"); tmp.write_text(json.dumps(result, indent=1, default=lambda o: o.item() if hasattr(o, "item") else str(o))); os.replace(tmp, out)
     print(result["summary"])
 

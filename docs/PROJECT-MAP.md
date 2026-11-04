@@ -26,6 +26,8 @@ Last reviewed: 2026-11-04 (phase M0).
 | `m0/wakeword.py` | First (untrained) wake-word test | Superseded; keep for the record |
 | `m0/wake_prepare.py`, `wake_train.py`, `wake_eval.py`, `wake_soak.py` | Wake-word detector data download, training, evaluation, overnight false-wake check | Yes |
 | `m0/tts_bench.py`, `llm_bench.py` | Voice (TTS) and local language-model speed tests | Yes |
+| `m0/wake_realmix.py` | Builds "Hey Pip" v2 training data from synthetic clips plus half the owner's recordings (other half held out) | Yes |
+| `m0/sandbox_test.py`, `load_test.py` | Self-change sandbox test (systemd user sandbox) and Pi load test | Yes |
 | `m0/patches/` | Patches applied to third-party tools we run (e.g. openWakeWord low-memory fix) | Yes; document why in the patch commit |
 | `m0/pyproject.toml`, `uv.lock` | M0 Python environment (uv; only releases ≥2 weeks old) | Yes, via `uv` |
 | `tools/check_secrets.py`, `install_hooks.sh` | Commit check blocking secrets and phone numbers | Yes, but never weaken it |
