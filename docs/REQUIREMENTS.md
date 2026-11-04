@@ -1,0 +1,283 @@
+# Requirements
+
+Lookup tables for building Pip. For what Pip does in plain language, read [PIP-SPEC.md](PIP-SPEC.md). Decisions (`D-nn`) in [DECISIONS.md](DECISIONS.md) override anything here.
+The detailed reasoning behind each item is in the archived proposal ([archive/pip-v2-proposals-2026-11/](archive/pip-v2-proposals-2026-11/README.md)).
+
+**IDs:** `PIP-NEW-nnn` = new Pip requirement · `FEAT-nnn` = Ziggletron feature · `AC-*` = acceptance criterion. Milestones: M0 (measure) · M1a · M1b · M2 · M3 · M4.
+
+## 1. New requirements (97)
+
+| ID | Name | What it does | Milestone | Priority |
+|---|---|---|---|---|
+| PIP-NEW-001 | Local address detection | An on-device name spotter decides whether Pip was called, before any audio leaves the house | M1 | P1 |
+| PIP-NEW-002 | Rolling RAM pre-roll | Keeps about 10 s of audio in memory, so words spoken *before* the name are included | M1 | P1 |
+| PIP-NEW-003 | Listening modes | Private / Room-Aware / Social, visible on the dashboard, TV and by voice | M1 (Social, Private); M2 (Room-Aware refinements) | P1 |
+| PIP-NEW-004 | Per-person opt-out and guest gating | Household adults are included unless they opt out (dashboard or "Pip, leave me out"); everyone is told how. Guests and opted-out speakers → Room-Aware behaviour | M1 | P1 |
+| PIP-NEW-005 | Voice privacy switch | "Pip, private please" / "Pip, start listening", handled locally and works offline | M1 | P1 |
+| PIP-NEW-006 | Local fast-path words | Stop / wait / actually / alarm acknowledgement / snooze detected on device, with no transcription round trip | M1 | P1 |
+| PIP-NEW-007 | Adaptive end of utterance | Waits longer when speech sounds unfinished; avoids clipping | M1 | P1 |
+| PIP-NEW-008 | Selectable STT with health-based fallback | Provider chosen in Settings; 2–3 s timeouts; automatic fallback and recovery | M1 | P1 |
+| PIP-NEW-009 | Custom vocabulary | One list of names, devices and terms, translated to each provider's hint mechanism, with insertion monitoring | M1 | P2 |
+| PIP-NEW-010 | Speech panel | Latency, failures, fallback time, usage and estimated cost per provider; transcript "was that right?" | M1 | P2 |
+| PIP-NEW-011 | Benchmark recording mode and tool | Opt-in, announced, auto-expiring test recordings; repeatable benchmark runs | M0/M1 | P1 |
+| PIP-NEW-012 | Media speech detection | Recognises TV/radio speech, so it can't wake Pip, stop alarms or trigger joining | M1 | P1 |
+| PIP-NEW-013 | ~~Continuous local room transcription~~ **Replaced by D-51** (Groq transcribes room speech in Social mode) | On-device streaming STT for room context in Social/Room-Aware modes (budget decision) | M1 (pending Pi measurement) | P1 |
+| PIP-NEW-014 | Local voice upgrade and cached phrases | Kokoro vs Piper evaluation; system phrases pre-synthesised | M1 | P2 |
+| PIP-NEW-015 | Pronunciation list | Correct pronunciation of names and terms; shared with the vocabulary | M1 | P2 |
+| PIP-NEW-016 | Pause/resume and ducking | "Wait" holds a reply; Pip lowers its volume when someone else talks | M2 | P2 |
+| PIP-NEW-017 | Long-answer offer | Offers more detail rather than talking at length; can send it to the TV | M2 | P3 |
+| PIP-NEW-018 | Opportunity-triggered joining (**owner version, D-52:** a fast local question check gates a Claude "anything to add?" call; ≤ every ~3 min; no budget or back-off) | Local gates and triggers before any model call; budgets; back-off when ignored | M1 (basic gates), M2 (full) | P1 |
+| PIP-NEW-019 | Offer-before-answer | In Room-Aware mode, offers help without sending anything ("I can look that up") | M2 | P2 |
+| PIP-NEW-020 | Person-bound follow-up | Follow-up window applies to the person Pip was talking to | M2 | P2 |
+| PIP-NEW-021 | Correction handling | "Actually…" amends the previous request or action instead of duplicating it | M2 | P2 |
+| PIP-NEW-022 | Clarification policy | One short question when a request is ambiguous and a wrong guess matters | M1 | P1 |
+| PIP-NEW-023 | State and mode awareness | Pip can say its mode, who has opted in, what it's doing and why | M1 | P2 |
+| PIP-NEW-024 | Guided voice enrolment | Read-aloud enrolment on the dashboard or phone | M2 | P2 |
+| PIP-NEW-025 | Guest voices and expiry | Session-only guest labels; persistence only with consent; profile expiry | M1 | P1 |
+| PIP-NEW-026 | Persistent speaker corrections | Corrections survive restarts; 24 h correction window | M2 | P3 |
+| PIP-NEW-027 | Identity-to-authorisation tiers | Voice confidence maps to allowed operations; admin power needs a signed-in account | M1 | P1 |
+| PIP-NEW-028 | Categorised memories with owners | 8 categories, owner, visibility, confirmed/inferred | M1 | P1 |
+| PIP-NEW-029 | Memory inbox and approval | Suggestions and sensitive items wait for approval; overheard content never auto-saved | M1 | P1 |
+| PIP-NEW-030 | Memory Center | Browse, search, add, edit, explain, archive | M1 (basic), M2 (full) | P1 |
+| PIP-NEW-031 | No-loss retention | No count cap; duplicate and contradiction checks; stale review; archive | M1 | P1 |
+| PIP-NEW-032 | Sensitive-memory rules | Subject approval for sensitive kinds; refuses credentials | M1 | P1 |
+| PIP-NEW-033 | Forget a person | One action removes a person's voice, memories and related data | M2 | P2 |
+| PIP-NEW-034 | Export, import, delete everything | Readable exports; reviewed imports; full wipe | M1 (import for migration), M2 (rest) | P2 |
+| PIP-NEW-035 | "Why do you remember that?" | Pip explains a memory's source and offers to forget it | M2 | P3 |
+| PIP-NEW-036 | Device hub (MQTT / ESPHome / local Tuya) | Local MQTT broker with self-describing discovery; ESPHome devices; Eightree outlets over the local Tuya protocol; allow-list of approved devices. No Home Assistant (owner decision) | M3 | P1 |
+| PIP-NEW-037 | Device registry | Aliases, rooms, owners, risk class; feeds vocabulary | M3 | P1 |
+| PIP-NEW-038 | Contextual device commands | "My desk light", "it", "a little brighter", "everything except…" | M3 | P1 |
+| PIP-NEW-039 | Verified action lifecycle | Understood → authorised → attempted → succeeded/failed → verified; applies to **all** actions | M1 | P1 |
+| PIP-NEW-040 | Device risk classes | A/B/C, with confirmation rules | M3 | P1 |
+| PIP-NEW-041 | Routines | Named, editable, previewable; triggers need approval | M3 | P2 |
+| PIP-NEW-042 | Environmental events and sensor context | Configured sensor/event topics; announcement rules; one weather source | M3 | P2 |
+| PIP-NEW-043 | Custom hardware via ESPHome/MQTT | ESP32 devices usable with no new Pip integration | M3 | P2 |
+| PIP-NEW-044 | Offline command path | Timers, cancel, snooze, volume, stop, pause listening, status, and (M3) basic devices, all without cloud reasoning | M1 | P1 |
+| PIP-NEW-045 | Voice snooze | "Snooze ten minutes" | M1 | P2 |
+| PIP-NEW-046 | Dashboard scheduling parity | Create reminders, set repeats on events, richer recurrence (weekdays, monthly) | M1 | P2 |
+| PIP-NEW-047 | Shopping list | Shared list by voice and dashboard; live on the TV | M3 | P2 |
+| PIP-NEW-048 | To-do lists and shared tasks | Per-person and household tasks, with optional due dates and assignee | M3 | P2 |
+| PIP-NEW-049 | Google Calendar synchronisation | Two-way sync with one Google calendar (owner decision D-19); OAuth token in the vault | M3 | P2 |
+| PIP-NEW-050 | Natural-language editing | "Move the dentist to Thursday", "make the pasta timer 15 minutes" | M2 | P2 |
+| PIP-NEW-051 | Authorised alarm acknowledgement | Normal alarms stop only for a non-media voice; earned-alarm attempts only from household voices | M1 | P1 |
+| PIP-NEW-052 | Restructured dashboard | Home / Conversation / Memory / Home & Devices / Calendar & Tasks / Appearance / Settings / Developer | M1 (core sections) | P1 |
+| PIP-NEW-053 | Settings UI | Every user setting editable without file edits; validated; most apply without restart | M1 | P1 |
+| PIP-NEW-054 | Accounts and roles | Sign-in; Admin, Member, Viewer roles; per-action permission checks | M1 | P1 |
+| PIP-NEW-055 | Secure remote access | Access away from home through a private tunnel (Tailscale-style) with HTTPS; no public port forwarding | M1 | P1 |
+| PIP-NEW-056 | Per-client data scoping | The TV and other clients receive only what they display | M1 | P1 |
+| PIP-NEW-057 | Audit trail | Who did what, when, from where; no content | M1 | P1 |
+| PIP-NEW-058 | Credential vault and migration | Credentials stored separately and encrypted; imported from Ziggletron without exposure | M1 | P1 |
+| PIP-NEW-059 | Privacy-safe structured logs | Structured, redacted events; retention; time-limited content debugging | M1 | P1 |
+| PIP-NEW-060 | Live data widgets | Widgets show live data (adding milk updates the TV immediately) | M1 (existing boxes made live), M3 (new widgets) | P1 |
+| PIP-NEW-061 | Reliable layout editing | Templates, validation, preview, undo, drag-and-drop | M1 (validation and undo), M3 (drag-and-drop) | P1 |
+| PIP-NEW-062 | Richer face | More expressions, mode indicator, better listening and speaking animation, appearance options | M2 | P2 |
+| PIP-NEW-063 | Independent unprompted-content switches | Separate switches for unprompted photos and drawings | M1 | P2 |
+| PIP-NEW-064 | Capability registry | A maintained, machine-readable description of every feature, setting and limit, versioned with the code | M1 | P1 |
+| PIP-NEW-065 | Self-knowledge Q&A | Answers "how does your memory work?" from the registry, docs and read-only code; reports doc/code discrepancies | M2 | P1 |
+| PIP-NEW-066 | Decision trace and "why" explanations | Records observable decisions, so Pip can explain "why didn't you answer?" | M1 (trace), M2 (spoken explanations) | P1 |
+| PIP-NEW-067 | Read-only self-inspection tools | Sanitised status, config metadata, docs and source search, redacted events | M2 | P1 |
+| PIP-NEW-068 | Proactive self-diagnostics | Proportionate notices about its own problems | M1 (dashboard), M2 (spoken) | P2 |
+| PIP-NEW-069 | Request classification | Tells apart a question, a bug report, an idea, a code change and a config change | M1 | P1 |
+| PIP-NEW-070 | Clarification dialogue | Asks only what is needed to define the change | M1 | P1 |
+| PIP-NEW-071 | Change proposal | A readable proposal (what, why, affected features, risks, tests, data impact) approved before any coding | M1 | P1 |
+| PIP-NEW-072 | Sandboxed development | Isolated workspace and container, restricted files and network, no production secrets, limits, cleanup | M1 | P1 |
+| PIP-NEW-073 | Verification pipeline | Build, unit, integration, regression, security, privacy, architecture and hardware checks | M1 | P1 |
+| PIP-NEW-074 | Authenticated review and approval | Diff, results, risks and rollback shown; admin approval on the dashboard | M1 | P1 |
+| PIP-NEW-075 | Safe deployment and rollback | Keeps the previous version; post-deploy health checks; automatic rollback | M1 | P1 |
+| PIP-NEW-076 | Sanitised change history | Explains every change; commit messages built from approved summaries | M1 | P1 |
+| PIP-NEW-077 | Self-improvement suggestions | Notices recurring problems and *recommends* investigations; never auto-deploys | M4 | P2 |
+| PIP-NEW-078 | Critical-function independence | Alarms, stop, timers and the offline path never wait behind slow work | M1 | P1 |
+| PIP-NEW-079 | Health monitoring with stall detection | Heartbeats and functional checks; detects hung jobs, not only crashes | M1 | P1 |
+| PIP-NEW-080 | Safe updates and rollback | Every release (not only self-changes) is installable, verifiable and reversible | M1 | P1 |
+| PIP-NEW-081 | Local language-model fallback | Small on-device model for short replies when the Claude subscription is unreachable (owner decision) | M2 | P2 |
+| PIP-NEW-082 | Laptop development mode | Run Pip on a laptop with simulated audio and devices | M1 | P3 |
+| PIP-NEW-083 | Ziggletron data import | One-time, read-only import of memories (to the inbox), reminders, calendar and TV layouts | M1 | P1 |
+| PIP-NEW-084 | Speakerphone mute detection | The speakerphone's own mute button is the physical hard off (owner decision D-38). Pip treats long exact digital silence as **"muted or very quiet"**: mute sends no button event, and a second M0 test showed the speakerphone's noise suppression can also output exact zeros in a silent room, so the two can't always be told apart. Shown as a status, never as an error, shows "muted" on the TV and dashboard, and doesn't report it as a fault. No GPIO button or LED | M1a | P1 |
+| PIP-NEW-085 | ~~NVMe SSD storage~~ **Withdrawn** (owner decision D-39: no SSD). SD-card care instead: batched writes, logs size-capped, wear monitored | — | — | — |
+| PIP-NEW-086 | Phone notifications via ntfy | Alarm, reminder, message and critical diagnostic pushes to members' phones; access-controlled topics; minimal content by default (from PIP-IDEA-004) | M3 | P2 |
+| PIP-NEW-087 | Household messages | "Pip, tell Sam the plumber called": delivered when Sam is next recognised, or to Sam's phone (from PIP-IDEA-005) | M3 | P2 |
+| PIP-NEW-088 | Daily briefing | An optional routine: weather, events, tasks, reminders (from PIP-IDEA-007) | M3 | P3 |
+| PIP-NEW-089 | Usage meter | Model requests per day by kind, with plan-limit warnings, which matter because the plan is subscription only (from PIP-IDEA-011) | M1b | P1 |
+| PIP-NEW-090 | Local music playback | Local music library on Pip's speaker, with ducking (FEAT-088 redesign) | M3 | P3 |
+| PIP-NEW-091 | Docs and diagrams as the main way to understand Pip | An architecture overview, a diagram of how a request flows through Pip, one page per component, and a written reason for each major design choice. Kept up to date: the verification pipeline flags code changes that affect a documented component without touching its page | M1a | P1 |
+| PIP-NEW-092 | Easy module template | Adding a simple feature (a new action, a TV widget, a device type) means copying a documented template, filling in a few clearly marked parts, and adding a capability-registry entry. Each template comes with a worked example and its own test | M1a | P1 |
+| PIP-NEW-093 | Plain-language configuration | Every setting has a one-line explanation, a safe default and validation, whether it's changed in the Settings page or the file (FEAT-080, PIP-NEW-053) | M1a | P1 |
+| PIP-NEW-094 | Always publishable | The repo stays safe to publish: secret and phone-number check on every commit (done in M0), an open-source licence file before publishing, no personal data in tests or examples | M0 (started) | P2 |
+| PIP-NEW-095 | Change guide and project map for any contributor | `CLAUDE.md` (read-first rules), `CONTRIBUTING.md` (how to change things) and `docs/PROJECT-MAP.md` (where everything is) let a person or AI agent with no history of the project make a correct change. Pip's own self-change agent is given them in its sandbox (PIP-NEW-072). A commit check fails if the map misses a top-level file or folder | M0 (done) | P1 |
+| PIP-NEW-096 | Works from a fresh clone | A clone of the repo with no personal data runs: generic defaults, a first-run setup (API keys, location, room), and wake-word models trained only on synthetic voices. Personal data (keys, settings, memories, voice profiles, recordings, models trained on household voices) lives only in the data folder and is layered on top; it's never needed for Pip to start (D-72) | M1a | P1 |
+| PIP-NEW-097 | Swappable voice | Every text-to-speech engine (Piper, Kokoro, or a future local or cloud voice) sits behind one voice interface. Engine, voice and speed are chosen in Settings and can be changed at any time; adding an engine is one module from the template (PIP-NEW-092) with no changes elsewhere. On a change, Pip re-learns its own voice for echo rejection and re-makes its cached phrases. The same pattern applies to speech-to-text (PIP-NEW-008) and the AI model (D-05) | M1a | P1 |
+
+## 2. Ziggletron features and what happens to them (89)
+
+KEEP · IMPROVE · REDESIGN · REPLACE · MERGE · REVIEW.
+
+| FEAT | Name | Decision | Pip behaviour |
+|---|---|---|---|
+| 001 | Continuous listening | REDESIGN (**owner: keep cloud transcription of the room in Social mode, D-51**) | Speakerphone AEC → RAM buffer → local VAD and name spotter; nothing leaves before the address decision (PIP-NEW-001/002) |
+| 002 | STT with fallback | REDESIGN | Benchmark-chosen provider for addressed speech; local room transcription; 2–3 s timeouts; non-blocking (PIP-NEW-008/013) |
+| 003 | Called by name | REDESIGN | Local spotter for "Pip"/"Hey Pip"; clause rule kept |
+| 004 | Name merely mentioned | IMPROVE | Classified locally; model consulted only in Social/Room-Aware with consent |
+| 005 | Follow-up window | REDESIGN | Bound to the recognised person; extends while they speak (PIP-NEW-020) |
+| 006 | Chime | KEEP | Unchanged; configurable |
+| 007 | Echo rejection | IMPROVE | Speakerphone AEC first; word, voice and loudness checks re-tuned as a second line |
+| 008 | Transcription hygiene | IMPROVE | Keep the phantom filter (provider-specific lists); name-hint re-check removed (local spotter) |
+| 009 | Ambient sounds | IMPROVE | Also detects media speech to gate joining and alarms (PIP-NEW-012) |
+| 010 | Speaker labels | IMPROVE | Same three levels; re-tuned; "Several people" label |
+| 011 | Enrol by introduction | REDESIGN | Kept, plus guided enrolment (PIP-NEW-024); guests session-only unless consented (PIP-NEW-025) |
+| 012 | Correct a line's speaker | IMPROVE | Persists across restarts; members correct their own lines (PIP-NEW-026) |
+| 013 | Manage voices | IMPROVE | Shows consent and expiry; review after 180 days |
+| 014 | Admin voice protection | REPLACE | Admin authority comes from accounts, not voice (PIP-NEW-027/054) |
+| 015 | Streamed answers | IMPROVE | One model session per request (P-01); outcome-first wording |
+| 016 | TTS | IMPROVE | Local only; Kokoro vs Piper; cached phrases; pronunciation list (PIP-NEW-014/015) |
+| 017 | Barge-in and stop phrases | REDESIGN | Local keywords; wait/resume; "actually"; ducking (PIP-NEW-006/016/021) |
+| 018 | Cut-off awareness | KEEP | Unchanged |
+| 019 | Joining conversations | REDESIGN (**owner: Ziggletron's way + local question check, D-52**) | Modes; local gates and triggers; budgets; back-off; consent (PIP-NEW-003/004/018) |
+| 020 | "Anything to add?" button | KEEP | Respects mode and consent |
+| 021 | Welcome-back greeting | IMPROVE | Recognised household voices only; at most once per 4 h; can be switched off |
+| 022 | Editable personality | IMPROVE | Dashboard editor, preview, history, sliders |
+| 023 | Situation context | IMPROVE | Only memories visible to those present; sensor context; trimmed by mode |
+| 024 | Web search | KEEP | Results treated as untrusted data |
+| 025 | Actions + outcomes | REDESIGN | Verified action lifecycle for every action (PIP-NEW-039); no-match = failure |
+| 026 | Failure speech | IMPROVE | Offline path and local LLM fallback (PIP-NEW-044/081); says what still works |
+| 027 | Typing | IMPROVE | Typed lines carry the account identity; P-04 fixed; "auto" addressing option |
+| 028 | Long-term memories | REDESIGN | Categories, owner, visibility, confirmed/inferred; never from overheard speech; no cap (PIP-NEW-028/029/031) |
+| 029 | Forget by voice | IMPROVE | Confirms the exact item; reports no-match; asks when uncertain |
+| 030 | Selective recall | IMPROVE | Plus visibility rules for the people present |
+| 031 | Background sorting | MERGE | Into save-time categorisation and the inbox |
+| 032 | Dashboard memory management | REPLACE | Memory Center (PIP-NEW-030) |
+| 033 | Timers | IMPROVE | Created offline by local commands (PIP-NEW-044); confirmed only after creation |
+| 034 | Reminders | IMPROVE | Dashboard creation; weekday and monthly repeats (PIP-NEW-046) |
+| 035 | Targeted reminders | IMPROVE | P-06 wording fixed; uses recognised presence (and MQTT/GPIO presence sensors in M3) |
+| 036 | Calendar | IMPROVE | Repeat on the dashboard (P-05); sync evaluated (PIP-NEW-049) |
+| 037 | Ringing alarms | IMPROVE | Acknowledged only by a non-media voice, typed input or the dashboard (PIP-NEW-051); voice snooze |
+| 038 | Earned alarms | IMPROVE | Only household voices' attempts are judged |
+| 039 | Shut off / snooze | KEEP | Plus voice snooze (PIP-NEW-045) |
+| 040 | Ringtones | KEEP | Unchanged |
+| 041 | Alarms survive restarts | KEEP | Unchanged; covered by acceptance tests |
+| 042 | Cancel / remove | IMPROVE | Reports no-match; asks when the match is ambiguous |
+| 043 | SMS | IMPROVE | Numbers in the vault (S-08); household-affecting confirmation tier; message text not logged |
+| 044 | Volume | IMPROVE | Real outcome reported (P-12); offline path |
+| 045 | Stop listening | REDESIGN | Only the local name spotter runs while asleep, so "Pip, start listening" works; nothing else is processed; a separate hard-off (mic switch or mute button) releases the mic entirely; media voices can't trigger it |
+| 046 | Mic switch | IMPROVE | Requires a signed-in member; **persists across restarts** (D-22); speakerphone mute detection (PIP-NEW-084, D-38) |
+| 047 | Speaker test | KEEP | Unchanged |
+| 048 | Dozing | KEEP | Unchanged |
+| 049 | Away (PIR) | IMPROVE | GPIO PIR kept (owner: devices connect directly to the Pi); MQTT presence sensors also accepted (M3); verified with a bench test |
+| 050 | Quiet hours | KEEP | Safety events still announce |
+| 051 | Muted-mic warning | MERGE | Into health monitoring (PIP-NEW-079) |
+| 052 | Animated face | IMPROVE | More expressions, mode indicator (PIP-NEW-062) |
+| 053 | Weather clothing | KEEP | Same source as spoken weather (P-08) |
+| 054 | "Six seven" | KEEP | Unchanged; part of a general "reactions" list |
+| 055 | TV dashboards | IMPROVE | Templates; persisted; live widgets |
+| 056 | Custom dashboards by voice | REDESIGN | Validate, then preview, then apply; undo (PIP-NEW-061) |
+| 057 | Grid arranging | REDESIGN | Validation with automatic fit suggestions; drag-and-drop on the dashboard |
+| 058 | Box types | IMPROVE | Live data; notes become live lists (U-08) |
+| 059 | Drawings on request | KEEP | Requested only; daily cap; clear progress |
+| 060 | Pictures of its own | IMPROVE | Kept, **off by default**, own switch (owner decision D-21) |
+| 061 | Real photos | IMPROVE | Separate switch for unprompted photos (U-05) |
+| 062 | TV privacy | IMPROVE | The client receives only displayed data (PIP-NEW-056) |
+| 063 | TV resilience | KEEP | Unchanged |
+| 064 | Weather | IMPROVE | Single source shared with the model |
+| 065 | Vitals | MERGE | Into health monitoring; the TV widget stays |
+| 066 | Status and controls | REDESIGN | Home section (PIP-NEW-052) |
+| 067 | Conversation feed | KEEP (**owner: no login, D-53**) | Members only; RAM only; respects consent (unconsented speakers' lines not shown) |
+| 068 | Prompts inspector | REDESIGN | Developer section, admin only; memories redacted unless the viewer may see them |
+| 069 | Logs viewer | REDESIGN | Structured, redacted logs (PIP-NEW-059) |
+| 070 | Latency and quota | IMPROVE | Into the Speech panel and Developer section |
+| 071 | Admin password | REPLACE | Accounts and roles (PIP-NEW-054) |
+| 072 | Access protection | IMPROVE | Keep the host/origin checks; add authentication and HTTPS via the private tunnel |
+| 073 | Propose and approve by voice | REDESIGN | Voice initiates; classification and proposal (PIP-NEW-069–071); approval on the dashboard (PIP-NEW-074) |
+| 074 | Isolated copy, watchable terminal | REPLACE | Sandboxed development (PIP-NEW-072); watchable terminal kept |
+| 075 | Test gate, merge, restart | REPLACE | Verification pipeline + safe deploy + rollback (PIP-NEW-073/075) |
+| 076 | History and admin controls | IMPROVE | Sanitised history (PIP-NEW-076); explainable |
+| 077 | Code console on live code | REDESIGN | Console opens on a sandboxed workspace, not live code; same review path as voice changes |
+| 078 | Restart | IMPROVE | Waits for quiet by default; "restart now" asks for confirmation while an alarm rings |
+| 079 | Plugins | REDESIGN | Plugins declare the permissions they need (actions, events, data, network); admin grants them; plugin commands are permission-checked |
+| 080 | Validated configuration | IMPROVE | Same validation, behind the Settings UI |
+| 081 | Secrets | REPLACE | Credential vault (PIP-NEW-058) |
+| 082 | Startup sequence | KEEP | Plus readiness checks |
+| 083 | Self-healing jobs | IMPROVE | Plus stall detection (PIP-NEW-079) |
+| 084 | Safe storage | KEEP | Plus export and backup |
+| 085 | Model access choice | IMPROVE | Owner decision: Claude subscription via Claude Code, one session per request, plus a local fallback (PIP-NEW-081) |
+| 086 | Install, boot, kiosk | IMPROVE | Plus versioned installs with rollback (PIP-NEW-080) |
+| 087 | Mic error recovery | IMPROVE | Plus a functional check (audio actually flowing) |
+| 088 | Music (branch) | REDESIGN | Local music files on Pip's own speaker: play/pause/skip/volume, ducking while Pip listens or speaks; M3 ([07 §9](archive/pip-v2-proposals-2026-11/07-SMART-HOME-AND-INTEGRATIONS.md#9-music-playback-feat-088-redesigned-owner-decision-d-20)) |
+| 089 | Explain own code (branch) | REPLACE | PIP-NEW-064–067 |
+
+## 3. Acceptance criteria (72)
+
+Targets marked † are starting values (confirmed in M0, D-25).
+
+| ID | Criterion | Covers |
+|---|---|---|
+| AC-SP-01 | In Private mode, a network capture over a 1-hour session with unaddressed conversation shows **no audio or transcript leaving the device** | PIP-NEW-001, 003 |
+| AC-SP-02 | Utterances with the name in the middle or at the end are transcribed in full (no missing words before the name) in ≥98% of benchmark cases† | PIP-NEW-002 |
+| AC-SP-03 | False activations ≤1 per 8 hours in the room soak test with the TV on† | FEAT-003 |
+| AC-SP-04 | Wake-name recall ≥95% at 1–4 m in the benchmark set† | FEAT-003 |
+| AC-SP-05 | Truncated utterances ≤2% in the benchmark "pauses" category† | PIP-NEW-007 |
+| AC-SP-06 | With the primary STT unreachable, the next utterance is transcribed by the fallback within the timeout + 1 s, and no utterance is lost | PIP-NEW-008 |
+| AC-SP-07 | Transcription in progress does not delay a typed message, alarm or stop command by more than 100 ms | PIP-NEW-078 |
+| AC-SP-08 | Vocabulary insertion rate ≤0.5% of utterances† | PIP-NEW-009 |
+| AC-SP-09 | Local room transcription runs for 8 hours alongside all other services within the CPU and RAM budget in 12 §5 | PIP-NEW-013 |
+| AC-TTS-01 | First audio ≤0.4 s P90 after text is ready, on the Pi, with listening running | PIP-NEW-014 |
+| AC-TTS-02 | ≥28 of 30 household and device names pronounced acceptably (household judgement) | PIP-NEW-015 |
+| AC-CV-01 | "Stop" halts audio within 100 ms P95, measured on a loopback recording, online and offline | PIP-NEW-006 |
+| AC-CV-02 | "Wait" then "go on" within 30 s resumes at the next unspoken sentence | PIP-NEW-016 |
+| AC-CV-03 | A correction ("actually fifteen") changes the existing timer; no second timer exists | PIP-NEW-021 |
+| AC-CV-04 | In Social mode, with an unknown voice heard in the last 15 minutes, no unaddressed room text is sent to the model (verified from request logs) | PIP-NEW-004 |
+| AC-CV-05 | No unprompted contribution starts while anyone is speaking (100 scripted trials) | PIP-NEW-018 |
+| AC-CV-06 | Unprompted contributions never exceed the per-hour budget for the configured level over a 1-week trial | PIP-NEW-018 |
+| AC-CV-07 | Media-only speech (a TV playing dialogue for 30 minutes) causes no join, greeting, alarm acknowledgement or "stop listening" | PIP-NEW-012 |
+| AC-CV-08 | Guest voice profiles are absent from storage after restart unless consent was recorded | PIP-NEW-025 |
+| AC-CV-09 | No administrative action can be performed by voice alone (test every admin action) | PIP-NEW-027 |
+| AC-CV-10 | After an adult opts out (dashboard or "Pip, leave me out"), none of their unaddressed lines reach the model provider (request-log check) | PIP-NEW-004 |
+| AC-CV-11 | Every household adult is shown the opt-out notice at enrolment, and it is reachable in one step from the dashboard | PIP-NEW-004 |
+| AC-CV-12 | When the speakerphone is muted, Pip shows "muted" on the TV and dashboard within 2 s and raises no fault; unmuting resumes listening | PIP-NEW-084 |
+| AC-MEM-01 | Unaddressed speech never creates an active memory (scripted overheard-facts test) | PIP-NEW-029 |
+| AC-MEM-02 | Saving 1,000 memories deletes none | PIP-NEW-031 |
+| AC-MEM-03 | Text that looks like a credential or card number is refused as a memory | PIP-NEW-032 |
+| AC-MEM-04 | A member cannot read another member's private memory via dashboard, API or voice | PIP-NEW-028 |
+| AC-MEM-05 | After restart: no conversation transcript, prompts or raw audio exist on disk (file-system scan for test phrases) | 06 §1 |
+| AC-MEM-06 | "Forget Sam" removes every listed item; a search for Sam's data finds nothing except audit entries | PIP-NEW-033 |
+| AC-MEM-07 | Export, then import into a clean install, reproduces the memories via the inbox | PIP-NEW-034 |
+| AC-SH-01 | A command to an offline device yields a spoken failure, never "done" | PIP-NEW-039 |
+| AC-SH-02 | An ambiguous request with two matching devices produces a question, not an action | PIP-NEW-038 |
+| AC-SH-03 | Class C actions cannot be executed by voice without second-device confirmation | PIP-NEW-040 |
+| AC-SH-04 | Discovered devices not on the allow-list cannot be read or controlled | PIP-NEW-036 |
+| AC-SH-05 | A new ESPHome device with MQTT discovery appears in the Devices inbox and, once allowed, is usable with no Pip code change | PIP-NEW-043 |
+| AC-SH-06 | Time and event routine triggers do nothing until approved | PIP-NEW-041 |
+| AC-SH-07 | Eightree outlets switch on and off with the internet disconnected, and state is reported back | PIP-NEW-036 |
+| AC-SCH-01 | With the network disconnected, set/cancel/snooze timers by voice succeeds ≥95% on the benchmark command set | PIP-NEW-044 |
+| AC-SCH-02 | Alarms ring ≤1 s late under full load (model request, image generation and local transcription running) | PIP-NEW-078 |
+| AC-SCH-03 | A ringing alarm resumes after a power cut and reboot | FEAT-041 |
+| AC-SCH-04 | Pip never says a timer, reminder or event is set unless it exists in storage | PIP-NEW-039 |
+| AC-UI-01 | Every setting in UI-AND-SETTINGS §4 is editable in the Settings UI | PIP-NEW-053 |
+| AC-UI-02 | The TV client's received events contain no transcript text beyond its displayed captions (traffic inspection) | PIP-NEW-056 |
+| AC-UI-03 | Adding an item by voice appears on the TV within 1 s | PIP-NEW-060 |
+| AC-UI-04 | A voice layout edit that doesn't fit yields a proposed fix, not a bare failure, in ≥90% of the P-09 failure cases replayed | PIP-NEW-061 |
+| AC-UI-05 | Undo restores the previous layout exactly | PIP-NEW-061 |
+| AC-SEC-01 | Every dashboard endpoint and event stream rejects unauthenticated access (automated sweep) | PIP-NEW-054 |
+| AC-SEC-02 | The dashboard is unreachable from the public internet, and reachable over the private tunnel with HTTPS | PIP-NEW-055 |
+| AC-SEC-03 | No credential value appears in logs, events, prompts, git or the sandbox (secret-canary test) | PIP-NEW-058/059 |
+| AC-SEC-04 | Credential migration leaves Ziggletron's files byte-identical (checksums before and after) | PIP-NEW-083 |
+| AC-SEC-05 | A plugin without a granted permission cannot call that capability | FEAT-079 |
+| AC-SEC-06 | Every admin action appears in the audit trail with account and time | PIP-NEW-057 |
+| AC-SEC-07 | ntfy notifications contain only a generic title unless the member enabled full content; topics reject unauthenticated publishers and subscribers | PIP-NEW-086 |
+| AC-SK-01 | For a set of 40 self-knowledge questions, answers are judged correct against the current registry and code in ≥90% of cases, and none presents an unsupported claim as fact | PIP-NEW-065 |
+| AC-SK-02 | A seeded doc/code discrepancy is reported as a discrepancy when asked about | PIP-NEW-065 |
+| AC-SK-03 | "Why didn't you answer?" cites the actual trace reason for 10 scripted causes (low spotter score, mode gate, STT timeout, model error…) | PIP-NEW-066 |
+| AC-SK-04 | Self-inspection tools cannot read secrets, the data folder or paths outside the code tree (path traversal and symlink tests) | PIP-NEW-067 |
+| AC-SK-05 | A stalled background task is detected and restarted within 2× its heartbeat period | PIP-NEW-079 |
+| AC-SK-06 | Every feature and setting has a registry entry (the verification pipeline enforces it) | PIP-NEW-064 |
+| AC-SM-01 | A question about how something works never starts code generation | PIP-NEW-069 |
+| AC-SM-02 | No code is generated before a proposal is approved | PIP-NEW-071 |
+| AC-SM-03 | A sandbox test that tries to read the secrets file, the data folder, `~/.ssh` or a non-allow-listed host fails and is logged | PIP-NEW-072 |
+| AC-SM-04 | Sandbox workspaces are gone after success, failure, timeout and reboot mid-change | PIP-NEW-072 |
+| AC-SM-05 | Deployment cannot happen without a signed-in admin approval, including when every check passes | PIP-NEW-074 |
+| AC-SM-06 | A deliberately broken deployment rolls back automatically within 3 minutes, and alarms still ring | PIP-NEW-075 |
+| AC-SM-07 | Commit messages contain no text from the spoken request that isn't in the approved summary; the PII scan passes | PIP-NEW-076 |
+| AC-SM-08 | A detected recurring problem produces a suggestion only, never development | PIP-NEW-077 |
+| AC-REL-01 | 50 random power cuts during operation leave no corrupted state, and start-up succeeds each time | 12 §5 |
+| AC-REL-02 | 7-day soak: no memory growth beyond 10%, no unrecovered stalls | PIP-NEW-079 |
+| AC-REL-03 | Two rapid consecutive requests never fail with a session collision (1,000-trial test) | FEAT-015 / P-01 |
+| AC-REL-05 | The usage meter warns on the dashboard before the daily plan limit is reached (at 80%), and Pip switches to the local fallback when it is hit | PIP-NEW-089 |
+| AC-REL-04 | The local LLM fallback answers a simple question within 10 s† on the Pi 5, or Pip states it can't | PIP-NEW-081 |

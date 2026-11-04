@@ -1,6 +1,6 @@
 # Pip 2.0 — Memory and Data Policy (PROPOSAL)
 
-> Ziggletron today: up to 150 free-text memories of four kinds (rule, household, person, note), saved when asked **or overheard**. The oldest are dropped silently beyond the cap. The dashboard can delete and re-sort memories but cannot add or edit them. There is no export. Room transcript lines are mirrored to the system log. See [FEAT-028–032](../01-discovery/COMPLETE-FEATURE-CATALOG.md#c-household-memory), [DATA D2–D8](../01-discovery/DATA-AND-PERSISTENCE-INVENTORY.md), and V-03/V-05/V-08.
+> Ziggletron today: up to 150 free-text memories of four kinds (rule, household, person, note), saved when asked **or overheard**. The oldest are dropped silently beyond the cap. The dashboard can delete and re-sort memories but cannot add or edit them. There is no export. Room transcript lines are mirrored to the system log. See [FEAT-028–032](../ziggletron-discovery/COMPLETE-FEATURE-CATALOG.md#c-household-memory), [DATA D2–D8](../ziggletron-discovery/DATA-AND-PERSISTENCE-INVENTORY.md), and V-03/V-05/V-08.
 
 > Requirement IDs PIP-NEW-028…035 are in [02-PROPOSED-FEATURE-CATALOG.md](02-PROPOSED-FEATURE-CATALOG.md#d-memory-and-data). Logging and credentials are covered in more depth in [11-SECURITY-AND-PERMISSIONS](11-SECURITY-AND-PERMISSIONS.md).
 >

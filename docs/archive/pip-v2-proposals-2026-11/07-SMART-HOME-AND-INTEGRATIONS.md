@@ -1,6 +1,6 @@
 # Pip 2.0 — Smart Home and Integrations (PROPOSAL)
 
-> Ziggletron today: no smart-home control. Only a documented "lights via a bridge" plugin pattern ([EXTERNAL-INTEGRATIONS §5](../01-discovery/EXTERNAL-INTEGRATIONS.md#5-extension-integrations)). Volume and microphone are its only device controls.
+> Ziggletron today: no smart-home control. Only a documented "lights via a bridge" plugin pattern ([EXTERNAL-INTEGRATIONS §5](../ziggletron-discovery/EXTERNAL-INTEGRATIONS.md#5-extension-integrations)). Volume and microphone are its only device controls.
 > Requirement IDs PIP-NEW-036…043 are in [02-PROPOSED-FEATURE-CATALOG.md](02-PROPOSED-FEATURE-CATALOG.md#e-smart-home-and-routines). The general action lifecycle that §5 applies to devices is defined in [12-RELIABILITY-AND-OFFLINE §1](12-RELIABILITY-AND-OFFLINE.md#1-action-lifecycle-no-false-confirmations-pip-new-039).
 > **Roadmap note:** the owner chose parity with Ziggletron first, so smart home and music are **Milestone 3** ([15](15-PRIORITIZED-ROADMAP.md)).
 

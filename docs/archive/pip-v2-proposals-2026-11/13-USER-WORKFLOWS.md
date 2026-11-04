@@ -1,6 +1,6 @@
 # Pip 2.0 — Proposed User Workflows (PROPOSAL)
 
-End-to-end experiences for new and redesigned features. For Ziggletron's current workflows see [USER-WORKFLOWS](../01-discovery/USER-WORKFLOWS.md) (W1–W20). Spoken lines are examples, not fixed wording.
+End-to-end experiences for new and redesigned features. For Ziggletron's current workflows see [USER-WORKFLOWS](../ziggletron-discovery/USER-WORKFLOWS.md) (W1–W20). Spoken lines are examples, not fixed wording.
 
 ## PW-01 Asking a question in Social mode with an opted-out person present
 1. Jordan (who has opted out) and the owner are chatting. Pip transcribes locally. Jordan's lines are excluded from anything sent to the model.

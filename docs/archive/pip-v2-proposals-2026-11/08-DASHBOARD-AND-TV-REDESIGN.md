@@ -1,6 +1,6 @@
 # Pip 2.0 — Dashboard and TV Redesign (PROPOSAL)
 
-> Ziggletron today: one live page with password-free viewing and most controls, an admin password for the rest, settings only in files, and a TV page that receives the full event stream. See [UI-AND-SETTINGS](../01-discovery/UI-AND-SETTINGS.md), FEAT-052–072, S-01/S-02, U-07–U-09, P-09, V-07.
+> Ziggletron today: one live page with password-free viewing and most controls, an admin password for the rest, settings only in files, and a TV page that receives the full event stream. See [UI-AND-SETTINGS](../ziggletron-discovery/UI-AND-SETTINGS.md), FEAT-052–072, S-01/S-02, U-07–U-09, P-09, V-07.
 > Requirement IDs: PIP-NEW-046–048, 052–053, 056, 060–063. Access control is in [11](11-SECURITY-AND-PERMISSIONS.md).
 > **Owner decision:** the dashboard will be used **away from home**, so sign-in and secure remote access are M1 requirements.
 
@@ -22,7 +22,7 @@ The brief's candidate structure has 8 areas. Proposed adjustments:
 Reasoning: privacy controls must be easy to find, so Privacy is first under Settings and also appears as a chip on Home. Seven or eight visible areas is acceptable on phone with a bottom bar of 5 (Home, Calendar & Tasks, Memory, Devices, More).
 
 ## 2. Settings without file edits (PIP-NEW-053)
-- Every user-facing Ziggletron setting ([UI-AND-SETTINGS §4](../01-discovery/UI-AND-SETTINGS.md#4-settings-configuration-file)) is editable in Settings, including the 5 hidden ones.
+- Every user-facing Ziggletron setting ([UI-AND-SETTINGS §4](../ziggletron-discovery/UI-AND-SETTINGS.md#4-settings-configuration-file)) is editable in Settings, including the 5 hidden ones.
 - Validation as today (FEAT-080), shown inline. Most changes apply live; ones that need a restart say so and offer "restart when quiet".
 - Every change is recorded in the audit trail, with undo for the last change of each setting.
 - Microphone and speaker selection with a live level meter and a test.

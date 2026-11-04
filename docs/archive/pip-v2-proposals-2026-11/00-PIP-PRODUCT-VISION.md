@@ -1,6 +1,6 @@
 # Pip 2.0 — Product Vision and Identity (PROPOSAL)
 
-> Proposed behaviour. For what exists today see [../01-discovery/PRODUCT-OVERVIEW.md](../01-discovery/PRODUCT-OVERVIEW.md). "Ziggletron" refers only to the original product.
+> Proposed behaviour. For what exists today see [../ziggletron-discovery/PRODUCT-OVERVIEW.md](../ziggletron-discovery/PRODUCT-OVERVIEW.md). "Ziggletron" refers only to the original product.
 
 ## 1. One-sentence identity
 
