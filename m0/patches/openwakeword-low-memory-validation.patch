@@ -1,26 +1,31 @@
 diff --git a/openwakeword/train.py b/openwakeword/train.py
-index 708cdb2..436e7f3 100755
+index 708cdb2..980da2f 100755
 --- a/openwakeword/train.py
 +++ b/openwakeword/train.py
-@@ -571,6 +571,17 @@ class Model(nn.Module):
+@@ -571,6 +571,22 @@ class Model(nn.Module):
  
  
  # Separate function to convert onnx models to tflite format
 +
 +class _FpWindows(torch.utils.data.Dataset):
-+    """Pip M0 patch: overlapping (window x 96) feature windows with label 0, built on demand."""
-+    def __init__(self, feats, window):
-+        self.feats, self.window = feats, window
++    """Pip M0 patch: overlapping (window x 96) feature windows with label 0, one whole batch per item
++    (built with a strided view, so memory stays small and each batch is a single fast copy)."""
++    def __init__(self, feats, window, batch=4096):
++        self.feats, self.window, self.batch = feats, window, batch
++        self.n = feats.shape[0] - window
 +    def __len__(self):
-+        return self.feats.shape[0] - self.window
-+    def __getitem__(self, i):
-+        return torch.from_numpy(np.array(self.feats[i:i + self.window], dtype=np.float32)), torch.tensor(0.0)
++        return (self.n + self.batch - 1) // self.batch
++    def __getitem__(self, b):
++        lo, hi = b * self.batch, min(self.n, (b + 1) * self.batch)
++        chunk = np.asarray(self.feats[lo:hi + self.window - 1], dtype=np.float32)
++        x = np.lib.stride_tricks.sliding_window_view(chunk, self.window, axis=0).transpose(0, 2, 1)[: hi - lo]
++        return torch.from_numpy(np.ascontiguousarray(x)), torch.zeros(hi - lo)
 +
 +
  def convert_onnx_to_tflite(onnx_model_path, output_path):
      """Converts an ONNX version of an openwakeword model to the Tensorflow tflite format."""
      # imports
-@@ -871,13 +882,10 @@ if __name__ == '__main__':
+@@ -871,13 +887,10 @@ if __name__ == '__main__':
          X_train = torch.utils.data.DataLoader(IterDataset(batch_generator),
                                                batch_size=None, num_workers=n_cpus, prefetch_factor=16)
  
@@ -34,7 +39,7 @@ index 708cdb2..436e7f3 100755
 +        X_val_fp = np.load(config["false_positive_validation_data_path"], mmap_mode="r")
 +        # Pip M0 patch (low memory): serve the ~480k overlapping windows lazily in batches of 4096,
 +        # instead of copying them into one ~3 GB array and validating in a single batch.
-+        X_val_fp = torch.utils.data.DataLoader(_FpWindows(X_val_fp, input_shape[0]), batch_size=4096)
++        X_val_fp = torch.utils.data.DataLoader(_FpWindows(X_val_fp, input_shape[0]), batch_size=None)
  
          X_val_pos = np.load(os.path.join(feature_save_dir, "positive_features_test.npy"))
          X_val_neg = np.load(os.path.join(feature_save_dir, "negative_features_test.npy"))
