@@ -22,6 +22,7 @@ Where the archive says one thing and a decision says another, **the decision win
 | [14](archive/pip-v2-proposals-2026-11/14-ACCEPTANCE-CRITERIA.md) AC-SP-[09](archive/pip-v2-proposals-2026-11/09-SELF-KNOWLEDGE-AND-DIAGNOSTICS.md) | 8-hour local room transcription criterion | Obsolete | D-51 |
 | [10 §5](archive/pip-v2-proposals-2026-11/10-SAFE-SELF-MODIFICATION.md) (sandbox "container or OS sandbox") | Sandbox technology open | M0 showed a **systemd user sandbox** works with no installs (secrets, recordings, repo and internet blocked) | M0 result |
 
+| [03 §1.2](archive/pip-v2-proposals-2026-11/03-CONVERSATION-AND-PERSONALITY.md) (guests gate Social mode) | Guests and unknown voices are never sent to the cloud unless addressed | **Everyone except opted-out people** is sent to Groq in Social mode; guests can opt out by voice (visit-only voice memory) | D-77 |
 Requirement rows below already include their own overrides (struck-through or marked with the decision).
 
 ## 1. New requirements (97)
