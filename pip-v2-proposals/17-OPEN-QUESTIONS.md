@@ -75,6 +75,7 @@
 | D-69 | Running low on Claude usage | Stop joining in **and** pause self-changes together; replies to people always come first |
 | D-70 | Open source | The owner **may publish Pip as open source later**. Keep the repo publishable at all times: no secrets or personal data in code or history, an open-source licence ready (MIT recommended, to confirm before publishing), docs written for outsiders |
 | D-71 | How the owner works with the code | Understands Pip **from docs and diagrams**, edits **configuration** directly, and may add simple modules only if that's easy without understanding everything. The architecture must therefore offer a documented module template, plain-language settings, and diagrams kept up to date |
+| D-72 | Personal data on the Pi | The owner's recordings and anything learned from his voice (e.g. wake-word models trained on his clips) **may be kept on the Pi indefinitely** and used for training. The only hard rule: **nothing personal is uploaded to GitHub**. Replaces the 30-day expiry for the owner's M0 recordings |
 | D-66 | Quiet hours, notifications, Eightree | Quiet hours 23:00–07:00; ntfy self-hosted on the Pi; Eightree plugs not set up yet (later) |
 
 ## Remaining open items (answerable during M0; they don't block approval)
