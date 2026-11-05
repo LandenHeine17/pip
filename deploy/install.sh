@@ -4,6 +4,12 @@
 set -e
 cd "$(dirname "$0")/.."
 ~/.local/bin/uv sync -q
+# Voice recognition model (step 5, D-87): downloaded once into the data folder, never into the repo.
+SPK=~/pip-data/models/speaker/nemo_en_titanet_small.onnx
+if [ ! -f "$SPK" ]; then
+  mkdir -p ~/pip-data/models/speaker
+  curl -sSfL -o "$SPK.part" https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_small.onnx && mv "$SPK.part" "$SPK"
+fi
 mkdir -p ~/.config/systemd/user
 cp deploy/systemd/pip-*.service ~/.config/systemd/user/
 systemctl --user daemon-reload

@@ -80,9 +80,15 @@ def _loop_running() -> bool:
 
 
 class Conversation:
-    def __init__(self, bus, cfg: dict | None = None, stt=None, schedule=None, local_stt=None):
+    def __init__(self, bus, cfg: dict | None = None, stt=None, schedule=None, local_stt=None, people=None, memory=None):
         from .commands import Commands
+        from .peoplecmds import PeopleCommands
         self.bus = bus
+        self.people, self.memory = people, memory
+        self.people_cmds = PeopleCommands(people, memory) if people is not None else None
+        self.speaker = None          # who's talking in the current request (people.Match)
+        self.last_pcm = b""
+        self.enrolling: dict | None = None   # guided voice learning in progress
         self.schedule = schedule
         self.commands = Commands(schedule, clock=schedule.clock) if schedule is not None else None
         self.local_stt = local_stt
@@ -172,8 +178,11 @@ class Conversation:
 
     async def show(self, who: str, text: str, **data) -> None:
         """Live conversation feed for the dashboard (private: shown, never logged)."""
+        private = {"text": text}
+        if who == "you" and self.speaker is not None and self.people is not None:
+            private["speaker"] = self.speaker.label
         await self.bus.publish(Message("event", "conversation.line", source="core",
-                                       data={"who": who, **data}, private={"text": text}))
+                                       data={"who": who, **data}, private=private))
 
     def _context(self) -> list[dict]:
         cutoff = time.time() - self.keep_s
@@ -296,12 +305,18 @@ class Conversation:
             self.refresh_state()
             await self._finish_pending()
             return
+        if self.enrolling and reason in ("follow_up", "wake", "barge_in"):
+            self.transcribing = False
+            return await self._enrol_sample(pcm)
         t0 = time.perf_counter()
         self.transcribing = True
         self.refresh_state()
+        ident = asyncio.ensure_future(self.identify(pcm)) if reason != "room" else None
         try:
             text, offline = await self.transcribe(pcm, reason)
         except Exception as e:
+            if ident:
+                ident.cancel()
             self.transcribing = False
             self.refresh_state()
             log.warning("speech-to-text failed: %s", e)
@@ -310,10 +325,13 @@ class Conversation:
                 await self.say(SAYINGS["stt_failed"], "error")
             return
         stt_s = round(time.perf_counter() - t0, 2)
+        if ident:
+            self.speaker, self.last_pcm = await ident, pcm
         self.transcribing = False
         asyncio.get_running_loop().call_soon(self.refresh_state)  # by then he's answering (thinking) or done
         await self.bus.publish(Message("event", "stt.done", data={"seconds": stt_s, "chars": len(text),
-                                                                   "reason": reason, "offline": offline}))
+                                                                   "reason": reason, "offline": offline,
+                                                                   "speaker": self.speaker.level if self.speaker else None}))
         if self.ringing and self.commands:
             reply = await self.commands.while_ringing(text, reason)
             if reply is not None:
@@ -350,6 +368,8 @@ class Conversation:
             return
         self.expect_until = 0.0
         await self.show("you", text, reason=reason, offline=offline, **data)
+        if await self.people_command(text, offline):
+            return
         if await self.local_command(text):
             return
         if offline:
@@ -386,6 +406,84 @@ class Conversation:
         await self.show("pip", reply, total_s=round(time.perf_counter() - t0, 3), local=True)
         return True
 
+    async def people_command(self, text: str, offline: bool = False) -> bool:
+        """'Leave me out', 'I'm Sam', 'who am I?', offline 'remember…' (core/peoplecmds.py)."""
+        if not self.people_cmds:
+            return False
+        try:
+            reply = await self.people_cmds.handle(text, self.speaker, self.last_pcm, offline)
+        except Exception:
+            log.exception("people command failed")
+            reply = SAYINGS["command_failed"]
+        if reply is None:
+            return False
+        self.answer_id = None
+        await self.command("thinker", "thinker.cancel")
+        await self.bus.publish(Message("event", "command.done", data={"kind": "people", "spoken": True}))
+        self.history += [{"role": "user", "text": text, "ts": time.time()}, {"role": "pip", "text": reply, "ts": time.time()}]
+        self.speech_done.clear()
+        await self.say(reply, "command")
+        await self.show("pip", reply, local=True)
+        return True
+
+    async def identify(self, pcm: bytes):
+        if self.people is None:
+            return None
+        try:
+            return await self.people.identify(pcm)
+        except Exception:
+            log.exception("voice recognition failed")
+            return None
+
+    # ---------------------------------------------------------------- learning a voice (guided, from the dashboard)
+    ENROL_PHRASES = ["The quick brown fox jumps over the lazy dog.",
+                     "Pip, what's the weather going to be like tomorrow?",
+                     "Set a timer for ten minutes and remind me to call home.",
+                     "My favourite food is pizza, but I like tacos too.",
+                     "Hey Pip, put the dentist on the calendar for Friday at three."]
+
+    async def start_enrolment(self, pid: str) -> dict:
+        person = self.people.get(pid) if self.people else None
+        if not person:
+            raise ValueError("No such person")
+        if not self.people.embedder.available:
+            raise ValueError("The voice model isn't installed yet (run deploy/install.sh)")
+        self.enrolling = {"pid": pid, "name": person["name"], "got": [], "until": time.monotonic() + 120}
+        await self.say(f"Hi {person['name']}! Read the five sentences on the dashboard, one at a time, after each beep.", "enrol")
+        await self._enrol_prompt()
+        return self.enrol_status()
+
+    def enrol_status(self) -> dict | None:
+        e = self.enrolling
+        if e and time.monotonic() > e["until"]:
+            self.enrolling = e = None
+        return {"person_id": e["pid"], "done": len(e["got"]), "of": len(self.ENROL_PHRASES),
+                "phrases": self.ENROL_PHRASES} if e else None
+
+    async def _enrol_prompt(self) -> None:
+        await self.command("ears", "ears.chime")
+        await self.command("ears", "ears.listen", {"seconds": 15})
+        self.listening_for(15)
+
+    async def _enrol_sample(self, pcm: bytes) -> None:
+        e = self.enrolling
+        if not e or time.monotonic() > e["until"]:
+            self.enrolling = None
+            return
+        e["got"].append(pcm)
+        await self.bus.publish(Message("event", "voice.enrol", data={"done": len(e["got"]), "of": len(self.ENROL_PHRASES)}))
+        if len(e["got"]) < len(self.ENROL_PHRASES):
+            e["until"] = time.monotonic() + 60
+            await self._enrol_prompt()
+            return
+        self.enrolling = None
+        n = await self.people.add_samples(e["pid"], e["got"], "guided")
+        await self.say(f"Thanks, {e['name']}. I'll know your voice now." if n >= 3 else
+                       "Hmm, those were too short. Try Learn my voice again.", "enrol")
+
+    def cancel_enrolment(self) -> None:
+        self.enrolling = None
+
     async def _finish_pending(self) -> None:
         """They seemed to start talking again, but it was only noise: answer the paused sentence now."""
         if self.pending and not self.pending_task:
@@ -405,6 +503,14 @@ class Conversation:
         pcm = base64.b64decode(msg.private.get("audio_b64", ""))
         if not await self.has_voice(pcm, "room"):
             return
+        speaker = None
+        if self.people is not None and self.people.has_opt_outs() and not self.ringing:
+            speaker = await self.identify(pcm)
+            if speaker and speaker.opted_out:
+                # D-77: an opted-out person's room speech never leaves the Pi. They can still call Pip with the
+                # wake word, which is heard on the Pi.
+                await self.bus.publish(Message("event", "room.left_out", data={"level": speaker.level}))
+                return
         try:
             text, offline = await self.transcribe(pcm, "room")
         except Exception:
@@ -426,6 +532,7 @@ class Conversation:
             self.answer_id = None
             await self.command("thinker", "thinker.cancel")
             await self.command("ears", "ears.chime")
+        self.speaker, self.last_pcm = (speaker or await self.identify(pcm)), pcm
         await self.addressed(text, "expected" if expected else "transcript", offline=offline)
 
     # ---------------------------------------------------------------- answering
@@ -442,8 +549,13 @@ class Conversation:
         t0 = time.perf_counter()
         try:
             schedule = self.schedule.summary() if self.schedule else ""
+            sp = self.speaker
+            people = self.people.summary(sp) if self.people is not None else ""
+            memories = self.memory.for_claude(sp.person_id if sp else None, sp.level if sp else "unknown") \
+                if self.memory is not None else ""
             reply = await self.bus_request("thinker", "thinker.ask", {"answer_id": aid, "reason": reason},
-                                           {"text": text, "context": context, "schedule": schedule}, timeout=60)
+                                           {"text": text, "context": context, "schedule": schedule,
+                                            "people": people, "memories": memories}, timeout=60)
         except Exception as e:
             reply = Message("reply", "thinker.ask", data={"error": f"{type(e).__name__}"})
         filler.cancel()
@@ -469,7 +581,8 @@ class Conversation:
         """Claude turned a request the rules missed into an action; Pip checks it, does it and confirms (D-84)."""
         from . import actions
         try:
-            said, done = actions.apply(self.commands, raw)
+            said, done = actions.apply(self.commands, raw, {"memory": self.memory, "people": self.people,
+                                                           "speaker": self.speaker})
         except Exception:
             log.exception("action failed")
             said, done = actions.FAILED, 0

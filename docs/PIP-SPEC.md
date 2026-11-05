@@ -30,6 +30,8 @@ Pip is a playful companion living in a dorm room on a Raspberry Pi 5, with a USB
 | Can the Pi hear commands with no internet? (D-83) | Yes, with **Whisper base on the Pi**: about 2.4 s per request on your recordings (vs 0.4 s for Groq). Without its built-in speech filter it "heard" *Pippletron* in plain noise (it copies the word list), which could stop an alarm by mistake, so the filter is always on: noise now gives nothing | D-83 |
 | Can Pip tell a phantom "Thank you." from a real one? (D-85) | **Not from the words or Whisper's confidence**: Groq always reports "no speech" as 0%, and a click came back as "Thank you." more confidently than real speech said "Okay." A **voice detector on the Pi (Silero)** separated them perfectly: no voice in any of 12 noises (click, knock, hiss, breath, beep), voice found in all 56 real clips, including quiet one-word "yes" and "thank you", in about 10 ms each. Your step 4 test had 24 such phantoms in one day | D-85 |
 | Can Claude turn odd wordings into timer/calendar actions? (D-84) | Yes: 5 of 5 tried came back as correct actions ("remove that", "Mom's birthday November 20th all day", "half an hour earlier than my alarm", "every Sunday evening at 8, laundry"); it asked rather than guess when a dentist visit already existed; ordinary questions were still answered in words | D-84 |
+| Can Pip recognise who's talking? (D-87) | Yes, on the Pi: TitaNet small, ~40 ms per request. Learned from 8 of your M0 clips, it was **sure it was you 82%** of the time (probably-you 94%) and **never took any of 24 other voices for you**. With TV in the background it can't tell (you become "Someone"). The other voices were studio recordings, so it needs a check with a roommate | D-87 |
+| Does Claude handle "remember / forget" well? (D-88) | Yes: 8 of 8 after one fix. It words memories in the third person ("Alex takes his coffee black"), marks health things sensitive (to the inbox), updates on "actually…", forgets the right one, and asks "Who's this?" when an unrecognised voice says "remember I like…" | D-88 |
 | Can the Pi run Pip comfortably? | Yes: 10 min of everyday work used 16% CPU on average (55% peak), 1.5 GB memory, 68 °C; the wake detector never fell behind | — |
 | Still running | Overnight false-wake checks for both wake words (until 07:30); they tune sensitivity only | — |
 
@@ -54,11 +56,38 @@ Live results are on the dashboard (`http://100.118.171.118:8780`).
 - Voice: Piper "lessac" for now. The voice engine is **swappable** in Settings (PIP-NEW-097, D-73).
 - He says what actually happened ("Timer's on" only once the timer exists), asks one short question when unsure, and says so when he doesn't know.
 
-### Memory
-- Saves things when you ask, or **asks first** ("Want me to remember that?"). **Never** saves overheard conversation. Never deletes old memories by itself (D-54).
-- New memories are visible to the household by default. Admins can read all memories, and every read is logged (D-15, D-16).
-- A Memory Center on the dashboard to browse, edit, approve and delete. Ziggletron's memories will be imported for review (D-07).
+### Memory (built in step 5)
+- Saves things **when you ask** ("Pip, remember the bins go out Tuesday night"). **Never** saves overheard conversation. Never deletes old memories by itself (D-54). *Later:* Pip asking first ("Want me to remember that?").
+- New memories are visible to the household by default; one can be made private, and then it's only used when its owner's voice is recognised for sure. Admins can read all memories (D-15, D-16).
+- A **Memory Center** on the dashboard: an inbox to approve or reject, search, add, edit, make private, archive (kept but not used) and delete. Ziggletron's memories will be imported for review in step 8 (D-07).
 - No conversation transcripts or recordings are kept as logs. Your test recordings and voice-trained models stay on the Pi (D-72).
+
+| Say | Pip |
+|---|---|
+| "Remember the bins go out Tuesday night" · "remember I take my coffee black" | "Saved: The bins go out Tuesday night." (exact wording, so you know what he kept) |
+| "Remember Sam is allergic to peanuts" (health, money, relationships, someone's whereabouts, children; or a preference about someone else) | "I'll remember that once it's approved in the memory inbox on the dashboard." |
+| "Actually, I take it with oat milk now" · "forget what I said about coffee" | "Updated: …" · "Forgot: …" |
+| "Remember the door code is 4821" | Refused: passwords, codes, card and phone numbers aren't memories |
+| "What do you remember about me?" · "how do I take my coffee?" | Answers from what he remembers |
+
+```mermaid
+flowchart LR
+    A["'Pip, remember…'"] --> C["Claude words it:<br/>'Sam is allergic to peanuts'<br/>and sorts it"]
+    C --> K{"Pip's code checks"}
+    K -- "password, code, card or phone number" --> R["Refused"]
+    K -- "sensitive · about someone else ·<br/>'my…' from an unknown voice · offline" --> I["Memory inbox:<br/>approve on the dashboard"]
+    K -- "otherwise" --> S["Saved and confirmed:<br/>'Saved: …'"]
+    I -- "Approve" --> S
+```
+
+### People and voices (built in step 5)
+- **People** are added on the dashboard (you first, as Admin). Pip recognises voices on the Pi; the voiceprints never leave it and are never sent to Claude (D-87, D-89).
+- **Learning a voice:** "Learn my voice" on the dashboard (Pip beeps, you read five sentences shown there), or from your M0 recordings (owner only), or bit by bit when you say "Pip, I'm Sam".
+- Pip is **sure** ("Landen"), **probably** ("Landen?") or doesn't know ("Someone"). Claude is told who's talking, so "my" and "me" mean the right person. The conversation feed shows the name.
+- **"Pip, leave me out"**: what you say in the room stays on the Pi from then on (D-77). You can still call Pip by name. "Pip, include me again" undoes it. Visitors can say it too; for them it lasts this visit.
+- **Visitors** who say "Pip, I'm Jordan" are remembered for that visit only (forgotten after 2 hours of quiet or a restart).
+- "Pip, who am I?" says who he thinks you are.
+- Voice alone is never enough for admin things (settings, approving changes); those need the dashboard.
 
 ### Timers, reminders, calendar, lists
 - Everything Ziggletron did (timers, repeating and person-targeted reminders, calendar, alarms that keep ringing until answered, "earned" alarms), plus voice snooze and dashboard creation.

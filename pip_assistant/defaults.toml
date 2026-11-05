@@ -32,6 +32,14 @@ wait_for_speech_seconds = 4.0      # In the follow-up window, how long to wait f
 after_wake_seconds = 0.7           # After the wake word, how long to wait for a question (else it came before the name).
 transcript_wake = true             # Also spot Pip's name in the transcript of room speech, like Ziggletron (D-77).
 
+[voices]
+# Recognising who's speaking (step 5, D-87). Voiceprints stay on the Pi and are never sent to Claude.
+model = "nemo_en_titanet_small"    # In ~/pip-data/models/speaker (downloaded by deploy/install.sh).
+sure = 0.45                        # Match this close (and clearly ahead of anyone else) = "sure": personal things, private memories.
+probably = 0.33                    # This close = "probably": low-stakes personalising only. Below = "Someone".
+margin = 0.05                      # "Sure" also needs to beat the next-closest person by this much.
+min_seconds = 0.8                  # Shorter speech is too little to recognise a voice.
+
 [stt]
 provider = "groq"                  # Speech-to-text service (swappable, PIP-NEW-008; D-48).
 model = "whisper-large-v3-turbo"
