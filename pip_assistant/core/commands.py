@@ -26,6 +26,14 @@ ACK = re.compile(r"\b(stop|ok(ay)?|o\.k\.|got it|thanks|thank you|turn (it )?off
                  r"we'?re up|coming|alright|all right|enough|dismiss|quiet|yes|yeah|yep|done|heard you|i hear you)\b")
 SNOOZE = re.compile(r"\b(snooze|(\d+) more minutes?|five more minutes|later)\b")
 HALLUCINATION = re.compile(r"^(thank you|thanks for watching|you|bye)\W*$")  # what speech-to-text "hears" in noise
+REF = re.compile(r"\b(that|it|this|that one|this one)\b")
+# Changing something that already exists. Rules that *create* things step aside when they see these,
+# so "change that alarm to 7:30" can never make a second alarm.
+CHANGE_WORDS = re.compile(r"\b(change|move|push|pull|shift|reschedule|update|bump|switch|postpone|delay|instead|bring)\b|"
+                          r"\b(make|set) (it|that|this)\b|^(actually|i mean|i meant|no|wait|sorry)\b")
+SHIFT = re.compile(r"\b(add|take|knock)( off)? (another |an? |\d+(\.\d+)? |a couple (of )?|a few )?(more |extra )?"
+                   r"(minutes?|seconds?|hours?|mins?|secs?|hrs?)\b|\b(give it|another) (\d+|an?) (more )?(minutes?|seconds?|hours?)\b|"
+                   r"\b(later|earlier|sooner|back|forward|ahead)\b")
 
 KIND_WORDS = {"timer": "timer", "timers": "timer", "alarm": "alarm", "alarms": "alarm",
               "reminder": "reminder", "reminders": "reminder"}
@@ -85,10 +93,32 @@ class Commands:
         self.s = schedule
         self.clock = clock
         self.awaiting: dict | None = None   # Pip asked a question ("For how long?") and waits for the answer
-        self.last_timer: tuple[str, float] | None = None  # for "actually, 15 minutes"
+        self._focus: tuple[str, str, float] | None = None  # ("alert"/"event", id, when): what "that" and "it" mean
 
     def now(self) -> datetime:
         return datetime.fromtimestamp(self.clock())
+
+    # ---------------------------------------------------------------- "that" / "it"
+    def remember(self, table: str, item_id: str) -> None:
+        self._focus = (table, item_id, self.clock())
+
+    def focus(self, max_age: float = 15 * 60) -> tuple[str, dict] | None:
+        """The item talked about (or rung) most recently, if it still exists."""
+        cands = [f for f in (self._focus, ("alert", *self.s.last_rung) if self.s.last_rung else None) if f]
+        for table, item_id, at in sorted(cands, key=lambda f: -f[2]):
+            if self.clock() - at > max_age:
+                continue
+            if table == "alert":
+                row = self.s._row(item_id)
+                if row and row["state"] in ("waiting", "ringing"):
+                    return "alert", row
+            elif ev := self.s.event(item_id):
+                return "event", ev
+        return None
+
+    @staticmethod
+    def _kind_of(table: str, row: dict) -> str:
+        return "event" if table == "event" else row["kind"]
 
     # ---------------------------------------------------------------- entry points
     async def while_ringing(self, text: str, reason: str) -> str | None:
@@ -121,9 +151,11 @@ class Commands:
             if reply is not None:
                 return reply
         self.awaiting = None
+        if re.match(r"^(cancel|delete|remove|scrap) (that|it|this)( one)?$", t) and (f := self.focus(120)):
+            return self._cancel_item(*f)  # just set something, then "cancel that"
         if STOP.match(t):
             return ""
-        for rule in (self._snooze, self._correction, self._time, self._cancel, self._change, self._timer_query,
+        for rule in (self._snooze, self._time, self._cancel, self._change, self._timer_query,
                      self._timer, self._alarm, self._list_alerts, self._event_add, self._event_remove,
                      self._event_query, self._reminder):
             reply = rule(t)
@@ -150,10 +182,13 @@ class Commands:
                 return self._make_reminder(at, a["slots"]["what"], a["slots"].get("repeat", ""))
         if a["intent"] == "event_day" and (d := when.day(t, self.now())):
             at = when.clock(t, self.now())
-            title = a["slots"]["title"]
             start = datetime.combine(d, at.time()) if at else datetime.combine(d, datetime.min.time())
-            self.s.add_event(title, start, all_day=not at, repeat=a["slots"].get("repeat", ""))
-            return f"Added {title}, {when.say_day(d, self.now().date())}" + (f" at {when.say_clock(start)}." if at else ".")
+            return self._add_event(a["slots"]["title"], start, all_day=not at, rep=a["slots"].get("repeat", ""))
+        if a["intent"] == "which_change":
+            picks = [(tb, x) for tb, x in a["slots"]["options"] if match_label(self._title(tb, x), t) >= 0.75]
+            if len(picks) == 1:
+                return self._change_item(*picks[0], a["slots"]["text"])
+            return None
         if a["intent"] == "which":
             picks = [x for x in a["slots"]["options"] if match_label(x["label"], t) >= 0.75]
             if re.search(r"\b(all|both|every|everything)\b", t):
@@ -170,18 +205,6 @@ class Commands:
             if not self.s.ringing:
                 return "Nothing's ringing right now."
             return await self.while_ringing(t, "voice")
-        return None
-
-    def _correction(self, t):
-        """'Set a timer for 10 minutes... actually 15': the same timer becomes 15 minutes."""
-        if not re.match(r"^(actually|no|wait|sorry|i mean|i meant)\b", t) or not self.last_timer:
-            return None
-        aid, made = self.last_timer
-        secs = when.duration(t)
-        row = self.s._row(aid)
-        if secs and row and row["state"] == "waiting" and self.clock() - made < 60:
-            self.s.update(aid, due=self.clock() + secs, length=secs)
-            return f"Changed it to {when.say_duration(secs)}."
         return None
 
     def _time(self, t):
@@ -202,7 +225,11 @@ class Commands:
         if not re.search(r"\b(cancel|delete|remove|clear|kill|turn off|get rid of|stop|end|scrap|drop)\b", t):
             return None
         kind = self._kind_in(t)
-        if not kind or re.search(r"\bcalendar\b", t):
+        if re.search(r"\bcalendar\b", t):
+            return None
+        if REF.search(t) and (f := self.focus()) and (not kind or self._kind_of(*f) == kind):
+            return self._cancel_item(*f)  # "cancel that" / "cancel that timer": the one we just talked about
+        if not kind:
             return None
         opts = self.s.active((kind,))
         everything = re.search(r"\b(all|every|both|everything)\b", t)
@@ -227,6 +254,13 @@ class Commands:
         for p in picks:
             self.s.cancel(p["id"])
         return self._cancelled_text(picks)
+
+    def _cancel_item(self, table: str, row: dict) -> str:
+        if table == "event":
+            self.s.remove_event(row["id"])
+            return f"Took {row['title']} off the calendar."
+        self.s.cancel(row["id"])
+        return self._cancelled_text([row])
 
     def _names(self, rows) -> list[str]:
         out = []
@@ -255,26 +289,139 @@ class Commands:
             return f"Cancelled your {when.say_clock(datetime.fromtimestamp(r['due']))} alarm."
         return "Reminder's cancelled."
 
+    # ---------------------------------------------------------------- changing anything (timers, alarms, reminders, events)
     def _change(self, t):
-        m = re.search(r"\b(add|put|give it|another)\b.*\b(to|on)\b.*\btimer\b|\b(make|change|update|reset)\b (the|my|that|it|this)\b.*?(timer|it)\b|"
-                      r"\b(take|knock)\b.*\boff\b.*\btimer\b|\b(add|another)\b.*\b(more )?(minutes?|seconds?|hours?)\b", t)
-        if not m or not (secs := when.duration(t)):
+        """'Change that alarm to 7:30', 'add a minute to the pasta timer', 'move the dentist to Saturday',
+        'push my reminder back an hour', 'actually 15 minutes'. Works the same for every kind of item."""
+        n = when.numbers(t)
+        if not (CHANGE_WORDS.search(t) or SHIFT.search(n)) or re.search(r"\b(cancel|delete|remove)\b", t):
             return None
-        timers = self.s.active(("timer",))
-        if not timers:
-            return None if re.search(r"\b(make|set)\b", t) else "You don't have a timer going."
-        wanted = label_from(t)
-        pick = max(timers, key=lambda o: match_label(o["label"], wanted)) if wanted else (timers[0] if len(timers) == 1 else None)
-        if pick is None:
-            return self._ask(f"Which one: {self._join(self._names(timers), 'or')}?", "which_change")
-        if re.search(r"\b(add|another|more|extra)\b", t):
-            due = pick["due"] + secs
-        elif re.search(r"\b(take|knock)\b", t):
-            due = max(self.clock() + 1, pick["due"] - secs)
-        else:
-            due = self.clock() + secs
-        self.s.update(pick["id"], due=due, length=(pick["length"] or 0) + (due - pick["due"]))
-        return f"Done, {when.say_left(due - self.clock())} left."
+        if re.match(r"^(actually|i mean|i meant|no|wait|sorry)\b", t) and not self.focus(120):
+            return None  # a correction only makes sense right after setting something
+        kind = self._kind_in(t) or ("event" if re.search(r"\b(calendar|event|appointment)\b", t) else None)
+        target_text = re.split(r"\s\b(to|until|till)\b\s", t)[0] if re.search(r"\s\b(to|until|till)\b\s", t) else t
+        found = self._target(target_text, kind)
+        if found is None:
+            return None
+        if isinstance(found, str):
+            return found
+        if isinstance(found, list):
+            names = [self._title(tb, x) for tb, x in found]
+            self.awaiting = {"intent": "which_change", "slots": {"options": found, "text": t}, "until": self.clock() + 20}
+            return f"Which one: {self._join(names, 'or')}?"
+        return self._change_item(*found, t)
+
+    def _title(self, table: str, row: dict) -> str:
+        if table == "event":
+            return row["title"]
+        return self._names([row])[0]
+
+    def _target(self, t: str, kind: str | None):
+        """What they want to change: (table, row), a list to choose from, a reply ("You don't have..."), or None."""
+        alerts = [("alert", a) for a in self.s.active(("timer", "alarm", "reminder")) if not kind or a["kind"] == kind]
+        events = [("event", e) for e in self.s.all_events()] if kind in (None, "event") else []
+        everything = alerts + events
+        if kind != "timer" and (at := when.clock(t, self.now())):  # "the 6 AM alarm", "the dentist at 2"
+            by_time = [(tb, x) for tb, x in everything if
+                       abs(datetime.fromtimestamp(x["start"] if tb == "event" else x["due"]).time().hour * 60 +
+                           datetime.fromtimestamp(x["start"] if tb == "event" else x["due"]).minute -
+                           (at.hour * 60 + at.minute)) < 1]
+            if len(by_time) == 1:
+                return by_time[0]
+        wanted =" ".join(w for w in re.sub(r"[^\w' ]", " ", label_from(t)).split()
+                          if w not in ("alarm", "reminder", "event", "calendar", "appointment", "move", "change", "push",
+                                       "back", "later", "earlier", "make", "actually", "reschedule", "shift", "bump",
+                                       "minute", "hour", "move", "please", "can", "you", "our", "today", "tomorrow")
+                          and not re.match(rf"^({'|'.join(when.WEEKDAYS)})$", w))
+        if wanted:
+            scored = [(match_label(self._title(tb, x).lower(), wanted), (tb, x)) for tb, x in everything]
+            picks = [p for sc, p in scored if sc >= 0.75]
+            if len(picks) == 1:
+                return picks[0]
+            if len(picks) > 1:
+                return picks
+        f = self.focus()
+        if f and (not kind or self._kind_of(*f) == kind):
+            return f
+        if len(everything) == 1 and (kind or REF.search(t)):
+            return everything[0]
+        if not everything:
+            return f"You don't have any {kind}s." if kind and kind != "event" else (None if not kind else "Your calendar's empty.")
+        if kind and len(everything) > 1:
+            return everything
+        return None
+
+    def _change_item(self, table: str, row: dict, t: str) -> str | None:
+        """Work out the new time from what they said, then change it."""
+        n = when.numbers(t)
+        k = self._kind_of(table, row)
+        old = datetime.fromtimestamp(row["start"] if table == "event" else row["due"])
+        value = re.split(r"\s\b(to|until|till)\b\s", t)[-1] if re.search(r"\s\b(to|until|till)\b\s", t) else t
+        secs = when.duration(n)
+        if secs and SHIFT.search(n):
+            sign = -1 if re.search(r"\b(take|knock|earlier|sooner|forward|ahead)\b", n) else 1
+            return self.apply_change(table, row, shift=sign * secs)
+        if k == "timer":
+            if secs or (m := re.search(r"\b(\d+(?:\.\d+)?)\s*$", n)):
+                return self.apply_change(table, row, length=secs or float(m.group(1)) * 60)  # "actually 15" = minutes
+            return None
+        at = self._retime(old, value)
+        if at is None:
+            return None
+        return self.apply_change(table, row, at=at)
+
+    def _retime(self, old: datetime, v: str) -> datetime | None:
+        """A new time for an item at `old`. Keeps the day unless one is said, and keeps the clock time if only a day
+        is said. Without AM/PM, picks whichever is nearer the old time ('8 AM alarm to 7:30' = 7:30 AM)."""
+        now = self.now()
+        nv = when.numbers(v)
+        d = when.day(v, now)
+        at = when.clock(f"at {nv}" if re.match(r"^\s*\d", nv) else nv, now)
+        if at is None:
+            return datetime.combine(d, old.time()) if d else None
+        explicit = re.search(r"\d\s*(am|pm)\b|a\.m|p\.m|\b(morning|afternoon|evening|tonight|night|noon|midnight)\b", nv) or at.hour >= 13
+        hours = [at.hour] if explicit else sorted({at.hour % 12, at.hour % 12 + 12})
+        base = d or old.date()
+        opts = [datetime.combine(base, datetime.min.time()).replace(hour=h, minute=at.minute) for h in hours]
+        pick = min(opts, key=lambda o: abs((o - old).total_seconds()))
+        if pick <= now and not d:
+            future = [o for o in opts if o > now]
+            pick = min(future) if future else pick + timedelta(days=1)
+        return pick
+
+    def apply_change(self, table: str, row: dict, at: datetime | None = None, shift: float | None = None,
+                     length: float | None = None) -> str:
+        """Change one item, read it back, and say what it is now. Used by voice rules and Claude's actions alike."""
+        now_ts = self.clock()
+        self.remember(table, row["id"])
+        if table == "event":
+            start = at or datetime.fromtimestamp(row["start"] + (shift or 0))
+            all_day = bool(row["all_day"]) and at is not None and at.time() == datetime.min.time()
+            ev = self.s.update_event(row["id"], start, all_day=all_day if at else None)
+            when_txt = when.say_day(start.date(), self.now().date()) + ("" if ev["all_day"] else f" at {when.say_clock(start)}")
+            return f"Moved {ev['title']} to {when_txt}."
+        if row["kind"] == "timer":
+            if length:
+                due, length_ = now_ts + max(1.0, length), max(1.0, length)
+            elif at:
+                due, length_ = at.timestamp(), (row["length"] or 0) + (at.timestamp() - row["due"])
+            else:
+                due = max(now_ts + 1, row["due"] + (shift or 0))
+                length_ = (row["length"] or 0) + (due - row["due"])
+            self.s.update(row["id"], due=due, length=length_, state="waiting")
+            return f"Changed it to {when.say_duration(length_)}." if length else f"Done, {when.say_left(due - now_ts)} left."
+        new = at or datetime.fromtimestamp(row["due"] + (shift or 0))
+        if row["repeat"]:
+            new = when.first_repeat(row["repeat"], new)
+            if new.timestamp() <= now_ts:
+                new = when.next_repeat(row["repeat"], new, self.now()) or new
+        if new.timestamp() <= now_ts:
+            return "That time's already passed, so I left it as it was."
+        self.s.update(row["id"], due=new.timestamp(), state="waiting")
+        if row["kind"] == "alarm":
+            r = f" {when.say_repeat(row['repeat'])}" if row["repeat"] else ""
+            return f"Moved your alarm to {when.say_clock(new)}{r}." if r else f"Moved your alarm to {when.say_time(new, self.now())}."
+        return f"Okay, I'll remind you {at_phrase(new, self.now(), soon=False)} instead."
 
     def _timer_query(self, t):
         if not re.search(r"\b(how (long|much time|much longer)|time left|time is left|time's left|what timers|any timers|"
@@ -298,7 +445,8 @@ class Commands:
         return (self._join(parts) + ".").capitalize() if len(parts) > 1 else parts[0][0].upper() + parts[0][1:] + "."
 
     def _timer(self, t):
-        if not re.search(r"\btimer\b|\bcount ?down\b", t) or re.search(r"\b(cancel|delete|remove|what|how|any)\b", t):
+        if not re.search(r"\btimer\b|\bcount ?down\b", t) or re.search(r"\b(cancel|delete|remove|what|how|any)\b", t) or \
+                CHANGE_WORDS.search(t):
             return None
         secs = when.duration(t)
         label = label_from(t)
@@ -309,13 +457,13 @@ class Commands:
     def _make_timer(self, secs: float, label: str) -> str:
         secs = max(1.0, secs)
         row = self.s.add("timer", label or "timer", self.clock() + secs, length=secs)
-        self.last_timer = (row["id"], self.clock())
+        self.remember("alert", row["id"])
         name = "Timer's" if not label else f"{label.capitalize()} timer's"
         return f"{name} on, {when.say_duration(secs)}."
 
     def _alarm(self, t):
         if not re.search(r"\b(alarm|wake (me|us|everyone|everybody)( up)?|get (me|us) up)\b", t) or \
-                re.search(r"\b(what|any|which|cancel|delete|remove|turn off)\b", t):
+                re.search(r"\b(what|any|which|cancel|delete|remove|turn off)\b", t) or CHANGE_WORDS.search(t):
             return None
         rep = when.repeat(t)
         at = when.clock(t if re.search(r"\b(at|for|by)\b", t) or re.search(r"\d(:\d\d)?\s*(am|pm)", t) else f"at {t}", self.now())
@@ -327,7 +475,8 @@ class Commands:
 
     def _make_alarm(self, at: datetime, label: str, rep: str) -> str:
         at = when.first_repeat(rep, at) if rep else at
-        self.s.add("alarm", label or "alarm", at.timestamp(), repeat=rep)
+        row = self.s.add("alarm", label or "alarm", at.timestamp(), repeat=rep)
+        self.remember("alert", row["id"])
         r = f" {when.say_repeat(rep)}" if rep else ""
         return f"Alarm set for {when.say_clock(at)}{r}." if rep else f"Alarm set for {when.say_time(at, self.now())}."
 
@@ -387,7 +536,8 @@ class Commands:
     def _make_reminder(self, at: datetime, what: str, rep: str) -> str:
         at = when.first_repeat(rep, at) if rep else at
         what = re.sub(r"\bmy\b", "your", re.sub(r"\bi\b", "you", what))
-        self.s.add("reminder", what, at.timestamp(), repeat=rep)
+        row = self.s.add("reminder", what, at.timestamp(), repeat=rep)
+        self.remember("alert", row["id"])
         r = f"{when.say_repeat(rep)} at {when.say_clock(at)}" if rep else at_phrase(at, self.now())
         return f"Okay, I'll remind you {r}."
 
@@ -395,7 +545,7 @@ class Commands:
     def _event_add(self, t):
         m = re.search(r"\b(put|add|schedule|pencil( in)?|book|note)\b\s+(.+?)\s+\b(on|to|in|into)\b\s+(the |my |our )?(calendar|schedule)\b(.*)$", t) or \
             re.search(r"\b(add|put|schedule|create)\b\s+(an? )?(event|appointment)\s+(called |for )?(.+)$", t)
-        if not m:
+        if not m or CHANGE_WORDS.search(t):
             return None
         if m.re.pattern.startswith(r"\b(put"):
             title, rest = m.group(3), m.group(7)
@@ -426,7 +576,11 @@ class Commands:
         heads = None
         if re.search(r"\b(remind|heads up|warn|tell me)\b", combo):
             heads = when.duration(combo.split("remind")[-1]) or 0.0
-        self.s.add_event(title, at, all_day=all_day, repeat=rep, heads_up_before=heads)
+        return self._add_event(title, at, all_day=all_day, rep=rep, heads=heads)
+
+    def _add_event(self, title: str, at: datetime, all_day: bool = False, rep: str = "", heads: float | None = None) -> str:
+        ev = self.s.add_event(title, at, all_day=all_day, repeat=rep, heads_up_before=heads)
+        self.remember("event", ev["id"])
         when_txt = when.say_day(at.date(), self.now().date()) + ("" if all_day else f" at {when.say_clock(at)}")
         if rep:
             when_txt = when.say_repeat(rep) + ("" if all_day else f" at {when.say_clock(at)}")
@@ -437,6 +591,11 @@ class Commands:
         if not m:
             return None
         wanted = re.sub(r"^(the|my|our|a|an)\s+", "", m.group(2)).strip()
+        if REF.fullmatch(wanted) or wanted in ("that event", "that appointment", "it", "that one"):
+            f = self.focus()
+            if f and f[0] == "event":
+                return self._cancel_item(*f)
+            return "Which event? I'm not sure which one you mean."
         wanted_day = when.day(wanted, self.now())
         wanted = re.split(r"\s+\b(on|at|this|next|tomorrow|today)\b", f"{wanted} ")[0].strip()
         evs = self.s.all_events()
@@ -448,8 +607,7 @@ class Commands:
             return f"I can't find {wanted} on the calendar."
         if len(picks) > 1:
             return f"There are {len(picks)} of those. Which day?"
-        self.s.remove_event(picks[0]["id"])
-        return f"Took {picks[0]['title']} off the calendar."
+        return self._cancel_item("event", picks[0])
 
     def _event_query(self, t):
         if not (re.search(r"\b(calendar|schedule|planned|plans)\b", t) and re.search(r"\b(what|anything|any|is there|do (i|we) have|what's)\b", t)) and \

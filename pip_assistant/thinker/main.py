@@ -30,11 +30,20 @@ Say numbers, times and temperatures the way a person would.
 Be honest. If you don't know or aren't sure, say so briefly. If what you heard sounds garbled or \
 not meant for you, ask them to say it again.
 
-Timers, alarms, reminders and the calendar are handled by Pip's own command system before a message \
-reaches you, and you can see what's set below. You can't set, change or cancel them yourself: if a request \
-like that reaches you, it wasn't understood, so ask them to say it simply, like "set a timer for ten minutes" \
-or "remind me at 6 to call Mom". You also can't yet remember things, send messages or control devices; \
-if asked, say that's coming soon. Never claim to have done something.
+Timers, alarms, reminders and the calendar: Pip's own command system handles the usual phrasings before a \
+message reaches you, and each message lists what's set, with ids like #a1b2c3. If they ask to set, change, \
+move, cancel or remove one of these and it reaches you, reply with ONLY one line, nothing else:
+ACTION {{"do": "add", "kind": "timer", "seconds": 600, "label": "pasta"}}
+Pip's code carries it out and says the confirmation, so never confirm in words. Forms:
+- add: kind "timer" with seconds; "alarm" with at; "reminder" with label (what to remind, as they'd hear it) and at; \
+"event" with title and at, or with date and "all_day": true. Optional: "repeat" ("daily", "weekdays", "weekends", \
+"weekly:0" to "weekly:6" where 0 is Monday), "heads_up_minutes" for events.
+- change: "id" plus a new "at", or "shift_seconds" (negative for earlier), or "seconds" (a timer's new length).
+- cancel: "id" (also removes a calendar event).
+Times are local, written like 2026-11-07T14:00. Several at once: a JSON list after ACTION. Only use ACTION \
+when they clearly asked for one of these; if it's unclear which item or what time they mean, ask briefly instead. \
+For questions about what's set, just answer from the list. You can't yet remember things, send messages or \
+control devices; if asked, say that's coming soon. Never claim to have done something.
 
 Use the weather below for weather questions instead of searching. Only search the web for current \
 facts you genuinely don't know (news, scores, opening hours).
@@ -82,7 +91,10 @@ class Thinker:
         except Exception as e:
             log.warning("answer failed: %s", e)
             return msg.reply({"error": f"{type(e).__name__}: {str(e)[:120]}"}, source="thinker")
-        return msg.reply({k: v for k, v in info.items() if v is not None}, private={"text": text}, source="thinker")
+        action = info.pop("action", None)  # what was asked for: private, like everything people say (D-34)
+        info["action"] = bool(action)
+        private = {"text": text} | ({"action": action} if action else {})
+        return msg.reply({k: v for k, v in info.items() if v is not None}, private=private, source="thinker")
 
     async def on_cancel(self, msg: Message):
         self.claude.cancel(msg.data.get("answer_id"))

@@ -60,6 +60,10 @@ class SentenceSplitter:
         return [rest] if rest else []
 
 
+def is_action(text: str) -> bool:
+    return text.lstrip(" `\n").upper().startswith("ACTION")
+
+
 class ClaudeCLI:
     def __init__(self, model: str = "", web_search: bool = True, timeout: float = 45.0, effort: str = ""):
         self.exe = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
@@ -102,12 +106,20 @@ class ClaudeCLI:
         t0 = time.perf_counter()
         info = {"first_sentence_s": None, "searched": False}
         split, full = SentenceSplitter(), []
+        mode, head, pieces = None, "", []  # mode: "speak", or "action" (a timer/calendar request for pip-core, never spoken)
+
+        async def speak(piece: str):
+            for s in split.feed(piece):
+                info["first_sentence_s"] = info["first_sentence_s"] or round(time.perf_counter() - t0, 2)
+                full.append(s)
+                await on_sentence(s)
         try:
             proc.stdin.write((json.dumps({"type": "user", "message": {"role": "user", "content": user_text}}) + "\n").encode())
             await proc.stdin.drain()
             proc.stdin.close()
 
             async def read():
+                nonlocal mode, head
                 async for raw in proc.stdout:
                     try:
                         ev = json.loads(raw)
@@ -122,19 +134,31 @@ class ClaudeCLI:
                                 await on_searching()
                         d = e.get("delta", {})
                         if d.get("type") == "text_delta":
-                            for s in split.feed(d.get("text", "")):
-                                info["first_sentence_s"] = info["first_sentence_s"] or round(time.perf_counter() - t0, 2)
-                                full.append(s)
-                                await on_sentence(s)
+                            piece = d.get("text", "")
+                            pieces.append(piece)
+                            if mode is None:
+                                head += piece
+                                if len(head.lstrip(" `\n")) < 6:
+                                    continue  # not sure yet whether it's an ACTION line
+                                mode = "action" if is_action(head) else "speak"
+                                piece = head
+                            if mode == "speak":
+                                await speak(piece)
                     elif ev.get("type") == "result":
                         info["is_error"] = ev.get("is_error", False)
                         info["cost_usd"] = ev.get("total_cost_usd")
             await asyncio.wait_for(read(), self.timeout)
+            if mode is None:  # a very short answer ("Sure.")
+                mode = "action" if is_action(head) else "speak"
+                if mode == "speak":
+                    await speak(head)
+            if mode == "action":
+                info["action"] = "".join(pieces)
             for s in split.flush():
                 full.append(s)
                 await on_sentence(s)
             await proc.wait()
-            if proc.returncode not in (0, None) and not full:
+            if proc.returncode not in (0, None) and not full and mode != "action":
                 err = (await proc.stderr.read()).decode(errors="replace")[-200:]
                 raise RuntimeError(f"claude exited {proc.returncode}: {err}")
         finally:

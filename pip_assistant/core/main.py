@@ -75,6 +75,8 @@ async def main() -> None:
         loop.add_signal_handler(sig, stop.set)
     keeper = asyncio.create_task(bus.housekeeping())
     alarms = asyncio.create_task(bus.schedule.run())
+    from .voicecheck import voice_seconds_sync  # load the voice detector now, not on the first thing heard
+    loop.run_in_executor(None, voice_seconds_sync, bytes(3200))
     await stop.wait()
     keeper.cancel()
     alarms.cancel()

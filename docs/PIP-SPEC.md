@@ -28,6 +28,8 @@ Pip is a playful companion living in a dorm room on a Raspberry Pi 5, with a USB
 | Does "Ziggletron" wake Pip? | With synthetic speech, "Ziggletron" woke the Pippletron detector 13/20 times at strictness 0.5 and 4/20 at 0.8 ("Pippletron" itself: 19/20 at 0.8). So Pippletron uses **0.8**, step 3 adds a transcript check, and a retrain with more "Ziggletron" examples is planned | — |
 | Why did step 3 feel worse than Ziggletron? (owner test) | Answers too long and assistant-like; the detector alone missed many "Hey Pip"s (Ziggletron reads the words instead); the default Claude model is slower (first words 2.3 s vs 0.9 s for sonnet); web search ~16 s with the "look that up" line not always said. Fixed by D-79 and D-80. Owner retest: hears his name "most of the time", never woke by mistake, but still too long and slower, because saying only the name made Pip wait 1.2 s, say "Yes?" over you, then start again. Fixed by D-81 (0.7 s waits, no "Yes?", joins a paused sentence, two-sentence cap). Web search is still ~15 s: that's Claude's search itself | — |
 | Can the Pi hear commands with no internet? (D-83) | Yes, with **Whisper base on the Pi**: about 2.4 s per request on your recordings (vs 0.4 s for Groq). Without its built-in speech filter it "heard" *Pippletron* in plain noise (it copies the word list), which could stop an alarm by mistake, so the filter is always on: noise now gives nothing | D-83 |
+| Can Pip tell a phantom "Thank you." from a real one? (D-85) | **Not from the words or Whisper's confidence**: Groq always reports "no speech" as 0%, and a click came back as "Thank you." more confidently than real speech said "Okay." A **voice detector on the Pi (Silero)** separated them perfectly: no voice in any of 12 noises (click, knock, hiss, breath, beep), voice found in all 56 real clips, including quiet one-word "yes" and "thank you", in about 10 ms each. Your step 4 test had 24 such phantoms in one day | D-85 |
+| Can Claude turn odd wordings into timer/calendar actions? (D-84) | Yes: 5 of 5 tried came back as correct actions ("remove that", "Mom's birthday November 20th all day", "half an hour earlier than my alarm", "every Sunday evening at 8, laundry"); it asked rather than guess when a dentist visit already existed; ordinary questions were still answered in words | D-84 |
 | Can the Pi run Pip comfortably? | Yes: 10 min of everyday work used 16% CPU on average (55% peak), 1.5 GB memory, 68 °C; the wake detector never fell behind | — |
 | Still running | Overnight false-wake checks for both wake words (until 07:30); they tune sensitivity only | — |
 
@@ -62,12 +64,25 @@ Live results are on the dashboard (`http://100.118.171.118:8780`).
 - Everything Ziggletron did (timers, repeating and person-targeted reminders, calendar, alarms that keep ringing until answered, "earned" alarms), plus voice snooze and dashboard creation.
 - **Works offline** for the basics (timers, stop, snooze, volume) (PIP-NEW-044).
 
-**How it works (built in step 4):** Pip understands these requests himself, on the Pi, without asking Claude. That makes them instant and means they work offline (D-83). He only says "Timer's on" once it's really saved (PIP-NEW-039). Anything else still goes to Claude, who can *see* what's set (so "what's on this week?" in odd wording still works) but can't change it.
+**How it works (built in step 4, fixed after your test):** Pip understands the usual requests himself, on the Pi, without asking Claude. That makes them instant and means they work offline (D-83). **Any other wording goes to Claude, who turns it into an action; Pip's own code checks it, does it and confirms** (D-84). Either way he only says "Timer's on" once it's really saved (PIP-NEW-039).
+
+```mermaid
+flowchart LR
+    Y["You: 'set a thing on the calendar<br/>in two days for the dentist'"] --> R{"Pip's own rules<br/>understand it?"}
+    R -- "yes (instant, works offline)" --> DO["Pip's code does it<br/>and reads it back"]
+    R -- "no" --> C["Claude turns it into an action:<br/>add event · dentist · Sat 2 PM"]
+    C --> CHK{"Checks out?<br/>(real item, future time)"}
+    CHK -- "yes" --> DO
+    CHK -- "no" --> F["'Sorry, that didn't work.<br/>Nothing was changed.'"]
+    DO --> S["Pip says it:<br/>'Added dentist, Saturday at 2 PM.'"]
+```
 
 | Say | Pip |
 |---|---|
 | "Set a pasta timer for ten minutes" · "set a timer" → "For how long?" | "Pasta timer's on, 10 minutes." |
-| "…actually fifteen" (within a minute) | Changes the same timer: "Changed it to 15 minutes." |
+| "…actually fifteen" · "make it 5 minutes" | Changes the same timer: "Changed it to 15 minutes." |
+| "Change that alarm to 7:30" · "move my alarm 10 minutes later" · "push the reminder back an hour" · "move the dentist to Saturday" · "move it to 3" | Moves the **same** item (never adds a second one): "Moved your alarm to 7:30 AM tomorrow." Works for timers, alarms, reminders and events alike |
+| "Cancel that" (right after setting something) · "remove that from the calendar" | "That" / "it" means the item just talked about, or the one that just rang |
 | "How long's left on the pasta?" · "add two minutes to the egg timer" | "Pasta has 4 minutes left." · "Done, 5 minutes left." |
 | "Cancel the timer" (when there are two) | "Which one: pasta or eggs?" · no match: "There's no laundry timer." |
 | "Wake me up at 7" · "set an alarm for 6:30 every weekday" | "Alarm set for 7 AM tomorrow." |
@@ -87,10 +102,28 @@ flowchart LR
 ```
 
 - **Survives restarts and power cuts**: saved the moment it's made. If Pip was off when something was due, it still rings if it's less than 30 minutes late; otherwise the dashboard shows it as missed.
-- **The dashboard** (`:8790`) shows live countdowns, alarms, reminders and the next two weeks of the calendar, with Shut off, Snooze, Cancel, a "Start timer" form and a box to type a command.
+- **The dashboard** (`:8790`) shows Pip's state, live countdowns, alarms, reminders and the next two weeks of the calendar. When something rings: one big **Shut off** and one **Snooze** (5 min; ▾ for other lengths). Plus Cancel, a "Start timer" form and a box to type a command.
 - **Offline**: Whisper on the Pi hears the request (about 2.4 s, more mistakes), and only these commands work. Anything else: "I'm offline, so I can only do the basics right now."
 - **Still to come**: alarms you have to earn (FEAT-038, needs Claude to judge), reminders for one person (step 5, voice recognition), ringtone and ring-length settings on the dashboard (step 8; four ringtones exist: classic, kitchen, chimes, gentle).
 - Later (M3): shared shopping and to-do lists, Google Calendar sync, phone notifications via ntfy on the Pi (D-19, D-66).
+
+### Pip's state (what the face will show)
+Pip is always in one of six states, shown on the dashboard and used by the face in step 7 (D-86). When a question goes to Claude, a **soft thinking tone** plays straight away (instead of "One sec."); it can be set to always, only-if-slow, or off.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Listening: wake word (chime)
+    Listening --> Thinking: you stop talking (thinking tone)
+    Thinking --> Speaking: first words
+    Speaking --> Listening: follow-up window (8 s)
+    Listening --> Idle: nothing more said
+    Idle --> Ringing: timer or alarm due
+    Ringing --> Idle: "okay" / snooze / Shut off
+    Idle --> Offline: no internet (only the basics work)
+```
+
+Sounds without a human voice in them (a click, a cough, a hiss) are dropped before speech-to-text, so Pip no longer "hears" a phantom "Thank you." (D-85).
 
 ### Screen and dashboard
 - The animated face on the monitor, with weather clothing and reactions (six-seven stays) (D-35, D-62).

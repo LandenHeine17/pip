@@ -2,10 +2,12 @@
 
     wake word / follow-up / interruption
       → pip-ears sends the audio of what was said (heard.utterance)
+      → is there a human voice in it? (noise never reaches speech-to-text: no phantom "Thank you.", D-85)
       → speech-to-text (Groq)
       → "was that really for Pip?" check (e.g. it was "Ziggletron")
       → one of Pip's own commands (timers, alarms, reminders, calendar, time)? Done on the Pi (step 4)
-      → otherwise pip-thinker asks Claude, streaming the answer sentence by sentence
+      → otherwise pip-thinker asks Claude (a soft thinking tone plays), streaming the answer sentence by sentence;
+        if Claude replies with an ACTION (a timer/calendar request the rules missed), Pip carries it out (D-84)
       → each sentence goes to pip-ears to be spoken
       → afterwards, a short follow-up window: talk again without the name
 
@@ -16,6 +18,9 @@ minutes, so follow-up questions make sense (PIP-NEW-028 category 5).
 Offline (Groq can't be reached): Whisper on the Pi transcribes instead, and only Pip's own commands
 work; anything else gets "I'm offline, so I can only do the basics right now" (PIP-NEW-044, D-83).
 While an alarm rings, everything heard is checked for "stop", "okay", "snooze" or Pip's name first.
+
+Pip's state (idle / listening / thinking / speaking / ringing / offline) is published as `pip.state`
+whenever it changes: the dashboard shows it, and the face (step 7) will react to it (D-86).
 """
 import asyncio
 import base64
@@ -66,6 +71,14 @@ SAYINGS = {
 }
 
 
+def _loop_running() -> bool:
+    try:
+        asyncio.get_running_loop()
+        return True
+    except RuntimeError:
+        return False
+
+
 class Conversation:
     def __init__(self, bus, cfg: dict | None = None, stt=None, schedule=None, local_stt=None):
         from .commands import Commands
@@ -75,8 +88,22 @@ class Conversation:
         self.local_stt = local_stt
         c = (cfg or {}).get("conversation", {})
         self.follow_up_s = c.get("follow_up_seconds", 8.0)
-        self.filler_after = (cfg or {}).get("thinker", {}).get("filler_after_seconds", 3.0)
+        th = (cfg or {}).get("thinker", {})
+        self.tone_mode = th.get("thinking_tone", "always")
+        self.tone_after = th.get("thinking_tone_after_seconds", 1.5)
         self.filler_said = None
+        st = (cfg or {}).get("stt", {})
+        self.voice_check = st.get("voice_check", False) if cfg else False
+        self.min_voice = st.get("min_voice_seconds", 0.15)
+        self.state = "idle"
+        self.speaking = False
+        self.listen_until = 0.0     # chime / follow-up window: Pip is listening for someone
+        self.offline_until = 0.0
+        self.transcribing = False   # working out what was said: part of "thinking"
+        self.say_pending_until = 0.0  # words sent to pip-ears but not playing yet (being turned into speech)
+        self._state_timer = None
+        if schedule is not None:
+            schedule.watchers.append(self.refresh_state)
         self.wait_after_name = c.get("wait_after_name_seconds", 5.0)
         self.unfinished_wait = c.get("unfinished_wait_seconds", 2.0)
         self.max_sentences = c.get("max_sentences", 2)
@@ -97,6 +124,7 @@ class Conversation:
         bus.core_listen("heard.started", self.on_started)
         bus.core_listen("speech.interrupted", self.on_interrupted)
         bus.core_listen("speech.finished", self.on_speech_finished)
+        bus.core_listen("speech.started", self.on_speech_started)
         bus.core_listen("answer.sentence", self.on_sentence)
         bus.core_listen("answer.searching", self.on_searching)
 
@@ -105,7 +133,40 @@ class Conversation:
         await self.bus.route(Message("command", msg_type, source="core", target=target,
                                      data=data or {}, private=private or {}))
 
+    # ---------------------------------------------------------------- Pip's state (for the dashboard and the face)
+    def refresh_state(self) -> None:
+        now = time.monotonic()
+        if self.ringing:
+            state = "ringing"
+        elif self.speaking:
+            state = "speaking"
+        elif self.transcribing or now < self.say_pending_until or \
+                (self.answer_id and self.filler_said in (None, "searching")):
+            state = "thinking"  # until his first words
+        elif now < self.listen_until:
+            state = "listening"
+        elif now < self.offline_until:
+            state = "offline"
+        else:
+            state = "idle"
+        if self._state_timer:
+            self._state_timer.cancel()
+            self._state_timer = None
+        nxt = [t for t in (self.listen_until, self.offline_until, self.say_pending_until) if t > now]
+        if nxt and _loop_running():
+            self._state_timer = asyncio.get_running_loop().call_later(min(nxt) - now + 0.05, self.refresh_state)
+        if state != self.state:
+            self.state = state
+            if _loop_running():
+                asyncio.ensure_future(self.bus.publish(Message("event", "pip.state", source="core", data={"state": state})))
+
+    def listening_for(self, seconds: float) -> None:
+        self.listen_until = max(self.listen_until, time.monotonic() + seconds)
+        self.refresh_state()
+
     async def say(self, text: str, reason: str) -> None:
+        if text and not self.speaking:
+            self.say_pending_until = time.monotonic() + 3.0
         if text:
             await self.command("ears", "ears.say", {"reason": reason}, {"text": text})
 
@@ -133,7 +194,23 @@ class Conversation:
             if self.local_stt is None or (reason == "room" and not self.ringing):
                 raise  # room speech is never transcribed on the Pi (D-50), except to hear "stop" during an alarm
             await self.bus.publish(Message("event", "stt.offline", data={"error": type(e).__name__, "reason": reason}))
+            self.offline_until = time.monotonic() + 120
             return await self.local_stt.transcribe(pcm), True
+
+    async def has_voice(self, pcm: bytes, reason: str) -> bool:
+        """Noise (a click, a cough, a hiss) never reaches speech-to-text, which would hear "Thank you." (D-85)."""
+        if not self.voice_check or reason == "wake":
+            return True  # right after the wake word, someone was certainly talking
+        from .voicecheck import voice_seconds
+        try:
+            secs = await voice_seconds(pcm)
+        except Exception as e:  # never lose speech because the check failed
+            log.warning("voice check failed: %s", e)
+            return True
+        if secs < self.min_voice:
+            await self.bus.publish(Message("event", "heard.noise", data={"reason": reason, "voice_s": round(secs, 2)}))
+            return False
+        return True
 
     # ---------------------------------------------------------------- events
     async def on_wake(self, msg: Message) -> None:
@@ -142,9 +219,12 @@ class Conversation:
         self.answer_id = None  # a new request replaces anything in progress
         await self.command("thinker", "thinker.cancel")
         await self.command("ears", "ears.chime")
+        self.listening_for(8.0)
 
     async def on_started(self, msg: Message) -> None:
         """They started talking again in the window: keep waiting for the rest of a paused sentence."""
+        if msg.data.get("reason") == "follow_up":
+            self.listening_for(12.0)
         if self.pending_task and msg.data.get("reason") == "follow_up":
             self.pending_task.cancel()
             self.pending_task = None
@@ -154,10 +234,16 @@ class Conversation:
             await self.command("thinker", "thinker.cancel", {"answer_id": self.answer_id})
             self.answer_id = None
 
+    async def on_speech_started(self, msg: Message) -> None:
+        self.speaking, self.say_pending_until = True, 0.0
+        self.refresh_state()
+
     async def on_speech_finished(self, msg: Message) -> None:
+        self.speaking, self.say_pending_until = False, 0.0
         self.speech_done.set()
         if self.answer_id is None and not msg.data.get("interrupted"):
             await self._maybe_follow_up()
+        self.refresh_state()
 
     async def on_sentence(self, msg: Message) -> None:
         if msg.data.get("answer_id") != self.answer_id:
@@ -170,23 +256,33 @@ class Conversation:
                 await self.bus.publish(Message("event", "answer.trimmed", data={"after": self.max_sentences}))
             return  # roommates don't give speeches (D-79)
         self.speech_done.clear()
-        self.filler_said = self.filler_said or "first sentence"  # too late for a filler now
+        self.filler_said = self.filler_said or "first sentence"  # he's answering: no longer "thinking"
         await self.say(text, "answer")
+        self.refresh_state()
 
     async def on_searching(self, msg: Message) -> None:
         if msg.data.get("answer_id") == self.answer_id and not self.filler_said:
             self.filler_said = "searching"
             await self.say("Let me look that up.", "searching")
+            self.refresh_state()
 
-    async def _filler(self, aid: str) -> None:
-        await asyncio.sleep(self.filler_after)
+    async def _thinking_tone(self, aid: str) -> None:
+        """Replaces "One sec." (D-86): a soft tone the moment Pip starts thinking (or only if slow; see settings)."""
+        if self.tone_mode == "off":
+            return
+        if self.tone_mode == "slow":
+            await asyncio.sleep(self.tone_after)
         if self.answer_id == aid and not self.filler_said:
-            self.filler_said = "slow"
-            await self.say("One sec.", "slow answer")
+            await self.command("ears", "ears.tone", {"name": "thinking"})
 
     async def on_utterance(self, msg: Message) -> None:
         reason = msg.data.get("reason")
+        if reason != "room":
+            self.listen_until = 0.0
+            self.transcribing = bool(msg.data.get("had_speech"))
+            self.refresh_state()
         if not msg.data.get("had_speech"):
+            await self._finish_pending()
             return
         if reason == "room":
             return await self.on_room(msg)
@@ -195,16 +291,27 @@ class Conversation:
                 await self.say(SAYINGS["stt_failed"], "error")
             return
         pcm = base64.b64decode(msg.private.get("audio_b64", ""))
+        if not await self.has_voice(pcm, reason):
+            self.transcribing = False
+            self.refresh_state()
+            await self._finish_pending()
+            return
         t0 = time.perf_counter()
+        self.transcribing = True
+        self.refresh_state()
         try:
             text, offline = await self.transcribe(pcm, reason)
         except Exception as e:
+            self.transcribing = False
+            self.refresh_state()
             log.warning("speech-to-text failed: %s", e)
             await self.bus.publish(Message("event", "stt.failed", data={"error": type(e).__name__}))
             if reason == "wake":
                 await self.say(SAYINGS["stt_failed"], "error")
             return
         stt_s = round(time.perf_counter() - t0, 2)
+        self.transcribing = False
+        asyncio.get_running_loop().call_soon(self.refresh_state)  # by then he's answering (thinking) or done
         await self.bus.publish(Message("event", "stt.done", data={"seconds": stt_s, "chars": len(text),
                                                                    "reason": reason, "offline": offline}))
         if self.ringing and self.commands:
@@ -233,6 +340,7 @@ class Conversation:
             # Just the name (often followed by a pause): the chime says he's listening. Don't talk over them.
             self.expect_until = time.monotonic() + self.wait_after_name
             await self.command("ears", "ears.listen", {"seconds": self.wait_after_name})
+            self.listening_for(self.wait_after_name)
             return
         if looks_unfinished(text):
             self.pending = text
@@ -278,8 +386,13 @@ class Conversation:
         await self.show("pip", reply, total_s=round(time.perf_counter() - t0, 3), local=True)
         return True
 
-    async def _answer_pending(self, reason: str) -> None:
-        await asyncio.sleep(self.unfinished_wait + 1.0)  # nothing more came: answer what we have
+    async def _finish_pending(self) -> None:
+        """They seemed to start talking again, but it was only noise: answer the paused sentence now."""
+        if self.pending and not self.pending_task:
+            self.pending_task = asyncio.create_task(self._answer_pending("follow_up", wait=0.0))
+
+    async def _answer_pending(self, reason: str, wait: float | None = None) -> None:
+        await asyncio.sleep(self.unfinished_wait + 1.0 if wait is None else wait)  # nothing more came: answer what we have
         text, self.pending, self.pending_task = self.pending, "", None
         if text:
             await self.show("you", text, reason=reason)
@@ -289,8 +402,11 @@ class Conversation:
         """Room speech: transcribe it and check whether it called Pip (the wake detector may have missed it)."""
         if self.stt is None and not (self.ringing and self.local_stt):
             return
+        pcm = base64.b64decode(msg.private.get("audio_b64", ""))
+        if not await self.has_voice(pcm, "room"):
+            return
         try:
-            text, offline = await self.transcribe(base64.b64decode(msg.private.get("audio_b64", "")), "room")
+            text, offline = await self.transcribe(pcm, "room")
         except Exception:
             return
         if self.ringing and self.commands:
@@ -319,7 +435,8 @@ class Conversation:
         self.sentences = 0
         self.long_ok = bool(WANTS_DETAIL.search(text))
         self.filler_said = None
-        filler = asyncio.create_task(self._filler(aid))
+        self.refresh_state()  # thinking
+        filler = asyncio.create_task(self._thinking_tone(aid))
         context = self._context()
         self.history.append({"role": "user", "text": text, "ts": time.time()})
         t0 = time.perf_counter()
@@ -331,12 +448,16 @@ class Conversation:
             reply = Message("reply", "thinker.ask", data={"error": f"{type(e).__name__}"})
         filler.cancel()
         if self.answer_id != aid:
+            self.refresh_state()
             return  # cancelled meanwhile
         self.answer_id = None
+        self.refresh_state()
         if reply.data.get("error"):
             await self.bus.publish(Message("event", "answer.failed", data={"error": reply.data["error"]}))
             await self.say(SAYINGS["thinker_failed"], "error")
             return
+        if reply.private.get("action") and self.commands:
+            return await self.claude_action(reply.private["action"], t0)
         answer = reply.private.get("text", "")
         self.history.append({"role": "pip", "text": answer, "ts": time.time()})
         await self.show("pip", answer, total_s=round(time.perf_counter() - t0, 2),
@@ -344,9 +465,24 @@ class Conversation:
         if self.speech_done.is_set():
             await self._maybe_follow_up()
 
+    async def claude_action(self, raw: str, t0: float) -> None:
+        """Claude turned a request the rules missed into an action; Pip checks it, does it and confirms (D-84)."""
+        from . import actions
+        try:
+            said, done = actions.apply(self.commands, raw)
+        except Exception:
+            log.exception("action failed")
+            said, done = actions.FAILED, 0
+        await self.bus.publish(Message("event", "action.done", data={"count": done, "ok": bool(done)}))
+        self.history.append({"role": "pip", "text": said, "ts": time.time()})
+        self.speech_done.clear()
+        await self.say(said, "command")
+        await self.show("pip", said, total_s=round(time.perf_counter() - t0, 2), local=True)
+
     async def _maybe_follow_up(self) -> None:
         if self.follow_up_s > 0 and self.history and self.history[-1]["role"] == "pip" and not self.ringing:
             await self.command("ears", "ears.listen", {"seconds": self.follow_up_s})
+            self.listening_for(self.follow_up_s)
 
     async def bus_request(self, target, msg_type, data, private, timeout):
         """Ask another program from inside core and wait for its reply."""

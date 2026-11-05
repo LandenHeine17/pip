@@ -77,6 +77,8 @@ class Schedule:
         self.ringing: list[str] = []          # ids ringing right now, oldest first
         self._ring_task: asyncio.Task | None = None
         self._wake = asyncio.Event()          # "something changed": re-check what's due now
+        self.last_rung: tuple[str, float] | None = None  # (id, when): "snooze that" / "change that alarm"
+        self.watchers: list = []              # called with no arguments when ringing starts or stops (Pip's state)
 
     # ---------------------------------------------------------------- storage
     def _now_dt(self) -> datetime:
@@ -125,6 +127,7 @@ class Schedule:
             self.ringing.remove(alert_id)
             if not self.ringing and _loop_running():
                 asyncio.ensure_future(self._stop_sound())
+                self._notify()
         return row
 
     # ---------------------------------------------------------------- calendar
@@ -158,6 +161,36 @@ class Schedule:
                         (self.clock(), eid))
         self.db.commit()
         self._changed("event", {"id": eid, "kind": "event"})
+
+    def update_event(self, eid: str, start: datetime, all_day: bool | None = None) -> dict:
+        """Move an event. Its heads-up moves by the same amount, so it still warns the same time before."""
+        ev = self.event(eid)
+        if not ev:
+            raise RuntimeError("event not found")
+        shift = start.timestamp() - ev["start"]
+        all_day = bool(ev["all_day"]) if all_day is None else all_day
+        self.db.execute("UPDATE events SET start = ?, all_day = ? WHERE id = ?", (start.timestamp(), int(all_day), eid))
+        self.db.execute("UPDATE alerts SET due = due + ?, updated = ? WHERE event_id = ? AND state = 'waiting'",
+                        (shift, self.clock(), eid))
+        self.db.commit()
+        ev = self.event(eid)
+        if not ev or abs(ev["start"] - start.timestamp()) > 0.01:
+            raise RuntimeError("event was not moved")
+        self._changed("event", {"id": eid, "kind": "event"})
+        return ev
+
+    def find(self, ref: str) -> tuple[str, dict] | None:
+        """An item from the short id Claude sees ('#a1b2c3'): ('alert', row) or ('event', row)."""
+        ref = ref.strip().lstrip("#").lower()
+        if len(ref) < 4:
+            return None
+        hits = [("alert", a) for a in self.active() if a["id"].startswith(ref)] + \
+               [("event", e) for e in self.all_events() if e["id"].startswith(ref)]
+        return hits[0] if len(hits) == 1 else None
+
+    @staticmethod
+    def short(item_id: str) -> str:
+        return "#" + item_id[:6]
 
     def all_events(self) -> list[dict]:
         return [dict(r) for r in self.db.execute("SELECT * FROM events ORDER BY start")]
@@ -198,7 +231,7 @@ class Schedule:
                 upcoming.append({"id": ev["id"], "title": ev["title"], "at": at.timestamp(), "all_day": bool(ev["all_day"]),
                                  "repeat": ev["repeat"]})
         return {"alerts": alerts, "ringing": list(self.ringing), "events": upcoming,
-                "missed": self.recent_missed(), "now": now}
+                "missed": self.recent_missed(), "now": now, "snooze_minutes": self.snooze_min}
 
     def summary(self) -> str:
         """A short plain description for Claude, so it can talk about them (sent privately, never logged)."""
@@ -207,17 +240,21 @@ class Schedule:
         for a in self.active():
             due = datetime.fromtimestamp(a["due"])
             if a["kind"] == "timer":
-                parts.append(f"timer '{a['label']}' with {when.say_left(a['due'] - self.clock())} left")
+                parts.append(f"{self.short(a['id'])} timer '{a['label']}' with {when.say_left(a['due'] - self.clock())} left")
             else:
                 rep = f" ({when.say_repeat(a['repeat'])})" if a["repeat"] else ""
-                parts.append(f"{a['kind']} '{a['label']}' at {when.say_time(due, now_dt)}{rep}")
-        evs = []
-        for i in range(7):
+                parts.append(f"{self.short(a['id'])} {a['kind']} '{a['label']}' at {due:%a %Y-%m-%d %H:%M}{rep}")
+        evs, seen = [], set()
+        for i in range(14):
             d = now_dt.date() + timedelta(days=i)
             for at, ev in self.events_on(d):
-                evs.append(f"{ev['title']} {when.say_day(d, now_dt.date())}" + ("" if ev["all_day"] else f" at {when.say_clock(at)}"))
+                if ev["id"] in seen:
+                    continue
+                seen.add(ev["id"])
+                rep = f" ({when.say_repeat(ev['repeat'])})" if ev["repeat"] else ""
+                evs.append(f"{self.short(ev['id'])} {ev['title']} {at:%a %Y-%m-%d}" + (" all day" if ev["all_day"] else f" {at:%H:%M}") + rep)
         out = ("Set: " + "; ".join(parts) + ".") if parts else "No timers, alarms or reminders set."
-        out += (" Calendar this week: " + "; ".join(evs) + ".") if evs else " Nothing on the calendar this week."
+        out += (" Calendar, next two weeks: " + "; ".join(evs) + ".") if evs else " Nothing on the calendar in the next two weeks."
         return out
 
     # ---------------------------------------------------------------- ringing
@@ -261,10 +298,12 @@ class Schedule:
         for a in due:
             self.update(a["id"], state="ringing")
             self.ringing.append(a["id"])
+            self.last_rung = (a["id"], self.clock())
             await self._event("alert.ringing", {"id": a["id"], "kind": a["kind"]}, {"label": a["label"]})
         if self._ring_task and not self._ring_task.done():
             self._ring_task.cancel()  # a new one takes over: announce it now, ring time starts again
         self._ring_task = asyncio.create_task(self._ring())
+        self._notify()
 
     async def _ring(self) -> None:
         started = self.clock()
@@ -284,6 +323,7 @@ class Schedule:
                             self._finish(r, "done")
                     self.ringing.clear()
                     await self._stop_sound()
+                    self._notify()
                     await self._event("alert.unanswered", {"count": len(ids)})
                     return
         except asyncio.CancelledError:
@@ -312,6 +352,7 @@ class Schedule:
             if r := self._row(i):
                 self._finish(r, "done")
         await self._stop_sound()
+        self._notify()
         if ids:
             await self._event("alert.stopped", {"how": how, "count": len(ids)})
         return len(ids)
@@ -325,6 +366,7 @@ class Schedule:
         for i in ids:
             self.update(i, state="waiting", due=self.clock() + minutes * 60)
         await self._stop_sound()
+        self._notify()
         if ids:
             await self._event("alert.snoozed", {"how": how, "minutes": minutes, "count": len(ids)})
         return len(ids)
@@ -334,6 +376,13 @@ class Schedule:
         await self._command("ears", "ears.stop")
 
     # ---------------------------------------------------------------- messages
+    def _notify(self) -> None:
+        for w in self.watchers:
+            try:
+                w()
+            except Exception:
+                log.exception("schedule watcher failed")
+
     def _changed(self, what: str, row: dict) -> None:
         self._wake.set()
         if self.bus and _loop_running():

@@ -27,6 +27,7 @@ class State:
         self.trace = collections.deque(maxlen=TRACE_KEEP)
         self.conversation = collections.deque(maxlen=50)  # live only, in memory; never stored (D-53)
         self.listeners: set[asyncio.Queue] = set()
+        self.pip_state = "idle"  # idle / listening / thinking / speaking / ringing / offline (D-86)
 
     def push(self, kind: str, data: dict) -> None:
         for q in list(self.listeners):
@@ -41,7 +42,8 @@ def build_app(bus, state: State) -> Starlette:
         return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 
     async def health(request):
-        return JSONResponse({"version": __version__, "connected": bus.connected.is_set(), "programs": state.health})
+        return JSONResponse({"version": __version__, "connected": bus.connected.is_set(), "programs": state.health,
+                             "state": state.pip_state})
 
     async def trace(request):
         if not state.trace and bus.connected.is_set():
@@ -117,7 +119,12 @@ async def main() -> None:
     async def on_alert(msg: Message):
         state.push("alerts", {"type": msg.type})
 
+    async def on_state(msg: Message):
+        state.pip_state = msg.data.get("state", "idle")
+        state.push("state", {"state": state.pip_state})
+
     bus.subscribe("alert.*", on_alert)
+    bus.subscribe("pip.state", on_state)
     bus.subscribe("conversation.line", on_line)
     bus.subscribe("health.snapshot", on_health)
     bus.subscribe("trace.entry", on_trace)

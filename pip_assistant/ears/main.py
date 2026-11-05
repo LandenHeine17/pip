@@ -4,7 +4,7 @@ instantly when talked over.
 Events it sends:   heard.wake {word, score} · heard.started {reason} · heard.utterance {reason, seconds, had_speech} (+ private audio)
                    speech.started · speech.interrupted · speech.finished {interrupted}
                    ears.status {state}  (listening / speaking / muted_or_quiet)
-Commands it takes: ears.say (private.text) · ears.chime · ears.stop · ears.listen {seconds} (follow-up window)
+Commands it takes: ears.say (private.text) · ears.chime · ears.tone {name: "thinking"} · ears.stop · ears.listen {seconds} (follow-up window)
                    ears.ring {tone, max_seconds} · ears.ring_stop   (alarms: loop a ringtone until told to stop)
 
 While an alarm rings, talking over it cuts the ringtone for a moment and captures what you said, so
@@ -18,7 +18,7 @@ import time
 
 from ..common.messages import Message
 from ..common.program import make_bus, serve, start
-from .audio import Microphone, Speaker, chime, level_dbfs, ringtone
+from .audio import Microphone, Speaker, chime, level_dbfs, ringtone, thinking_tone
 from .segmenter import Segmenter
 from .voice import make_voice
 from .wake import WakeDetector
@@ -36,6 +36,7 @@ class Ears:
         self.wake = WakeDetector(e["wake_words"], thresholds=e["wake_thresholds"])
         self.voice = make_voice(e["voice_engine"], e["voice"], e["speech_rate"])
         self.chime = chime(self.voice.rate)
+        self.tones = {"thinking": thinking_tone(self.voice.rate)}
         self.seg = Segmenter(speech_dbfs=li["speech_dbfs"], end_silence_s=li["end_silence_seconds"],
                              max_s=li["max_utterance_seconds"], wait_for_speech_s=li["wait_for_speech_seconds"],
                              after_wake_s=li["after_wake_seconds"])
@@ -146,6 +147,12 @@ class Ears:
         await self.queue.put(("sound", self.chime))
         return {"ok": True}
 
+    async def on_tone(self, msg: Message):
+        tone = self.tones.get(msg.data.get("name", ""))
+        if tone is not None and not self.speaking:  # never over Pip's own voice
+            await self.queue.put(("sound", tone))
+        return {"ok": tone is not None}
+
     async def on_stop(self, msg: Message):
         await self.stop_speaking()
         return {"ok": True}
@@ -194,6 +201,7 @@ async def main() -> None:
     bus.on("ears.say", ears.on_say)
     bus.on("ears.chime", ears.on_chime)
     bus.on("ears.stop", ears.on_stop)
+    bus.on("ears.tone", ears.on_tone)
     bus.on("ears.listen", ears.on_listen)
     bus.on("ears.ring", ears.on_ring)
     bus.on("ears.ring_stop", ears.on_ring_stop)
