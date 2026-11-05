@@ -61,9 +61,9 @@ class SentenceSplitter:
 
 
 class ClaudeCLI:
-    def __init__(self, model: str = "", web_search: bool = True, timeout: float = 45.0):
+    def __init__(self, model: str = "", web_search: bool = True, timeout: float = 45.0, effort: str = ""):
         self.exe = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
-        self.model, self.web_search, self.timeout = model, web_search, timeout
+        self.model, self.web_search, self.timeout, self.effort = model, web_search, timeout, effort
         self.workdir = tempfile.mkdtemp(prefix="pip-thinker-")  # neutral folder: no project files loaded
         self.warm: asyncio.subprocess.Process | None = None
         self.warm_prompt: str | None = None
@@ -71,7 +71,7 @@ class ClaudeCLI:
 
     def _args(self, system_prompt: str) -> list[str]:
         tools = ["--tools", "WebSearch", "--allowedTools", "WebSearch"] if self.web_search else ["--tools", ""]
-        model = ["--model", self.model] if self.model else []
+        model = (["--model", self.model] if self.model else []) + (["--effort", self.effort] if self.effort else [])
         return [self.exe, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
                 "--include-partial-messages", "--system-prompt", system_prompt, *tools, *model,
                 "--no-session-persistence", "--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands"]

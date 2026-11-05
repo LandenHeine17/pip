@@ -34,6 +34,7 @@ class Ears:
         self.seg = Segmenter(speech_dbfs=li["speech_dbfs"], end_silence_s=li["end_silence_seconds"],
                              max_s=li["max_utterance_seconds"], wait_for_speech_s=li["wait_for_speech_seconds"],
                              after_wake_s=li["after_wake_seconds"])
+        self.transcript_wake = li["transcript_wake"]
         self.queue: asyncio.Queue = asyncio.Queue()
         self.speaking = False
         self.loud_frames = 0
@@ -56,22 +57,26 @@ class Ears:
                     await self.stop_speaking()
                     await self.bus.emit("speech.interrupted", {"level_dbfs": db})
                     self.seg.start("barge_in", lookback=0.4)
-            elif (not self.seg.capturing and time.monotonic() < self.follow_until
-                  and self.seg.is_speech(db)):
-                self.follow_until = 0.0
-                self.seg.start("follow_up", lookback=0.4)
+            elif not self.seg.capturing and self.seg.is_speech(db) and not self.speaking:
+                if time.monotonic() < self.follow_until:
+                    self.follow_until = 0.0
+                    self.seg.start("follow_up", lookback=0.4)
+                elif self.transcript_wake:
+                    self.seg.start("room", lookback=0.4)  # transcribed to spot Pip's name, like Ziggletron
             utt = self.seg.feed(frame, db)
-            if utt:
+            if utt and (utt.reason != "room" or utt.seconds >= 0.5):
                 await self._send_utterance(utt)
-            if self.seg.capturing and self.seg.capture["reason"] != "wake":
-                continue  # already listening to someone; skip wake detection for now
             hit = await loop.run_in_executor(None, self.wake.feed, frame)
             if hit:
                 word, score = hit
                 log.info("heard wake word %s (%.2f)", word, score)
                 await self.stop_speaking()
                 await self.bus.emit("heard.wake", {"word": word, "score": score})
-                self.seg.start("wake", word=word, lookback="phrase")
+                if self.seg.capturing and self.seg.capture["reason"] in ("room", "follow_up"):
+                    c = self.seg.capture  # the same speech: now it's a wake-word request
+                    c["reason"], c["word"], c["after"] = "wake", word, c["had_speech"]
+                else:
+                    self.seg.start("wake", word=word, lookback="phrase")
 
     async def _send_utterance(self, utt) -> None:
         data = {"reason": utt.reason, "seconds": utt.seconds, "had_speech": utt.had_speech, "word": utt.word}
