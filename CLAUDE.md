@@ -5,7 +5,12 @@ Pip is the second-generation household voice assistant replacing Ziggletron. It 
 **Before making any change, read [`CONTRIBUTING.md`](CONTRIBUTING.md) (how to change things) and [`docs/PROJECT-MAP.md`](docs/PROJECT-MAP.md) (where everything is).** What Pip does: [`docs/PIP-SPEC.md`](docs/PIP-SPEC.md). They're written so you can work well without knowing the whole project.
 
 ## Current phase
-**M1a: building Pip** (architecture approved, D-78). Follow the step plan in `docs/ARCHITECTURE.md` §14; step 1 (skeleton) is done. Code is in `pip_assistant/`, tests in `tests/` (`uv run pytest`), services installed by `sh deploy/install.sh`. Pip's dashboard: `http://100.118.171.118:8790`. `m0/` holds measurement tools, not the product. Progress and to-dos: the dashboard at `http://100.118.171.118:8780` (data in `~/pip-data/m0/status.json`).
+**M1a: building Pip** (architecture approved, D-78). Follow the step plan in `docs/ARCHITECTURE.md` §14; steps 1–3 are done (skeleton, ears, real answers).
+
+**Where we left off (2026-11-04):** after the owner tested step 3, Pip got shorter roommate answers, name spotting in transcripts, and pause handling (D-79–D-81). Next:
+1. Read the owner's answers to "11 · Pip retest (pauses)" in `~/pip-data/m0/questions.json`, fix what they report, then start **step 4** (timers, reminders, offline).
+2. Overnight false-wake checks (`pip-finish`, `pip-soak-pippletron`) run until 07:30. Summarise them, but ignore the owner's test times listed in `~/pip-data/m0/test-window-start.txt`, then set the final wake strictness (D-74).
+3. Web-search answers take ~15 s (Claude's own search). This is still open. Code is in `pip_assistant/`, tests in `tests/` (`uv run pytest`), services installed by `sh deploy/install.sh`. Pip's dashboard: `http://100.118.171.118:8790`. `m0/` holds measurement tools, not the product. Progress and to-dos: the dashboard at `http://100.118.171.118:8780` (data in `~/pip-data/m0/status.json`).
 
 ## Rules you must not break
 1. Never put credentials, phone numbers, recordings or what people said into the repo, commit messages, logs or the dashboard. Secrets live only in `~/pip-data/secrets.toml`. The pre-commit check enforces this; never bypass it.
