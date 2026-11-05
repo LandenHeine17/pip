@@ -149,14 +149,61 @@ async def test_ziggletron_is_not_for_pip(tmp_path):
     await finish(bus, tasks)
 
 
-async def test_only_the_name_gets_yes(tmp_path):
-    bus, conv, ears, got, tasks = await setup(tmp_path, "Hey Pip.")
+async def test_only_the_name_listens_quietly_for_the_rest(tmp_path):
+    bus, conv, ears, got, tasks = await setup(tmp_path, "Pippletron.")
     await ears.emit("heard.utterance", {"reason": "wake", "had_speech": True, "seconds": 1.0},
                     private={"audio_b64": audio_b64()})
     await asyncio.sleep(0.3)
-    assert [t for k, t, _ in got if k == "ears.say"] == ["Yes?"]
-    assert ("ears.listen", None, 8.0) in got
+    assert [t for k, t, _ in got if k == "ears.say"] == []          # no "Yes?" talking over them
+    assert ("ears.listen", None, 5.0) in got
+    conv.stt.text = "what's the capital of Australia"                # the rest, after a pause, no name
+    await ears.emit("heard.utterance", {"reason": "room", "had_speech": True, "seconds": 2.0},
+                    private={"audio_b64": audio_b64()})
+    await asyncio.sleep(0.3)
+    assert [t for k, t, _ in got if k == "ears.say"] == ["Canberra is the capital.", "Not Sydney!"]
     await finish(bus, tasks)
+
+
+async def test_paused_mid_sentence_waits_and_joins_the_rest(tmp_path):
+    bus, conv, ears, got, tasks = await setup(tmp_path, "Pippletron, what's the")
+    conv.unfinished_wait = 0.2
+    await ears.emit("heard.utterance", {"reason": "wake", "had_speech": True, "seconds": 1.5},
+                    private={"audio_b64": audio_b64()})
+    await asyncio.sleep(0.2)
+    assert [t for k, t, _ in got if k == "ears.say"] == []
+    await ears.emit("heard.started", {"reason": "follow_up"})
+    conv.stt.text = "capital of Australia?"
+    await asyncio.sleep(1.5)                                          # longer than the wait: still holding
+    await ears.emit("heard.utterance", {"reason": "follow_up", "had_speech": True, "seconds": 1.5},
+                    private={"audio_b64": audio_b64()})
+    await asyncio.sleep(0.3)
+    assert conv.history[0]["text"] == "Pippletron, what's the capital of Australia?"
+    assert [t for k, t, _ in got if k == "ears.say"] == ["Canberra is the capital.", "Not Sydney!"]
+    await finish(bus, tasks)
+
+
+async def test_answers_are_cut_after_two_sentences_unless_detail_asked(tmp_path):
+    long = ("One.", "Two.", "Three.", "Four.")
+    bus, conv, ears, got, tasks = await setup(tmp_path, "Pip, what's up?", sentences=long)
+    await ears.emit("heard.utterance", {"reason": "wake", "had_speech": True, "seconds": 1.5},
+                    private={"audio_b64": audio_b64()})
+    await asyncio.sleep(0.3)
+    assert [t for k, t, _ in got if k == "ears.say"] == ["One.", "Two."]
+    got.clear()
+    conv.stt.text = "Pip, tell me a story"
+    await ears.emit("heard.utterance", {"reason": "wake", "had_speech": True, "seconds": 1.5},
+                    private={"audio_b64": audio_b64()})
+    await asyncio.sleep(0.3)
+    assert [t for k, t, _ in got if k == "ears.say"] == list(long)
+    await finish(bus, tasks)
+
+
+def test_unfinished_sentences():
+    from pip_assistant.core.conversation import looks_unfinished
+    for t in ["Pippletron, what's the", "what's the...", "Pip, play my", "hey pip, um"]:
+        assert looks_unfinished(t), t
+    for t in ["Pippletron, what's the weather?", "what time is it.", "who are you talking to?", "turn it up"]:
+        assert not looks_unfinished(t), t
 
 
 async def test_empty_transcript_asks_again(tmp_path):

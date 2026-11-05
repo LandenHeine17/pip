@@ -1,7 +1,7 @@
 """pip-ears: listens all the time, hears the wake words, captures what's said, speaks, and stops
 instantly when talked over.
 
-Events it sends:   heard.wake {word, score} · heard.utterance {reason, seconds, had_speech} (+ private audio)
+Events it sends:   heard.wake {word, score} · heard.started {reason} · heard.utterance {reason, seconds, had_speech} (+ private audio)
                    speech.started · speech.interrupted · speech.finished {interrupted}
                    ears.status {state}  (listening / speaking / muted_or_quiet)
 Commands it takes: ears.say (private.text) · ears.chime · ears.stop · ears.listen {seconds} (follow-up window)
@@ -61,6 +61,7 @@ class Ears:
                 if time.monotonic() < self.follow_until:
                     self.follow_until = 0.0
                     self.seg.start("follow_up", lookback=0.4)
+                    await self.bus.emit("heard.started", {"reason": "follow_up"})
                 elif self.transcript_wake:
                     self.seg.start("room", lookback=0.4)  # transcribed to spot Pip's name, like Ziggletron
             utt = self.seg.feed(frame, db)
@@ -145,6 +146,9 @@ class Ears:
 
     async def on_listen(self, msg: Message):
         self.follow_until = time.monotonic() + float(msg.data.get("seconds", 8))
+        if self.seg.capturing and self.seg.capture["reason"] == "room":
+            self.seg.capture["reason"] = "follow_up"  # they already started talking: that's for Pip
+            await self.bus.emit("heard.started", {"reason": "follow_up"})
         return {"ok": True}
 
 
