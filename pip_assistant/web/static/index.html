@@ -34,12 +34,21 @@ code{font-size:.85rem}
 .line .meta{font-size:.78rem;color:var(--muted)}
 .fresh{animation:fresh 1.5s ease-out}
 @keyframes fresh{from{background:var(--goodbg)}to{background:transparent}}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+.item:first-child{border-top:0}
+.item .big{font-size:1.3rem;font-weight:650;font-variant-numeric:tabular-nums}
+.ring{background:var(--badbg);color:var(--bad);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;font-weight:600}
+button{font:inherit;font-size:.88rem;padding:5px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+input{font:inherit;font-size:.9rem;padding:5px 8px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+form{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 </style>
 </head>
 <body>
 <main>
 <header>
-  <div><h1>Pip</h1><div class="sub">M1a step 3 · Pip hears you, thinks with Claude, and answers out loud</div></div>
+  <div><h1>Pip</h1><div class="sub">M1a step 4 · Pip answers out loud, and does timers, alarms, reminders and the calendar (even offline)</div></div>
   <div class="sub" id="conn">Connecting…</div>
 </header>
 
@@ -47,6 +56,20 @@ code{font-size:.85rem}
   <h2>Programs</h2>
   <div class="cards" id="programs"></div>
   <div class="sub" style="margin-top:8px">Each program sends a heartbeat every 2 s. One that goes quiet is shown as stuck and restarted automatically.</div>
+</section>
+
+<section>
+  <h2>Timers, alarms &amp; calendar</h2>
+  <div id="ringing"></div>
+  <div class="cols">
+    <div><div class="sub" style="margin-bottom:4px">Timers, alarms and reminders</div><div id="alerts"></div>
+      <form id="newtimer"><input id="tmin" type="number" min="0.1" step="0.1" placeholder="Minutes" style="width:7em" required>
+        <input id="tlabel" placeholder="Label (optional)" maxlength="40" style="width:11em"><button class="primary">Start timer</button></form>
+      <form id="typed"><input id="ttext" placeholder='Type a command, e.g. "remind me at 6 to call Mom"' style="flex:1;min-width:14em" maxlength="200">
+        <button>Send</button></form><div class="sub" id="typedreply"></div></div>
+    <div><div class="sub" style="margin-bottom:4px">Calendar, next two weeks</div><div id="events"></div></div>
+  </div>
+  <div class="sub" style="margin-top:8px">Saved the moment they're made, so they survive restarts. Say "Pip, set a pasta timer for ten minutes", "wake me up at 7", "remind me at 6 to take the bins out" or "put the dentist on the calendar Tuesday at 3".</div>
 </section>
 
 <section>
@@ -95,7 +118,7 @@ function renderTrace(){ $("trace").innerHTML = rows.length ? rows.map((e,i) => r
 let conv = [];
 function renderConv(){
   $("conv").innerHTML = conv.length ? conv.slice(0,30).map(l => `<div class="line ${l.who==="pip"?"pip":"you"}">
-    <div class="meta">${l.who==="pip"?"Pip":"You"} · ${new Date(l.ts*1000).toLocaleTimeString()}${l.stt_s!=null?` · heard in ${l.stt_s}s`:""}${l.first_s!=null?` · first words after ${l.first_s}s`:""}</div>
+    <div class="meta">${l.who==="pip"?"Pip":"You"} · ${new Date(l.ts*1000).toLocaleTimeString()}${l.stt_s!=null?` · heard in ${l.stt_s}s`:""}${l.first_s!=null?` · first words after ${l.first_s}s`:""}${l.local?" · Pip's own command":""}${l.offline?" · offline":""}</div>
     ${esc(l.text)}</div>`).join("") : `<div class="sub">Say "Pippletron" or "Hey Pip" and ask something.</div>`;
 }
 async function loadConv(){ try{ conv = await (await fetch("/api/conversation",{cache:"no-store"})).json(); renderConv(); }catch(e){} }
@@ -114,9 +137,34 @@ function live(){
   es.addEventListener("health", ev => { renderHealth(JSON.parse(ev.data)); $("conn").textContent = "Live"; });
   es.addEventListener("conversation", ev => { conv.unshift(JSON.parse(ev.data)); renderConv(); });
   es.addEventListener("trace", ev => { const e = JSON.parse(ev.data); e._fresh = true; rows.unshift(e); rows = rows.slice(0,200); renderTrace(); });
+  es.addEventListener("alerts", () => loadSched());
   es.onerror = () => { $("conn").textContent = "Reconnecting…"; };
 }
-loadConv(); loadTrace(); loadHealth(); if(!location.search.includes("nolive")) live();
+let sched = {alerts:[], events:[], ringing:[], missed:[], now:0}, skew = 0;
+const KIND = {timer:"Timer", alarm:"Alarm", reminder:"Reminder", event:"Heads-up"};
+const REP = r => !r ? "" : r.startsWith("weekly:") ? "every "+["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"][+r.slice(7)] : {daily:"every day",weekdays:"weekdays",weekends:"weekends",weekly:"every week"}[r]||r;
+function clock(ts){ return new Date(ts*1000).toLocaleString([], {weekday:"short", hour:"numeric", minute:"2-digit"}); }
+function left(s){ s=Math.max(0,Math.round(s)); const h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60; return h?`${h}:${String(m).padStart(2,"0")}:${String(x).padStart(2,"0")}`:`${m}:${String(x).padStart(2,"0")}`; }
+function renderSched(){
+  const now = Date.now()/1000 - skew;
+  const ring = sched.alerts.filter(a => a.state === "ringing");
+  $("ringing").innerHTML = ring.length ? `<div class="ring"><span>🔔 Ringing: ${ring.map(a => esc(a.label)).join(", ")}</span>
+    <span><button onclick="act({action:'stop'})">Shut off</button> ${[1,5,10,15].map(m => `<button onclick="act({action:'snooze',minutes:${m}})">Snooze ${m} min</button>`).join(" ")}</span></div>` : "";
+  const missed = (sched.missed||[]).map(a => `<div class="item"><div><b>${esc(KIND[a.kind])}: ${esc(a.label)}</b><div class="sub">Missed at ${clock(a.due)} (Pip was off)</div></div></div>`);
+  $("alerts").innerHTML = sched.alerts.map(a => `<div class="item"><div><b>${esc(KIND[a.kind]||a.kind)}${a.label && !["timer","alarm"].includes(a.label) ? ": "+esc(a.label) : ""}</b>
+      <div class="sub">${a.kind==="timer" ? "of "+left(a.length||0) : clock(a.due)}${a.repeat?" · "+REP(a.repeat):""}${a.state==="ringing"?" · ringing":""}</div></div>
+      <span>${a.kind==="timer" ? `<span class="big">${left(a.due-now)}</span>` : ""} <button onclick="act({action:'cancel',id:'${esc(a.id)}'})">Cancel</button></span></div>`).concat(missed).join("")
+    || `<div class="sub">Nothing set.</div>`;
+  $("events").innerHTML = sched.events.map(e => `<div class="item"><div><b>${esc(e.title)}</b><div class="sub">${e.all_day ? new Date(e.at*1000).toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"})+" · all day" : clock(e.at)}${e.repeat?" · "+REP(e.repeat):""}</div></div>
+      <button onclick="if(confirm('Remove this event${e.repeat?" (all repeats)":""}?')) act({action:'remove_event',id:'${esc(e.id)}'})">Remove</button></div>`).join("")
+    || `<div class="sub">Nothing on the calendar.</div>`;
+}
+async function loadSched(){ try{ const r = await (await fetch("/api/alerts",{cache:"no-store"})).json(); if(r.now){ sched = r; skew = Date.now()/1000 - r.now; renderSched(); } }catch(e){} }
+async function act(body){ try{ const r = await (await fetch("/api/alerts/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})).json(); if(r.error) alert(r.error); return r; }catch(e){ alert("Couldn't reach Pip"); } finally { loadSched(); } }
+$("newtimer").onsubmit = async ev => { ev.preventDefault(); const r = await act({action:"timer", minutes:+$("tmin").value, label:$("tlabel").value}); if(r && r.ok){ $("tmin").value=""; $("tlabel").value=""; } };
+$("typed").onsubmit = async ev => { ev.preventDefault(); const r = await act({action:"command", text:$("ttext").value}); if(r){ $("typedreply").textContent = r.handled ? "Pip: "+(r.reply||"Okay.") : "That's not one of Pip's commands (ask him out loud for anything else)."; if(r.handled) $("ttext").value=""; } };
+setInterval(renderSched, 1000); setInterval(loadSched, 30000);
+loadSched(); loadConv(); loadTrace(); loadHealth(); if(!location.search.includes("nolive")) live();
 </script>
 </body>
 </html>

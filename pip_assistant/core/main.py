@@ -8,7 +8,8 @@ from ..common import paths, settings
 from ..common.messages import Message
 from .bus import Bus
 from .conversation import Conversation
-from .stt import make_stt
+from .schedule import Schedule
+from .stt import make_local_stt, make_stt
 from .health import Health
 from .trace import Trace
 
@@ -27,8 +28,40 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
     except Exception as e:  # Pip still runs (wake words, health) without speech-to-text
         log.warning("speech-to-text unavailable: %s", e)
         stt = None
-    Conversation(bus, cfg, stt)
+    schedule = Schedule(paths.database(), bus, cfg)
+    conv = Conversation(bus, cfg, stt, schedule=schedule, local_stt=make_local_stt(cfg))
+    bus.core_handlers["core.alerts"] = lambda m: ({"count": len(schedule.active())}, schedule.snapshot())
+    bus.core_handlers["core.alert_action"] = lambda m: alert_action(schedule, conv, m)
+    bus.schedule = schedule
     return bus, trace, health
+
+
+async def alert_action(schedule: Schedule, conv: Conversation, m: Message) -> dict:
+    """Buttons and forms on the dashboard: shut off, snooze, cancel, new timer, remove an event (FEAT-039)."""
+    from . import when
+    act = m.data.get("action")
+    if act == "stop":
+        return {"stopped": await schedule.acknowledge("dashboard")}
+    if act == "snooze":
+        return {"snoozed": await schedule.snooze(float(m.data.get("minutes") or 0) or None, how="dashboard")}
+    if act == "cancel":
+        schedule.cancel(str(m.data["id"]))
+        return {"ok": True}
+    if act == "remove_event":
+        schedule.remove_event(str(m.data["id"]))
+        return {"ok": True}
+    if act == "timer":
+        secs = float(m.data.get("minutes", 0)) * 60
+        if not 1 <= secs <= 24 * 3600:
+            return {"error": "Pick between 1 second and 24 hours"}
+        row = schedule.add("timer", (m.private.get("label") or "timer").strip()[:40] or "timer", schedule.clock() + secs, length=secs)
+        return {"ok": True, "id": row["id"], "said": when.say_duration(secs)}
+    if act == "command":  # typed into the dashboard: the same commands as speaking; any typed message answers an alarm
+        if schedule.ringing:
+            await schedule.acknowledge("typed")
+        reply = await conv.commands.handle(m.private.get("text", ""))
+        return ({"handled": reply is not None}, {"reply": reply or ""})
+    return {"error": f"unknown action {act}"}
 
 
 async def main() -> None:
@@ -41,8 +74,10 @@ async def main() -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)
     keeper = asyncio.create_task(bus.housekeeping())
+    alarms = asyncio.create_task(bus.schedule.run())
     await stop.wait()
     keeper.cancel()
+    alarms.cancel()
     await bus.publish(Message("event", "core.stopping"))
     trace.flush()
     await bus.stop()

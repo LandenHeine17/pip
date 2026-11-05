@@ -32,6 +32,31 @@ def chime(rate: int = 22050) -> np.ndarray:
     return (sound * 32767).astype(np.int16)
 
 
+RINGTONES = ("classic", "kitchen", "chimes", "gentle")
+
+
+def ringtone(name: str = "classic", rate: int = 22050) -> np.ndarray:
+    """One round of an alarm sound (int16), about 2 seconds; pip-ears loops it with a short gap (FEAT-040)."""
+    def tone(freq, secs, vol=0.3, decay=0.0):
+        t = np.arange(int(rate * secs)) / rate
+        env = np.minimum(1, t / 0.008) * np.minimum(1, (secs - t) / 0.02)
+        if decay:
+            env = env * np.exp(-t * decay)
+        return vol * np.sin(2 * np.pi * freq * t) * env
+
+    def gap(secs):
+        return np.zeros(int(rate * secs))
+    if name == "kitchen":     # quick beeps, like a kitchen timer
+        parts = [p for _ in range(4) for p in (tone(2000, 0.09), gap(0.06), tone(2000, 0.09), gap(0.26))]
+    elif name == "chimes":    # three falling bell notes
+        parts = [tone(f, 0.55, 0.32, 4.5) for f in (1047, 880, 659)] + [gap(0.3)]
+    elif name == "gentle":    # soft notes that rise
+        parts = [p for f in (523, 659, 784, 1047) for p in (tone(f, 0.35, 0.22, 3.0), gap(0.08))]
+    else:                     # classic: two-tone alarm clock
+        parts = [p for _ in range(3) for p in (tone(988, 0.16), gap(0.04), tone(784, 0.16), gap(0.3))]
+    return (np.concatenate(parts) * 32767).astype(np.int16)
+
+
 class Microphone:
     """Yields 80 ms int16 frames from the default microphone. Reopens if the device goes away."""
 

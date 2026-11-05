@@ -5,6 +5,11 @@ Events it sends:   heard.wake {word, score} · heard.started {reason} · heard.u
                    speech.started · speech.interrupted · speech.finished {interrupted}
                    ears.status {state}  (listening / speaking / muted_or_quiet)
 Commands it takes: ears.say (private.text) · ears.chime · ears.stop · ears.listen {seconds} (follow-up window)
+                   ears.ring {tone, max_seconds} · ears.ring_stop   (alarms: loop a ringtone until told to stop)
+
+While an alarm rings, talking over it cuts the ringtone for a moment and captures what you said, so
+"stop" or "snooze" works; if it wasn't for the alarm, ringing carries on. The ringing stops by
+itself after `max_seconds`, even if pip-core is stuck, so it can never ring forever.
 """
 import asyncio
 import base64
@@ -13,7 +18,7 @@ import time
 
 from ..common.messages import Message
 from ..common.program import make_bus, serve, start
-from .audio import Microphone, Speaker, chime, level_dbfs
+from .audio import Microphone, Speaker, chime, level_dbfs, ringtone
 from .segmenter import Segmenter
 from .voice import make_voice
 from .wake import WakeDetector
@@ -41,6 +46,7 @@ class Ears:
         self.follow_until = 0.0
         self.silent_since = None
         self.state = "listening"
+        self.ring_task: asyncio.Task | None = None
 
     # ---------------------------------------------------------------- listening
     async def listen(self) -> None:
@@ -144,6 +150,36 @@ class Ears:
         await self.stop_speaking()
         return {"ok": True}
 
+    async def on_ring(self, msg: Message):
+        await self.stop_ring()
+        tone = ringtone(msg.data.get("tone", "classic"), self.voice.rate)
+        self.ring_task = asyncio.create_task(self._ring(tone, float(msg.data.get("max_seconds", 330))))
+        self.bus.status["ringing"] = True
+        return {"ok": True}
+
+    async def _ring(self, tone, max_seconds: float) -> None:
+        """Loop the ringtone. Spoken announcements queue between rounds; never more than max_seconds."""
+        end = time.monotonic() + max_seconds
+        secs = len(tone) / self.voice.rate
+        try:
+            while time.monotonic() < end:
+                if self.queue.empty() and not self.speaking:
+                    await self.queue.put(("sound", tone))
+                await asyncio.sleep(secs + 0.6)
+        finally:
+            self.bus.status["ringing"] = False
+
+    async def stop_ring(self) -> None:
+        if self.ring_task and not self.ring_task.done():
+            self.ring_task.cancel()
+            await self.stop_speaking()
+        self.ring_task = None
+        self.bus.status["ringing"] = False
+
+    async def on_ring_stop(self, msg: Message):
+        await self.stop_ring()
+        return {"ok": True}
+
     async def on_listen(self, msg: Message):
         self.follow_until = time.monotonic() + float(msg.data.get("seconds", 8))
         if self.seg.capturing and self.seg.capture["reason"] == "room":
@@ -159,6 +195,8 @@ async def main() -> None:
     bus.on("ears.chime", ears.on_chime)
     bus.on("ears.stop", ears.on_stop)
     bus.on("ears.listen", ears.on_listen)
+    bus.on("ears.ring", ears.on_ring)
+    bus.on("ears.ring_stop", ears.on_ring_stop)
     bus.status.update(activity="listening", wake_words=cfg["ears"]["wake_words"])
     log.info("listening for %s", ", ".join(cfg["ears"]["wake_words"]))
     await serve(bus, ears.listen, ears.speak_loop)

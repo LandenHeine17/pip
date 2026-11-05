@@ -36,6 +36,7 @@ transcript_wake = true             # Also spot Pip's name in the transcript of r
 provider = "groq"                  # Speech-to-text service (swappable, PIP-NEW-008; D-48).
 model = "whisper-large-v3-turbo"
 timeout_seconds = 6.0
+offline_model = "base.en"          # Whisper model on the Pi, used only when Groq can't be reached ("" = none). D-83
 # Words that help speech-to-text spell names and terms right (from the M0 benchmark).
 word_list = "Pip, Hey Pip, Pippletron, Pippy, Pips, Ziggletron. Raspberry Pi, ESP32, ESPHome, MQTT, Tailscale, Groq, Claude, Eightree plug, desk lamp, Lincoln, Nebraska."
 
@@ -46,6 +47,15 @@ max_turns = 10                     # How many recent exchanges Pip keeps in mind
 wait_after_name_seconds = 5.0      # Said only his name? Pip listens quietly this long for the rest (no "Yes?" talking over you).
 unfinished_wait_seconds = 2.0      # Stopped mid-sentence ("what's the...")? Pip waits this long for the rest before answering.
 max_sentences = 2                  # Pip stops after this many sentences unless you asked for detail or a story (D-79).
+
+[alarms]
+# Timers, alarms, reminders and calendar heads-ups (FEAT-033–041).
+ring_minutes = 5.0                 # Keep ringing this long if nobody answers, then stop and note it on the dashboard.
+announce_every_seconds = 30.0      # Say what it is again this often while ringing ("Your pasta timer is done.").
+snooze_minutes = 5.0               # "Snooze" with no length given.
+missed_grace_minutes = 30.0        # Pip was off when it was due? Still ring if it's no later than this; else mark it missed.
+# Ringtone for each kind: classic, kitchen, chimes or gentle.
+ringtones = { timer = "kitchen", alarm = "classic", reminder = "chimes", event = "chimes" }
 
 [thinker]
 filler_after_seconds = 3.0         # If an answer hasn't started after this long, Pip says "One sec."

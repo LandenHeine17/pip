@@ -3,7 +3,8 @@
 Takes:  thinker.ask (request; private.text + private.context) → streams answer.sentence events,
         then replies with the whole answer · thinker.cancel (command)
 Sends:  answer.sentence {answer_id} (+ private.text) · answer.searching {answer_id}
-The offline Qwen fallback (D-75) arrives with the offline step.
+Offline, Pip's own commands (timers, alarms, reminders, calendar) still work in pip-core; the
+offline Qwen fallback for chat (D-75, PIP-NEW-081) is planned for M2.
 """
 import logging
 import time
@@ -29,8 +30,11 @@ Say numbers, times and temperatures the way a person would.
 Be honest. If you don't know or aren't sure, say so briefly. If what you heard sounds garbled or \
 not meant for you, ask them to say it again.
 
-Right now you can only talk: you can't yet set timers, reminders or alarms, remember things, \
-send messages or control devices. If asked, say that's coming soon. Never claim to have done something.
+Timers, alarms, reminders and the calendar are handled by Pip's own command system before a message \
+reaches you, and you can see what's set below. You can't set, change or cancel them yourself: if a request \
+like that reaches you, it wasn't understood, so ask them to say it simply, like "set a timer for ten minutes" \
+or "remind me at 6 to call Mom". You also can't yet remember things, send messages or control devices; \
+if asked, say that's coming soon. Never claim to have done something.
 
 Use the weather below for weather questions instead of searching. Only search the web for current \
 facts you genuinely don't know (news, scores, opening hours).
@@ -52,8 +56,10 @@ class Thinker:
         return PERSONA.format(location=self.location, weather=await self.weather.text() or "not available")
 
     @staticmethod
-    def user_text(text: str, context: list[dict], now: str | None = None) -> str:
+    def user_text(text: str, context: list[dict], now: str | None = None, schedule: str = "") -> str:
         now = now or time.strftime("%A %B %-d %Y, %-I:%M %p")
+        if schedule:
+            now = f"{now}. {schedule}"
         if not context:
             return f"[{now}] {text}"
         lines = "\n".join(f"{'Them' if c['role'] == 'user' else 'You (Pip)'}: {c['text']}" for c in context)
@@ -70,7 +76,8 @@ class Thinker:
 
         try:
             text, info = await self.claude.ask(aid, await self.system_prompt(),
-                                               self.user_text(msg.private.get("text", ""), msg.private.get("context", [])),
+                                               self.user_text(msg.private.get("text", ""), msg.private.get("context", []),
+                                                             schedule=msg.private.get("schedule", "")),
                                                sentence, searching)
         except Exception as e:
             log.warning("answer failed: %s", e)
