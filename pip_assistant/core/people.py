@@ -231,6 +231,21 @@ class People:
                             "opted_out": opted_out, "last": self.clock()}
         return self.guests[gid]
 
+    def promote_guest(self, gid: str) -> dict:
+        """A visitor who introduced themselves turns out to live here: add them, keeping the voice Pip heard."""
+        g = self.guests.get(gid)
+        if not g:
+            raise ValueError("That visitor has been forgotten (2 hours of quiet). Add them by name instead.")
+        person = self.add_person(g["name"], "member")
+        self.db.execute("INSERT INTO voices (id, person_id, model, emb, source, created) VALUES (?,?,?,?,?,?)",
+                        (new_id(), person["id"], self.model, g["emb"].astype(np.float32).tobytes(), "introduction", self.clock()))
+        self.db.commit()
+        if g["opted_out"]:
+            self.update_person(person["id"], opted_out=True)
+        del self.guests[gid]
+        self._profiles = None
+        return person
+
     def _expire_guests(self, after: float = 2 * 3600) -> None:
         for gid in [g for g, v in self.guests.items() if self.clock() - v["last"] > after]:
             del self.guests[gid]
@@ -244,7 +259,7 @@ class People:
     def snapshot(self) -> dict:
         self._expire_guests()
         return {"people": self.all(), "voice_model": self.embedder.available,
-                "guests": [{"name": g["name"], "opted_out": g["opted_out"]} for g in self.guests.values()],
+                "guests": [{"id": gid, "name": g["name"], "opted_out": g["opted_out"]} for gid, g in self.guests.items()],
                 "m0_recordings": bool(m0_owner_clips(limit_only=True))}
 
 
