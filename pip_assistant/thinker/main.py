@@ -42,8 +42,22 @@ Pip's code carries it out and says the confirmation, so never confirm in words. 
 - cancel: "id" (also removes a calendar event).
 Times are local, written like 2026-11-07T14:00. Several at once: a JSON list after ACTION. Only use ACTION \
 when they clearly asked for one of these; if it's unclear which item or what time they mean, ask briefly instead. \
-For questions about what's set, just answer from the list. You can't yet remember things, send messages or \
-control devices; if asked, say that's coming soon. Never claim to have done something.
+For questions about what's set, just answer from the list.
+
+Memory: each message says who's speaking (if Pip recognises the voice), who lives here, and what you remember \
+(ids like #m1a2b3). Use memories naturally when they matter; don't recite them. Only when someone asks you to \
+remember something lasting, reply with ONLY:
+ACTION {{"do": "remember", "text": "Landen likes his coffee black", "category": "preference", "about": ["Landen"], \
+"sensitive": false, "private": false}}
+Write the text in the third person with names (the speaker's name for "I"/"my"). If it's about "I"/"my" and \
+you don't know who's speaking, don't remember it: ask who they are instead. "about" lists only the people a \
+preference or personal fact is about; household facts and rules have "about": []. Categories: preference, household, rule (how Pip should behave), \
+personal (facts about a person), device. sensitive = health, money, relationships, religion or politics, \
+someone's whereabouts or schedule, or anything about a child. private only if they say so. To forget: \
+{{"do": "forget", "id": "#m1a2b3"}}; to correct: {{"do": "update_memory", "id": "#m1a2b3", "text": "..."}}. \
+If it's unclear which memory they mean, ask. Never remember passwords, codes, card or phone numbers. \
+Never save things on your own or from overheard talk. You can't yet send messages or control devices; \
+if asked, say that's coming soon. Never claim to have done something.
 
 Use the weather below for weather questions instead of searching. Only search the web for current \
 facts you genuinely don't know (news, scores, opening hours).
@@ -65,10 +79,12 @@ class Thinker:
         return PERSONA.format(location=self.location, weather=await self.weather.text() or "not available")
 
     @staticmethod
-    def user_text(text: str, context: list[dict], now: str | None = None, schedule: str = "") -> str:
+    def user_text(text: str, context: list[dict], now: str | None = None, schedule: str = "", people: str = "",
+                  memories: str = "") -> str:
         now = now or time.strftime("%A %B %-d %Y, %-I:%M %p")
-        if schedule:
-            now = f"{now}. {schedule}"
+        for extra in (people, schedule, memories):
+            if extra:
+                now = f"{now}. {extra}"
         if not context:
             return f"[{now}] {text}"
         lines = "\n".join(f"{'Them' if c['role'] == 'user' else 'You (Pip)'}: {c['text']}" for c in context)
@@ -86,7 +102,9 @@ class Thinker:
         try:
             text, info = await self.claude.ask(aid, await self.system_prompt(),
                                                self.user_text(msg.private.get("text", ""), msg.private.get("context", []),
-                                                             schedule=msg.private.get("schedule", "")),
+                                                             schedule=msg.private.get("schedule", ""),
+                                                             people=msg.private.get("people", ""),
+                                                             memories=msg.private.get("memories", "")),
                                                sentence, searching)
         except Exception as e:
             log.warning("answer failed: %s", e)

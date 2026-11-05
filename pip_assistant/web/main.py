@@ -73,6 +73,36 @@ def build_app(bus, state: State) -> Starlette:
             return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
         return JSONResponse({**r.data, **r.private})
 
+    async def core_get(kind: str):
+        try:
+            r = await bus.request("core", kind, timeout=3)
+            return JSONResponse(r.private or {"error": r.data.get("error", "no answer")})
+        except Exception as e:
+            return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
+
+    async def core_action(request, kind: str, private_keys: tuple, data_keys: tuple):
+        """Names and memory texts are personal: they travel in the private part, never logged."""
+        body = await request.json()
+        private = {k: str(body.pop(k))[:300] for k in private_keys if k in body}
+        data = {k: body[k] for k in data_keys if k in body}
+        try:
+            r = await bus.request("core", kind, data, private, timeout=30)
+        except Exception as e:
+            return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
+        return JSONResponse({**r.data, **r.private})
+
+    async def people(request):
+        return await core_get("core.people")
+
+    async def people_action(request):
+        return await core_action(request, "core.people_action", ("name",), ("action", "id", "role", "value"))
+
+    async def memory(request):
+        return await core_get("core.memory")
+
+    async def memory_action(request):
+        return await core_action(request, "core.memory_action", ("text", "about"), ("action", "id", "category", "private", "value"))
+
     async def conversation(request):
         return JSONResponse(list(state.conversation)[::-1])
 
@@ -96,6 +126,8 @@ def build_app(bus, state: State) -> Starlette:
 
     return Starlette(routes=[Route("/", index), Route("/api/health", health), Route("/api/trace", trace), Route("/api/conversation", conversation),
                              Route("/api/alerts", alerts), Route("/api/alerts/action", alert_action, methods=["POST"]),
+                             Route("/api/people", people), Route("/api/people/action", people_action, methods=["POST"]),
+                             Route("/api/memory", memory), Route("/api/memory/action", memory_action, methods=["POST"]),
                              Route("/api/stream", stream)])
 
 
@@ -113,6 +145,8 @@ async def main() -> None:
 
     async def on_line(msg: Message):
         line = {"ts": msg.ts, **msg.data, "text": msg.private.get("text", "")}
+        if msg.private.get("speaker"):
+            line["speaker"] = msg.private["speaker"]
         state.conversation.append(line)
         state.push("conversation", line)
 
@@ -125,6 +159,11 @@ async def main() -> None:
 
     bus.subscribe("alert.*", on_alert)
     bus.subscribe("pip.state", on_state)
+
+    async def on_voice(msg: Message):
+        state.push("people", {"type": msg.type, **msg.data})
+
+    bus.subscribe("voice.*", on_voice)
     bus.subscribe("conversation.line", on_line)
     bus.subscribe("health.snapshot", on_health)
     bus.subscribe("trace.entry", on_trace)

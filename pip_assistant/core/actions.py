@@ -14,6 +14,13 @@ nothing is changed and Pip says so.
             optional: repeat ('', daily, weekdays, weekends, weekly, weekly:0-6), label, heads_up_minutes
     change  id ('#a1b2c3' from the summary Claude sees), and at | shift_seconds | seconds (timers)
     cancel  id
+
+Memory (step 5):
+    remember       text (third person, with names), category, about [names], sensitive, private
+    forget         id ('#m1a2b3')
+    update_memory  id, text
+Sensitive memories, memories about someone other than the speaker, and private ones from a voice Pip
+doesn't recognise wait in the memory inbox instead of being saved straight away.
 """
 import json
 import re
@@ -52,12 +59,16 @@ def _time(value, now: datetime) -> datetime:
     return at
 
 
-def check(cmds, items: list[dict]) -> list[tuple]:
+def check(cmds, items: list[dict], ctx: dict | None = None) -> list[tuple]:
     """Validate everything first, so a bad action means nothing at all is changed."""
     now = cmds.now()
+    ctx = ctx or {}
     plan = []
     for a in items:
         do = a.get("do")
+        if do in ("remember", "forget", "update_memory"):
+            plan.append(_check_memory(a, ctx))
+            continue
         if do == "add":
             kind = a.get("kind")
             rep = str(a.get("repeat") or "")
@@ -113,16 +124,79 @@ def check(cmds, items: list[dict]) -> list[tuple]:
     return plan
 
 
-def apply(cmds, raw: str) -> tuple[str, int]:
+def _check_memory(a: dict, ctx: dict) -> tuple:
+    mem, people, speaker = ctx.get("memory"), ctx.get("people"), ctx.get("speaker")
+    if mem is None:
+        raise Invalid("no memory")
+    if a["do"] in ("forget", "update_memory"):
+        row = mem.find(str(a.get("id") or ""))
+        if not row:
+            raise Invalid("unknown memory")
+        if a["do"] == "forget":
+            return ("forget", row)
+        text = str(a.get("text") or "").strip()
+        if len(text) < 3:
+            raise Invalid("no text")
+        return ("update_memory", row, text)
+    text = str(a.get("text") or "").strip()
+    if len(text) < 3:
+        raise Invalid("no text")
+    me = speaker.person_id if speaker and speaker.level == "sure" and not speaker.guest else None
+    about = []
+    for name in a.get("about") or []:
+        p = people.by_name(str(name)) if people else None
+        if p:
+            about.append(p["id"])
+    category = str(a.get("category") or "household")
+    personal = category in ("preference", "personal")      # household facts and rules can come from anyone
+    why = ""
+    if a.get("sensitive"):
+        why = "sensitive"
+    elif personal and any(pid != me for pid in about):
+        why = "about someone else"
+    elif a.get("private") and not me:
+        why = "private, but I didn't recognise the voice"
+    elif personal and not about and not me:
+        why = "I didn't recognise the voice"
+    if not personal:
+        about = []
+    who = speaker.name if me else "someone"
+    return ("remember", text, category, about, me or "", bool(a.get("private")) and bool(me),
+            bool(a.get("sensitive")), why, f"{who}, by voice")
+
+
+def apply(cmds, raw: str, ctx: dict | None = None) -> tuple[str, int]:
     """Check and carry out Claude's actions. Returns (what Pip says, how many were done)."""
     try:
-        plan = check(cmds, parse(raw))
+        plan = check(cmds, parse(raw), ctx)
     except (Invalid, ValueError, TypeError, KeyError):
         return FAILED, 0
     said = []
+    mem = (ctx or {}).get("memory")
     for step in plan:
         kind = step[0]
-        if kind == "timer":
+        if kind == "remember":
+            from .memory import Refused
+            _, text, cat, about, owner, private, sensitive, why, source = step
+            try:
+                row, outcome = mem.add(text, cat, about, owner, private, sensitive, why, source)
+            except Refused as e:
+                said.append("I can't keep passwords, card or phone numbers in my memory." if str(e) == "credential"
+                            else "I didn't catch what to remember.")
+                continue
+            said.append({"saved": f"Saved: {row['text'].rstrip('.!')}.", "duplicate": "I already knew that.",
+                         "pending": "I'll remember that once it's approved in the memory inbox on the dashboard."}[outcome])
+        elif kind == "forget":
+            mem.delete(step[1]["id"])
+            said.append(f"Forgot: {step[1]['text'].rstrip('.!')}.")
+        elif kind == "update_memory":
+            from .memory import Refused
+            try:
+                row = mem.update(step[1]["id"], text=step[2])
+                said.append(f"Updated: {row['text'].rstrip('.!')}.")
+            except Refused:
+                said.append("I can't keep passwords, card or phone numbers in my memory.")
+        elif kind == "timer":
             said.append(cmds._make_timer(step[1], step[2]))
         elif kind == "alarm":
             said.append(cmds._make_alarm(step[1], step[2], step[3]))

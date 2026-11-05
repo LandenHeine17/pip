@@ -8,6 +8,8 @@ from ..common import paths, settings
 from ..common.messages import Message
 from .bus import Bus
 from .conversation import Conversation
+from .memory import Memory, Refused
+from .people import People, m0_owner_clips
 from .schedule import Schedule
 from .stt import make_local_stt, make_stt
 from .health import Health
@@ -29,11 +31,100 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
         log.warning("speech-to-text unavailable: %s", e)
         stt = None
     schedule = Schedule(paths.database(), bus, cfg)
-    conv = Conversation(bus, cfg, stt, schedule=schedule, local_stt=make_local_stt(cfg))
+    people = People(paths.database(), cfg)
+    memory = Memory(paths.database())
+    conv = Conversation(bus, cfg, stt, schedule=schedule, local_stt=make_local_stt(cfg), people=people, memory=memory)
     bus.core_handlers["core.alerts"] = lambda m: ({"count": len(schedule.active())}, schedule.snapshot())
     bus.core_handlers["core.alert_action"] = lambda m: alert_action(schedule, conv, m)
+    bus.core_handlers["core.people"] = lambda m: ({"count": len(people.all())},
+                                                   {**people.snapshot(), "enrolling": conv.enrol_status()})
+    bus.core_handlers["core.people_action"] = lambda m: people_action(people, memory, conv, m)
+    bus.core_handlers["core.memory"] = lambda m: (memory.counts(), memory_snapshot(memory, people))
+    bus.core_handlers["core.memory_action"] = lambda m: memory_action(memory, people, m)
     bus.schedule = schedule
+    bus.memory = memory
     return bus, trace, health
+
+
+def memory_snapshot(memory: Memory, people: People) -> dict:
+    names = {p["id"]: p["name"] for p in people.all()}
+    rows = [{**r, "about_names": [names.get(i, "?") for i in r["about"]], "owner_name": names.get(r["owner"], "")}
+            for r in memory.items()]
+    from .memory import CATEGORIES
+    return {"memories": rows, "categories": CATEGORIES}
+
+
+async def people_action(people: People, memory: Memory, conv: Conversation, m: Message):
+    """People and voices on the dashboard. Names travel privately (they're personal data)."""
+    act, pid = m.data.get("action"), str(m.data.get("id") or "")
+    try:
+        if act == "add":
+            p = people.add_person(m.private.get("name", ""), m.data.get("role", "member"))
+            return {"ok": True, "id": p["id"]}
+        if act == "rename":
+            name = m.private.get("name", "").strip()[:40]
+            if not name:
+                return {"error": "A name is needed"}
+            people.update_person(pid, name=name)
+            return {"ok": True}
+        if act == "role":
+            people.update_person(pid, role=m.data.get("role"))
+            return {"ok": True}
+        if act == "opt_out":
+            people.update_person(pid, opted_out=bool(m.data.get("value")))
+            return {"ok": True}
+        if act == "remove":
+            n = memory.forget_person(pid)
+            people.remove_person(pid)
+            return {"ok": True, "memories_removed": n}
+        if act == "forget_voice":
+            people.forget_voice(pid)
+            return {"ok": True}
+        if act == "voice_from_m0":
+            n = await people.add_samples(pid, m0_owner_clips(), "m0 recordings")
+            return {"ok": bool(n), "samples": n} if n else {"error": "No usable M0 recordings found"}
+        if act == "enrol_start":
+            return {"ok": True, "enrolling": await conv.start_enrolment(pid)}
+        if act == "enrol_cancel":
+            conv.cancel_enrolment()
+            return {"ok": True}
+    except ValueError as e:
+        return {"error": str(e)}
+    return {"error": f"unknown action {act}"}
+
+
+def memory_action(memory: Memory, people: People, m: Message):
+    """The Memory Center: inbox approvals, add, edit, private/household, archive, delete (PIP-NEW-029/030)."""
+    act, mid = m.data.get("action"), str(m.data.get("id") or "")
+    try:
+        if act == "add":
+            about = [p["id"] for n in m.private.get("about", "").split(",") if (p := people.by_name(n.strip()))]
+            owner = about[0] if m.data.get("private") and about else ""
+            row, outcome = memory.add(m.private.get("text", ""), m.data.get("category", "household"), about, owner,
+                                      bool(m.data.get("private")) and bool(owner), source="added on the dashboard")
+            return {"ok": True, "outcome": outcome}
+        if act == "edit":
+            memory.update(mid, text=m.private.get("text", ""))
+        elif act == "approve":
+            memory.approve(mid)
+        elif act in ("reject", "delete"):
+            memory.delete(mid)
+        elif act == "archive":
+            memory.update(mid, status="archived")
+        elif act == "restore":
+            memory.update(mid, status="active")
+        elif act == "visibility":
+            row = memory._row(mid) or {}
+            if m.data.get("value") == "private" and not row.get("owner") and not row.get("about"):
+                return {"error": "A private memory needs a person it belongs to"}
+            memory.update(mid, visibility=m.data.get("value"), owner=row.get("owner") or (row.get("about") or [""])[0])
+        else:
+            return {"error": f"unknown action {act}"}
+        return {"ok": True}
+    except Refused as e:
+        return {"error": "Passwords, card and phone numbers can't be memories" if str(e) == "credential" else "Nothing to remember"}
+    except ValueError as e:
+        return {"error": str(e)}
 
 
 async def alert_action(schedule: Schedule, conv: Conversation, m: Message) -> dict:

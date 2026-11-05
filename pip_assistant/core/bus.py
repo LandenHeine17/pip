@@ -177,6 +177,8 @@ class Bus:
                 self.trace.prune()
                 if getattr(self, "schedule", None):
                     self.schedule.prune_events()
+                if getattr(self, "memory", None):
+                    self.memory.prune()
                 last_prune = time.time()
 
     async def publish_health(self) -> None:
