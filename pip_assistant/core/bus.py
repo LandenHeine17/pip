@@ -152,9 +152,17 @@ class Bus:
                 asyncio.ensure_future(self._send(name, live))
 
     async def _answer_core(self, msg: Message) -> None:
+        """Handlers return data, or (data, private) to send something that must not be logged."""
         handler = self.core_handlers.get(msg.type)
-        data = handler(msg) if handler else {"error": f"core doesn't handle {msg.type}"}
-        await self._send(msg.source, msg.reply(data, source="core"))
+        try:
+            result = handler(msg) if handler else {"error": f"core doesn't handle {msg.type}"}
+            if asyncio.iscoroutine(result):
+                result = await result
+        except Exception as e:
+            log.exception("core request %s failed", msg.type)
+            result = {"error": f"{type(e).__name__}: {e}"}
+        data, private = result if isinstance(result, tuple) else (result, {})
+        await self._send(msg.source, msg.reply(data, private, source="core"))
 
     # ---------------------------------------------------------------- housekeeping
     async def housekeeping(self, every: float = 2.0) -> None:
@@ -167,6 +175,8 @@ class Bus:
             await self.publish_health()
             if time.time() - last_prune > 3600:
                 self.trace.prune()
+                if getattr(self, "schedule", None):
+                    self.schedule.prune_events()
                 last_prune = time.time()
 
     async def publish_health(self) -> None:

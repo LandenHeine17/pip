@@ -1,4 +1,5 @@
-"""Start pip-web: the dashboard. Step 1 shows program health and the live decision trace.
+"""Start pip-web: the dashboard. Step 1 shows program health and the live decision trace;
+step 4 adds timers, alarms, reminders and the calendar (with Shut off / Snooze buttons).
 
 Logins and roles arrive in step 8 (PIP-NEW-054). Until then it listens only on the address in
 settings (on the Pi: the Tailscale address), so only the owner's devices can reach it.
@@ -52,6 +53,24 @@ def build_app(bus, state: State) -> Starlette:
                 pass
         return JSONResponse(list(state.trace)[::-1][:200])
 
+    async def alerts(request):
+        try:
+            r = await bus.request("core", "core.alerts", timeout=3)
+            return JSONResponse(r.private or {"error": r.data.get("error", "no answer")})
+        except Exception as e:
+            return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
+
+    async def alert_action(request):
+        """Shut off / snooze / cancel / new timer / typed command. Labels and typed text travel privately."""
+        body = await request.json()
+        private = {k: str(body.pop(k))[:200] for k in ("label", "text") if k in body}
+        data = {k: body[k] for k in ("action", "id", "minutes") if k in body}
+        try:
+            r = await bus.request("core", "core.alert_action", data, private, timeout=5)
+        except Exception as e:
+            return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
+        return JSONResponse({**r.data, **r.private})
+
     async def conversation(request):
         return JSONResponse(list(state.conversation)[::-1])
 
@@ -74,6 +93,7 @@ def build_app(bus, state: State) -> Starlette:
         return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-store"})
 
     return Starlette(routes=[Route("/", index), Route("/api/health", health), Route("/api/trace", trace), Route("/api/conversation", conversation),
+                             Route("/api/alerts", alerts), Route("/api/alerts/action", alert_action, methods=["POST"]),
                              Route("/api/stream", stream)])
 
 
@@ -94,6 +114,10 @@ async def main() -> None:
         state.conversation.append(line)
         state.push("conversation", line)
 
+    async def on_alert(msg: Message):
+        state.push("alerts", {"type": msg.type})
+
+    bus.subscribe("alert.*", on_alert)
     bus.subscribe("conversation.line", on_line)
     bus.subscribe("health.snapshot", on_health)
     bus.subscribe("trace.entry", on_trace)

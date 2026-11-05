@@ -28,7 +28,7 @@ Last reviewed: 2026-11-04 (phase M0; docs condensed into three living files + ar
 | `m0/patches/` | Patches applied to third-party tools we run (e.g. openWakeWord low-memory fix) | Yes; document why in the patch commit |
 | `m0/pyproject.toml`, `uv.lock` | M0 Python environment (uv; only releases ≥2 weeks old) | Yes, via `uv` |
 | `tools/check_secrets.py`, `install_hooks.sh` | Commit check blocking secrets and phone numbers | Yes, but never weaken it |
-| `pip_assistant/` | **The Pip application** (M1a). `common/` (messages, settings, bus client), `core/` (hub, decision trace, watchdog), `ears/`, `thinker/`, `web/` (dashboard), `defaults.toml` (every setting, explained) | Yes: follow ARCHITECTURE.md; tests in `tests/` |
+| `pip_assistant/` | **The Pip application** (M1a). `common/` (messages, settings, bus client), `core/` (hub, decision trace, watchdog, conversation, speech-to-text incl. offline Whisper, `schedule.py` timers/alarms/reminders/calendar and ringing, `commands.py` Pip's own commands, `when.py` understanding times), `ears/`, `thinker/`, `web/` (dashboard), `defaults.toml` (every setting, explained) | Yes: follow ARCHITECTURE.md; tests in `tests/` |
 | `models/` | Public-safe models shipped with Pip: wake words trained on synthetic voices only, plus openWakeWord's feature models (see `models/README.md`) | Only add models with no household data |
 | `tests/` | Automated tests for the application (`uv run pytest`) | Yes: add tests with every change |
 | `deploy/` | systemd service files (`deploy/systemd/`) and `install.sh`, which installs/updates and restarts Pip's services | Yes |
@@ -49,13 +49,13 @@ Last reviewed: 2026-11-04 (phase M0; docs condensed into three living files + ar
 | `~/pip-data/m0/tasks/*.json` | Progress of long-running jobs (shown under "Running now") | Long jobs should write one |
 | `~/pip-data/m0/models/`, `wake-train/`, `tts/`, `llm/` | Downloaded models, training data and outputs | Large; not in git |
 | `~/pip-dashboard/` | The M0 dashboard (Python stdlib server + pages), Tailscale only (`http://100.118.171.118:8780`) | Runs as `pip-dashboard.service` (systemd user unit) |
-| `~/ziggletron`, `~/ziggletron-v2` | The old assistant and an unrelated folder | **Not part of this project. Don't modify.** Ziggletron may be stopped briefly for tests (D-44) and must be restarted |
+| `~/ziggletron`, `~/ziggletron-v2` | The old assistant and an unrelated folder | **Not part of this project. Don't modify.** Ziggletron is switched off (D-82); only the owner starts him |
 
 ## Running services (systemd user units)
 
 | Unit | What | Notes |
 |---|---|---|
-| `ziggletron.service` | The current assistant | Keep running unless a test needs the mic or CPU |
+| `ziggletron.service` | The current assistant | Stopped and disabled by the owner (D-82). Don't start it |
 | `pip-dashboard.service` | M0 dashboard (port 8780) | Restart after editing `~/pip-dashboard` |
 | `pip-core`, `pip-ears`, `pip-thinker`, `pip-web` `.service` | **Pip itself** (dashboard on port 8790). Installed by `deploy/install.sh` | `sh deploy/install.sh` after code changes |
 | `pip-*` transient units (`systemd-run`) | Long M0 jobs | **Don't survive a reboot.** Run heavy jobs with a memory cap (`-p MemoryMax=4500M`), because the Pi froze once from running out of memory |

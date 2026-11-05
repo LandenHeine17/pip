@@ -29,7 +29,7 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
 - Run them as a systemd user job with a **memory cap**: `systemd-run --user --unit=pip-<name> -p MemoryMax=4500M -p Nice=10 …`. An uncapped job froze the Pi once.
 - Write progress to `~/pip-data/m0/tasks/<name>.json` (fields: `name, stage, done, total, note, finished, failed, updated`) so the dashboard shows it.
 - **Don't make sound** between 23:00 and 07:00, or when the owner isn't around (shared dorm room).
-- If a job needs the microphone or lots of CPU, Ziggletron may be stopped. Say so first, and always restart it (D-44).
+- Ziggletron is switched off and disabled (D-82). Never start or re-enable it; only the owner does.
 
 ## 4. After the change
 

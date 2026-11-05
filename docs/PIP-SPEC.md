@@ -4,7 +4,7 @@ The short, living description of Pip 2.0. Read this first.
 
 **How the docs fit together (for building):** this page says *what* Pip does → [REQUIREMENTS.md](REQUIREMENTS.md) lists every requirement, and its **Detail** link opens the exact behaviour rules in the archived proposal ([archive/pip-v2-proposals-2026-11/](archive/pip-v2-proposals-2026-11/README.md)) → [DECISIONS.md](DECISIONS.md) (`D-nn`) **overrides** anything older, and REQUIREMENTS §0 lists the archived passages that have been overridden. What Ziggletron did (for parity) is in [archive/ziggletron-discovery/](archive/ziggletron-discovery/PRODUCT-OVERVIEW.md).
 
-*Last updated 2026-11-04 · Phase: M1a building. Steps 1–3 done: Pip hears his name, understands the question (Groq), thinks (Claude) and answers out loud (dashboard `http://100.118.171.118:8790`).*
+*Last updated 2026-11-04 · Phase: M1a building. Steps 1–3 done: Pip hears his name, understands the question (Groq), thinks (Claude) and answers out loud (dashboard `http://100.118.171.118:8790`). Step 4 (timers, alarms, reminders, calendar, offline) built and waiting for your test.*
 
 ## 1. In one paragraph
 
@@ -27,6 +27,7 @@ Pip is a playful companion living in a dorm room on a Raspberry Pi 5, with a USB
 | How fast does Pip answer? | First words about **2 s** after you finish (Groq 0.4 s + pre-started Claude 1.25 s + voice 0.3 s). Web searches take much longer (~19 s in M0), so weather comes from Open-Meteo instead and Pip says "Let me look that up" when he must search | — |
 | Does "Ziggletron" wake Pip? | With synthetic speech, "Ziggletron" woke the Pippletron detector 13/20 times at strictness 0.5 and 4/20 at 0.8 ("Pippletron" itself: 19/20 at 0.8). So Pippletron uses **0.8**, step 3 adds a transcript check, and a retrain with more "Ziggletron" examples is planned | — |
 | Why did step 3 feel worse than Ziggletron? (owner test) | Answers too long and assistant-like; the detector alone missed many "Hey Pip"s (Ziggletron reads the words instead); the default Claude model is slower (first words 2.3 s vs 0.9 s for sonnet); web search ~16 s with the "look that up" line not always said. Fixed by D-79 and D-80. Owner retest: hears his name "most of the time", never woke by mistake, but still too long and slower, because saying only the name made Pip wait 1.2 s, say "Yes?" over you, then start again. Fixed by D-81 (0.7 s waits, no "Yes?", joins a paused sentence, two-sentence cap). Web search is still ~15 s: that's Claude's search itself | — |
+| Can the Pi hear commands with no internet? (D-83) | Yes, with **Whisper base on the Pi**: about 2.4 s per request on your recordings (vs 0.4 s for Groq). Without its built-in speech filter it "heard" *Pippletron* in plain noise (it copies the word list), which could stop an alarm by mistake, so the filter is always on: noise now gives nothing | D-83 |
 | Can the Pi run Pip comfortably? | Yes: 10 min of everyday work used 16% CPU on average (55% peak), 1.5 GB memory, 68 °C; the wake detector never fell behind | — |
 | Still running | Overnight false-wake checks for both wake words (until 07:30); they tune sensitivity only | — |
 
@@ -60,6 +61,35 @@ Live results are on the dashboard (`http://100.118.171.118:8780`).
 ### Timers, reminders, calendar, lists
 - Everything Ziggletron did (timers, repeating and person-targeted reminders, calendar, alarms that keep ringing until answered, "earned" alarms), plus voice snooze and dashboard creation.
 - **Works offline** for the basics (timers, stop, snooze, volume) (PIP-NEW-044).
+
+**How it works (built in step 4):** Pip understands these requests himself, on the Pi, without asking Claude. That makes them instant and means they work offline (D-83). He only says "Timer's on" once it's really saved (PIP-NEW-039). Anything else still goes to Claude, who can *see* what's set (so "what's on this week?" in odd wording still works) but can't change it.
+
+| Say | Pip |
+|---|---|
+| "Set a pasta timer for ten minutes" · "set a timer" → "For how long?" | "Pasta timer's on, 10 minutes." |
+| "…actually fifteen" (within a minute) | Changes the same timer: "Changed it to 15 minutes." |
+| "How long's left on the pasta?" · "add two minutes to the egg timer" | "Pasta has 4 minutes left." · "Done, 5 minutes left." |
+| "Cancel the timer" (when there are two) | "Which one: pasta or eggs?" · no match: "There's no laundry timer." |
+| "Wake me up at 7" · "set an alarm for 6:30 every weekday" | "Alarm set for 7 AM tomorrow." |
+| "Remind me at 6 to take the bins out" · "every Monday at 9…" · "in 20 minutes…" | "Okay, I'll remind you at 6 PM." |
+| "Put the dentist on the calendar Tuesday at 3" · "what do I have tomorrow?" · "take the dentist off the calendar" | "Added dentist, Tuesday at 3 PM." |
+| "What time is it?" · "stop" · "never mind" | Answers / goes quiet |
+
+A time with no AM/PM means the next one coming ("at 6" in the afternoon is 6 PM). A time already past means tomorrow. Repeats keep their clock time across daylight saving.
+
+```mermaid
+flowchart LR
+    D["Due"] --> R["Rings: ringtone loops,<br/>'Your pasta timer is done.'<br/>again every 30 s"]
+    R -- "'okay' / 'stop' / 'I'm up' / his name<br/>or Shut off on the dashboard" --> X["Stops<br/>(repeating ones move to their next time)"]
+    R -- "'snooze' / 'snooze ten minutes'<br/>or Snooze on the dashboard" --> S["Rings again later<br/>(default 5 min)"]
+    R -- "TV or chatter" --> R
+    R -- "nobody answers for 5 min" --> N["Stops by itself,<br/>noted on the dashboard"]
+```
+
+- **Survives restarts and power cuts**: saved the moment it's made. If Pip was off when something was due, it still rings if it's less than 30 minutes late; otherwise the dashboard shows it as missed.
+- **The dashboard** (`:8790`) shows live countdowns, alarms, reminders and the next two weeks of the calendar, with Shut off, Snooze, Cancel, a "Start timer" form and a box to type a command.
+- **Offline**: Whisper on the Pi hears the request (about 2.4 s, more mistakes), and only these commands work. Anything else: "I'm offline, so I can only do the basics right now."
+- **Still to come**: alarms you have to earn (FEAT-038, needs Claude to judge), reminders for one person (step 5, voice recognition), ringtone and ring-length settings on the dashboard (step 8; four ringtones exist: classic, kitchen, chimes, gentle).
 - Later (M3): shared shopping and to-do lists, Google Calendar sync, phone notifications via ntfy on the Pi (D-19, D-66).
 
 ### Screen and dashboard
