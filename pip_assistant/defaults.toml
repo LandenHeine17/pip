@@ -26,10 +26,10 @@ speech_rate = 1.0                       # 1.0 = normal; 1.2 = a bit faster; 0.8 
 
 [listen]
 speech_dbfs = -50.0                # Louder than this counts as speech when cutting out what you said.
-end_silence_seconds = 0.8          # A pause this long means you've finished speaking.
+end_silence_seconds = 0.7          # A pause this long means you've finished speaking (Ziggletron: 0.7).
 max_utterance_seconds = 12.0       # Longest single request.
 wait_for_speech_seconds = 4.0      # In the follow-up window, how long to wait for you to start talking.
-after_wake_seconds = 1.2           # After the wake word, how long to wait for a question (else it came before the name).
+after_wake_seconds = 0.7           # After the wake word, how long to wait for a question (else it came before the name).
 transcript_wake = true             # Also spot Pip's name in the transcript of room speech, like Ziggletron (D-77).
 
 [stt]
@@ -43,6 +43,9 @@ word_list = "Pip, Hey Pip, Pippletron, Pippy, Pips, Ziggletron. Raspberry Pi, ES
 follow_up_seconds = 8.0            # After Pip answers, talk again within this time without saying his name.
 keep_minutes = 10.0                # How long Pip remembers the current conversation (in memory only).
 max_turns = 10                     # How many recent exchanges Pip keeps in mind.
+wait_after_name_seconds = 5.0      # Said only his name? Pip listens quietly this long for the rest (no "Yes?" talking over you).
+unfinished_wait_seconds = 2.0      # Stopped mid-sentence ("what's the...")? Pip waits this long for the rest before answering.
+max_sentences = 2                  # Pip stops after this many sentences unless you asked for detail or a story (D-79).
 
 [thinker]
 filler_after_seconds = 3.0         # If an answer hasn't started after this long, Pip says "One sec."

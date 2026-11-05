@@ -26,6 +26,22 @@ PIP_NAMES = re.compile(r"\b(pip|pipp|pips|pippy|pippie|pippletron|pipple ?tron|p
 NOT_PIP = re.compile(r"\b(zig+le ?tron|zig+y|zig+)\b", re.I)
 
 
+FILLER = re.compile(r"\b(hey|hi|ok|okay|so|yo|um+|uh+|hmm+)\b", re.I)
+DANGLING = re.compile(r"\b(the|a|an|and|or|but|of|my|your|his|her|their|what's|whats|um+|uh+)\W*$", re.I)
+WANTS_DETAIL = re.compile(r"\b(story|explain|details?|in depth|describe|tell me (more|everything|all)|"
+                          r"step by step|steps|recipe|list|longer)\b", re.I)
+
+
+def only_name(text: str) -> bool:
+    return not FILLER.sub("", PIP_NAMES.sub("", text)).strip(" .,?!-")
+
+
+def looks_unfinished(text: str) -> bool:
+    """'Pippletron, what's the...' : they paused mid-sentence and are about to say more."""
+    t = text.strip()
+    return t.endswith(("...", "…", ",", "-")) or bool(DANGLING.search(t.rstrip(".")) and not t.endswith("?"))
+
+
 def names_pip(text: str) -> bool:
     """Does this transcript call Pip? Exact names, or close mishearings of 'Pippletron' (never 'Ziggletron')."""
     import difflib
@@ -50,6 +66,14 @@ class Conversation:
         self.follow_up_s = c.get("follow_up_seconds", 8.0)
         self.filler_after = (cfg or {}).get("thinker", {}).get("filler_after_seconds", 3.0)
         self.filler_said = None
+        self.wait_after_name = c.get("wait_after_name_seconds", 5.0)
+        self.unfinished_wait = c.get("unfinished_wait_seconds", 2.0)
+        self.max_sentences = c.get("max_sentences", 2)
+        self.expect_until = 0.0     # Pip was just called: the next speech is for him, name or not
+        self.pending = ""           # the start of a sentence they paused in the middle of
+        self.pending_task = None
+        self.sentences = 0
+        self.long_ok = False
         self.keep_s = c.get("keep_minutes", 10.0) * 60
         self.max_turns = c.get("max_turns", 10)
         self.stt = stt
@@ -59,6 +83,7 @@ class Conversation:
         self.speech_done = asyncio.Event()
         bus.core_listen("heard.wake", self.on_wake)
         bus.core_listen("heard.utterance", self.on_utterance)
+        bus.core_listen("heard.started", self.on_started)
         bus.core_listen("speech.interrupted", self.on_interrupted)
         bus.core_listen("speech.finished", self.on_speech_finished)
         bus.core_listen("answer.sentence", self.on_sentence)
@@ -89,6 +114,12 @@ class Conversation:
         await self.command("thinker", "thinker.cancel")
         await self.command("ears", "ears.chime")
 
+    async def on_started(self, msg: Message) -> None:
+        """They started talking again in the window: keep waiting for the rest of a paused sentence."""
+        if self.pending_task and msg.data.get("reason") == "follow_up":
+            self.pending_task.cancel()
+            self.pending_task = None
+
     async def on_interrupted(self, msg: Message) -> None:
         if self.answer_id:
             await self.command("thinker", "thinker.cancel", {"answer_id": self.answer_id})
@@ -103,6 +134,12 @@ class Conversation:
         if msg.data.get("answer_id") != self.answer_id:
             return  # from an answer that was cancelled
         text = msg.private.get("text", "")
+        self.sentences += 1
+        if self.sentences > self.max_sentences and not self.long_ok:
+            if self.sentences == self.max_sentences + 1:
+                await self.command("thinker", "thinker.cancel", {"answer_id": self.answer_id})
+                await self.bus.publish(Message("event", "answer.trimmed", data={"after": self.max_sentences}))
+            return  # roommates don't give speeches (D-79)
         self.speech_done.clear()
         self.filler_said = self.filler_said or "first sentence"  # too late for a filler now
         await self.say(text, "answer")
@@ -148,13 +185,37 @@ class Conversation:
         if reason == "wake" and NOT_PIP.search(text) and not PIP_NAMES.search(text):
             await self.bus.publish(Message("event", "wake.rejected", data={"why": "transcript names Ziggletron"}))
             return
-        if not re.sub(r"\b(hey|hi|ok|okay|so)\b", "", PIP_NAMES.sub("", text), flags=re.I).strip(" .,?!"):
-            # Only the name: answer like a person would, and listen for the question
-            await self.say("Yes?", "only the name")
-            await self.command("ears", "ears.listen", {"seconds": self.follow_up_s})
+        await self.addressed(text, reason, stt_s=stt_s)
+
+    async def addressed(self, text: str, reason: str, **data) -> None:
+        """Someone said something to Pip. Wait if they aren't finished; otherwise answer."""
+        if self.pending:
+            text = f"{self.pending} {text}"
+            self.pending = ""
+        if self.pending_task:
+            self.pending_task.cancel()
+            self.pending_task = None
+        if only_name(text):
+            # Just the name (often followed by a pause): the chime says he's listening. Don't talk over them.
+            self.expect_until = time.monotonic() + self.wait_after_name
+            await self.command("ears", "ears.listen", {"seconds": self.wait_after_name})
             return
-        await self.show("you", text, reason=reason, stt_s=stt_s)
+        if looks_unfinished(text):
+            self.pending = text
+            self.expect_until = time.monotonic() + self.unfinished_wait + 1.0
+            await self.command("ears", "ears.listen", {"seconds": self.unfinished_wait})
+            self.pending_task = asyncio.create_task(self._answer_pending(reason))
+            return
+        self.expect_until = 0.0
+        await self.show("you", text, reason=reason, **data)
         await self.answer(text, reason)
+
+    async def _answer_pending(self, reason: str) -> None:
+        await asyncio.sleep(self.unfinished_wait + 1.0)  # nothing more came: answer what we have
+        text, self.pending, self.pending_task = self.pending, "", None
+        if text:
+            await self.show("you", text, reason=reason)
+            await self.answer(text, reason)
 
     async def on_room(self, msg: Message) -> None:
         """Room speech: transcribe it and check whether it called Pip (the wake detector may have missed it)."""
@@ -164,25 +225,24 @@ class Conversation:
             text = await self.stt.transcribe(base64.b64decode(msg.private.get("audio_b64", "")))
         except Exception:
             return
-        addressed = bool(text) and names_pip(text)
+        expected = time.monotonic() < self.expect_until
+        addressed = bool(text.strip(" .?!,")) and (expected or names_pip(text))
         await self.bus.publish(Message("event", "room.heard", data={"seconds": msg.data.get("seconds"),
                                                                      "addressed": addressed}))
         if not addressed:
             return  # (Social-mode joining in uses this in step 6)
-        self.answer_id = None
-        await self.command("thinker", "thinker.cancel")
-        await self.command("ears", "ears.chime")
-        if not re.sub(r"\b(hey|hi|ok|okay|so|yo)\b", "", PIP_NAMES.sub("", text), flags=re.I).strip(" .,?!"):
-            await self.say("Yes?", "only the name")
-            await self.command("ears", "ears.listen", {"seconds": self.follow_up_s})
-            return
-        await self.show("you", text, reason="name in transcript")
-        await self.answer(text, "transcript")
+        if not expected:
+            self.answer_id = None
+            await self.command("thinker", "thinker.cancel")
+            await self.command("ears", "ears.chime")
+        await self.addressed(text, "expected" if expected else "transcript")
 
     # ---------------------------------------------------------------- answering
     async def answer(self, text: str, reason: str) -> None:
         aid = new_id()
         self.answer_id = aid
+        self.sentences = 0
+        self.long_ok = bool(WANTS_DETAIL.search(text))
         self.filler_said = None
         filler = asyncio.create_task(self._filler(aid))
         context = self._context()

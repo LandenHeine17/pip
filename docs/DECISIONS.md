@@ -87,6 +87,7 @@ Every decision the owner has made about Pip, numbered `D-nn`. **Decisions overri
 | D-78 | Architecture | **Approved** (2026-11-04) with the D-77 change. M1a building can start |
 | D-79 | How Pip talks (owner test of step 3, 2026-11-04) | **Short, like a roommate, not an assistant**: usually one sentence, two at most; longer only when asked. No offers of more help, no "anything else?". Replaces D-56 |
 | D-80 | Hearing his name (owner test of step 3) | The on-device detector missed too often, so Pip **also checks the words for his name, like Ziggletron did**: room speech is transcribed by Groq (allowed by D-77) and Pip answers if it calls him (Pip, Pipp, Pippy, Pippletron and close mishearings; never "Ziggletron"). Faster too: sonnet model at low effort, 1.2 s wait after the name, and "One sec." if an answer hasn't started after 3 s |
+| D-81 | Pauses (owner retest, 2026-11-04) | **Wait only ~0.7 s after the name and after you stop, like Ziggletron, but never talk over a pause**: if you said only "Pippletron", Pip (after the chime) listens quietly for 5 s for the rest instead of saying "Yes?"; if you stopped mid-sentence ("what's the…"), he waits for the rest and joins it up. Answers are also cut off after two sentences unless you asked for detail or a story |
 
 ## Still open (answered by M0 tests)
 
