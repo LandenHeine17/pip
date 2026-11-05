@@ -32,6 +32,16 @@ def chime(rate: int = 22050) -> np.ndarray:
     return (sound * 32767).astype(np.int16)
 
 
+def thinking_tone(rate: int = 22050) -> np.ndarray:
+    """A soft, quick "got it, thinking" blip (int16), quieter and lower than the chime (D-86)."""
+    def tone(freq, secs):
+        t = np.arange(int(rate * secs)) / rate
+        env = np.minimum(1, t / 0.015) * np.exp(-t * 14)
+        return 0.14 * np.sin(2 * np.pi * freq * t) * env
+    sound = np.concatenate([tone(660, 0.09), tone(784, 0.16)])
+    return (sound * 32767).astype(np.int16)
+
+
 RINGTONES = ("classic", "kitchen", "chimes", "gentle")
 
 

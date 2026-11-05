@@ -36,6 +36,8 @@ transcript_wake = true             # Also spot Pip's name in the transcript of r
 provider = "groq"                  # Speech-to-text service (swappable, PIP-NEW-008; D-48).
 model = "whisper-large-v3-turbo"
 timeout_seconds = 6.0
+voice_check = true                 # Only send sounds with a human voice in them to speech-to-text (D-85: stops phantom "Thank you.").
+min_voice_seconds = 0.15           # Less voice than this (except right after the wake word) is treated as noise.
 offline_model = "base.en"          # Whisper model on the Pi, used only when Groq can't be reached ("" = none). D-83
 # Words that help speech-to-text spell names and terms right (from the M0 benchmark).
 word_list = "Pip, Hey Pip, Pippletron, Pippy, Pips, Ziggletron. Raspberry Pi, ESP32, ESPHome, MQTT, Tailscale, Groq, Claude, Eightree plug, desk lamp, Lincoln, Nebraska."
@@ -58,7 +60,8 @@ missed_grace_minutes = 30.0        # Pip was off when it was due? Still ring if 
 ringtones = { timer = "kitchen", alarm = "classic", reminder = "chimes", event = "chimes" }
 
 [thinker]
-filler_after_seconds = 3.0         # If an answer hasn't started after this long, Pip says "One sec."
+thinking_tone = "always"           # Soft tone when Pip starts thinking (D-86): "always", "slow" (only if the answer is slow) or "off".
+thinking_tone_after_seconds = 1.5  # For "slow": play it if the answer hasn't started after this long.
 model = "sonnet"                   # Claude model: "sonnet" starts answering in ~0.9 s vs ~2.3 s for the default Opus.
 effort = "low"                     # How hard Claude thinks: low is quickest (like Ziggletron).
 timeout_seconds = 45.0             # Give up on an answer after this long.
