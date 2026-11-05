@@ -70,7 +70,7 @@ def test_memory_saves_merges_duplicates_and_refuses_secrets(mem):
     row, outcome = mem.add("The bins go out Tuesday night", "household", source="Alex, by voice")
     assert outcome == "saved" and row["visibility"] == "household" and row["status"] == "active"   # D-16
     assert mem.add("the bins go out tuesday night.", "household")[1] == "duplicate"
-    for secret in ("The wifi password is hunter2", "Card 4111 1111 1111 1111", "Mom's number is " + " ".join(["402", "555", "0199"]))  # built at run time: the commit check rightly blocks numbers:
+    for secret in ("The wifi password is hunter2", "Card 4111 1111 1111 1111", "Mom's number is " + " ".join(["402", "555", "0199"])):  # number built at run time: the commit check blocks literal ones
         with pytest.raises(Refused):
             mem.add(secret)
     assert len(mem.items()) == 1
