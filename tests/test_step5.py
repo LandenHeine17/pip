@@ -16,7 +16,7 @@ from pip_assistant.core.conversation import Conversation
 from pip_assistant.core.health import Health
 from pip_assistant.core.memory import Memory, Refused
 from pip_assistant.core.people import Match, People
-from pip_assistant.core.peoplecmds import PeopleCommands
+from pip_assistant.core.peoplecmds import PeopleCommands, StartLearning
 from pip_assistant.core.schedule import Schedule
 from pip_assistant.core.trace import Trace
 
@@ -184,11 +184,25 @@ async def test_people_commands(people, mem):
     assert (await people.identify(voice("guest"))).opted_out
     people.clock.t += 3 * 3600                               # 2 hours of quiet: forgotten
     assert not people.has_opt_outs() and (await people.identify(voice("guest"))).level == "unknown"
-    # Introducing yourself as a household member adds a voice sample
+    # Introducing yourself as a household member with no voice yet starts voice learning
     sam = people.add_person("Sam")
-    assert await pc.handle("I'm Sam.", Match(), voice("sam")) == "Hi Sam! I'll get better at recognising you."
-    assert people.all()[1]["voice_samples"] == 1
+    r = await pc.handle("Hey Pip, my name is Sam.", Match(), voice("sam"))
+    assert isinstance(r, StartLearning) and r.person_id == sam["id"] and r.say.startswith("Hi Sam! Let's learn your voice.")
+    assert isinstance(await pc.handle("Pip, this is Sam, can you learn my voice?", Match(), voice("sam")), StartLearning)
+    await people.add_samples(sam["id"], [voice("sam")], "guided")
+    # Once learned: recognised → one more sample; not recognised → nobody can add to someone else's voice
+    s = await people.identify(voice("sam"))
+    assert await pc.handle("I'm Sam.", s, voice("sam")) == "Hi Sam! I'll get better at recognising you."
+    assert people.all()[1]["voice_samples"] == 2
+    assert "You don't sound like you" in await pc.handle("I'm Sam.", Match(), voice("tv"))
+    assert people.all()[1]["voice_samples"] == 2
     assert await pc.handle("I'm tired.", Match(), voice("sam")) is None    # not an introduction
+    assert await pc.handle("It's Monday.", Match(), voice("sam")) is None
+    assert await pc.handle("I'm Sam and I was wondering what the weather will be like this weekend", Match(), voice("sam")) is None
+    # "Learn my voice": recognised → learning; unknown → Pip asks the name, and the answer starts it
+    assert isinstance(await pc.handle("Pip, learn my voice", s, voice("sam")), StartLearning)
+    assert await pc.handle("Pip, can you learn my voice?", Match(), voice("alex")) == "Sure! Who am I learning? Say your name."
+    assert (await pc.handle("Alex.", Match(), voice("tv"))).startswith("Hi Alex! You don't sound like you")   # learned already, not him
     assert await pc.handle("Pip, remember the plants need water on Sundays", me, voice("alex"), offline=True) == \
         "I'm offline, so I put that in the memory inbox to check later."
     assert mem.items()[0]["status"] == "pending"
@@ -287,18 +301,69 @@ async def test_opted_out_room_speech_never_leaves_the_pi(tmp_path):
 async def test_guided_voice_learning(tmp_path):
     clock = Clock()
     bus, people, memory, conv, ears, got, tasks = await setup_bus(tmp_path, clock, FakeSTT("should not be used"))
+    conv.enrol_speech_wait = 0.05
     alex = people.add_person("Alex", "admin")
     status = await conv.start_enrolment(alex["id"])
-    assert status["of"] == 5 and status["done"] == 0
+    assert status["of"] == 5 and status["done"] == 0 and status["name"] == "Alex"
+    await asyncio.sleep(0.1)
+    await ears.emit("heard.utterance", *utt("follow_up", voice("alex", 0.4)))     # too short: asked again, not counted
+    await asyncio.sleep(0.15)
+    assert conv.enrol_status()["done"] == 0 and conv.enrol_status()["retry"]
     for i in range(5):
         await ears.emit("heard.utterance", *utt("follow_up", voice("alex", 2.5)))
         await asyncio.sleep(0.1)
     assert conv.stt.calls == 0                                   # read sentences aren't transcribed or answered
     assert people.all()[0]["voice_samples"] == 5 and conv.enrol_status() is None
     says = [t for k, t, _ in got if k == "ears.say"]
-    assert says[0].startswith("Hi Alex!") and says[-1] == "Thanks, Alex. I'll know your voice now."
-    assert len([1 for k, _, _ in got if k == "ears.listen"]) >= 5
+    assert says[0].startswith("Hi Alex!") and "Read sentence 1 again" in says[1]
+    assert says[-1].startswith("Thanks, Alex. I know your voice now.")
+    assert len([1 for k, _, _ in got if k == "ears.chime"]) >= 6
     await finish(bus, tasks)
+
+
+async def test_introducing_yourself_out_loud_learns_your_voice(tmp_path):
+    clock = Clock()
+    stt = FakeSTT("Hey Pip, I'm Alex.")
+    bus, people, memory, conv, ears, got, tasks = await setup_bus(tmp_path, clock, stt)
+    conv.enrol_speech_wait = 0.05
+    alex = people.add_person("Alex", "admin")
+    await ears.emit("heard.utterance", *utt("wake", voice("alex", 2.0)))
+    await asyncio.sleep(0.2)
+    assert conv.enrol_status()["name"] == "Alex"
+    assert [t for k, t, _ in got if k == "ears.say"][0].startswith("Hi Alex! Let's learn your voice.")
+    assert not [x for x in got if x[0] == "thinker.ask"]                      # Pip's own command, not Claude
+    for i in range(5):
+        await ears.emit("heard.utterance", *utt("room" if i == 2 else "follow_up", voice("alex", 2.5)))  # one read late
+        await asyncio.sleep(0.1)
+    assert people.all()[0]["voice_samples"] == 6 and stt.calls == 1          # 5 sentences + the introduction
+    stt.text = "Pip, who am I?"
+    await ears.emit("heard.utterance", *utt("wake", voice("alex2")))
+    await asyncio.sleep(0.2)
+    assert [t for k, t, _ in got if k == "ears.say"][-1] in ("You sound like Alex.", "I think you're Alex, but I'm not sure.")
+    await finish(bus, tasks)
+
+
+async def test_learning_stops_if_nobody_reads(tmp_path):
+    clock = Clock()
+    bus, people, memory, conv, ears, got, tasks = await setup_bus(tmp_path, clock, FakeSTT(""))
+    conv.enrol_speech_wait, conv.ENROL_WAIT = 0.02, 0.05
+    alex = people.add_person("Alex", "admin")
+    await conv.start_enrolment(alex["id"])
+    await asyncio.sleep(4.0)
+    says = [t for k, t, _ in got if k == "ears.say"]
+    assert any("Whenever you're ready, read sentence 1" in s for s in says)
+    assert says[-1].startswith("I'll stop there.") and conv.enrol_status() is None
+    await finish(bus, tasks)
+
+
+async def test_a_visitor_can_be_added_to_the_household(people):
+    pc = PeopleCommands(people)
+    people.add_person("Alex", "admin")
+    await pc.handle("Hi Pip, I'm Jordan.", Match(), voice("guest"))
+    [g] = people.snapshot()["guests"]
+    j = people.promote_guest(g["id"])
+    assert j["name"] == "Jordan" and people.all()[1]["voice_samples"] == 1 and not people.guests
+    assert (await people.identify(voice("guest"))).person_id == j["id"]
 
 
 async def test_dashboard_people_and_memory_actions(tmp_path):

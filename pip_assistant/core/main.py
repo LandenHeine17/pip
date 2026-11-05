@@ -83,6 +83,9 @@ async def people_action(people: People, memory: Memory, conv: Conversation, m: M
         if act == "voice_from_m0":
             n = await people.add_samples(pid, m0_owner_clips(), "m0 recordings")
             return {"ok": bool(n), "samples": n} if n else {"error": "No usable M0 recordings found"}
+        if act == "guest_join":
+            p = people.promote_guest(pid)
+            return {"ok": True, "id": p["id"]}
         if act == "enrol_start":
             return {"ok": True, "enrolling": await conv.start_enrolment(pid)}
         if act == "enrol_cancel":

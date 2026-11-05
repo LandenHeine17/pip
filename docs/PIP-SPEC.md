@@ -82,7 +82,17 @@ flowchart LR
 
 ### People and voices (built in step 5)
 - **People** are added on the dashboard (you first, as Admin). Pip recognises voices on the Pi; the voiceprints never leave it and are never sent to Claude (D-87, D-89).
-- **Learning a voice:** "Learn my voice" on the dashboard (Pip beeps, you read five sentences shown there), or from your M0 recordings (owner only), or bit by bit when you say "Pip, I'm Sam".
+- **Learning a voice:** once your name is on the list, **say "Pip, I'm Sam"** (or "Pip, learn my voice"). Pip says hi and beeps; **five short sentences appear on the dashboard**, and you read one after each beep (about a minute). If one is too short or he hears nothing, he asks again; if that happens twice in a row he stops. The "Learn my voice" button does the same, and the owner can use his M0 recordings instead (nothing to read). What you read is only turned into a voiceprint on the Pi, never transcribed.
+
+```mermaid
+flowchart LR
+    A["'Pip, I'm Sam'"] --> B{"Sam on the<br/>household list?"}
+    B -- "no" --> G["Visitor: remembered<br/>for this visit<br/>(dashboard: Add to household)"]
+    B -- "yes, voice not learned" --> L["'Hi Sam! Let's learn your voice'<br/>beep → read sentence 1 … 5<br/>(shown on the dashboard)"]
+    B -- "yes, learned, sounds like Sam" --> M["One more sample"]
+    B -- "yes, learned, doesn't sound like Sam" --> D["'Use Learn my voice<br/>on the dashboard'"]
+    L --> K["'I know your voice now'"]
+```
 - Pip is **sure** ("Landen"), **probably** ("Landen?") or doesn't know ("Someone"). Claude is told who's talking, so "my" and "me" mean the right person. The conversation feed shows the name.
 - **"Pip, leave me out"**: what you say in the room stays on the Pi from then on (D-77). You can still call Pip by name. "Pip, include me again" undoes it. Visitors can say it too; for them it lasts this visit.
 - **Visitors** who say "Pip, I'm Jordan" are remembered for that visit only (forgotten after 2 hours of quiet or a restart).

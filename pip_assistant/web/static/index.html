@@ -144,7 +144,9 @@ code{font-size:.8rem}
   <div class="items" id="people"></div>
   <form id="personadd"><input id="pname" placeholder="Name" maxlength="40" style="flex:1;min-width:8em" required>
     <select id="prole"><option value="member">Member</option><option value="admin">Admin</option></select><button class="primary">Add person</button></form>
-  <div class="sub" style="margin-top:8px">Pip recognises voices on the Pi; voiceprints never leave it. <b>Learn my voice</b>: Pip asks you to read five sentences. <b>Left out</b>: what that person says in the room stays on the Pi (they can still call Pip by name). Visitors can say "Pip, leave me out" or "Pip, I'm Sam" (remembered for that visit only).</div>
+  <div class="sub" style="margin-top:8px"><b>Teaching Pip your voice:</b> once your name is on this list, just say <b>"Pip, I'm</b> <i>your name</i><b>"</b> (or "Pip, learn my voice"). Pip says hi, beeps, and five short sentences appear here: read each one out loud after the beep. It takes about a minute. Check with "Pip, who am I?".<br>
+  <b>Use my M0 recordings</b> (owner only): uses 8 recordings you already made in the M0 tests instead; nothing to read.<br>
+  Voiceprints stay on the Pi. <b>Left out</b>: what that person says in the room stays on the Pi (they can still call Pip by name). Visitors who say "Pip, I'm Sam" are remembered for that visit only; if they live here, press <b>Add to household</b>.</div>
 </section>
 </div>
 
@@ -300,27 +302,33 @@ $("memadd").onsubmit = async ev => { ev.preventDefault(); const r = await memAct
 
 // ---------------------------------------------------------------- people & voices
 let ppl = {people:[], guests:[], enrolling:null, voice_model:false, m0_recordings:false};
+let wasEnrolling = false;
 function renderPeople(){
   const e = ppl.enrolling;
-  $("enrol").innerHTML = e ? `<div class="item" style="background:var(--accentbg);margin-bottom:10px;display:block"><b>Learning a voice · ${e.done} of ${e.of}</b>
-     <div class="sub">After each beep, read the next sentence out loud:</div><ol style="margin:6px 0 4px 18px;padding:0">${e.phrases.map((p,i) => `<li style="${i<e.done?"opacity:.45;text-decoration:line-through":i===e.done?"font-weight:700":""}">${esc(p)}</li>`).join("")}</ol>
-     <button class="ghost" onclick="pAct({action:'enrol_cancel'})">Cancel</button></div>` : "";
+  if (e && !wasEnrolling) setTimeout(() => $("enrol").scrollIntoView({behavior:"smooth", block:"center"}), 50);
+  wasEnrolling = !!e;
+  $("enrol").innerHTML = e ? `<div class="item" style="background:var(--accentbg);margin-bottom:10px;display:block">
+     <div class="sub">Learning ${esc(e.name||"a")}'s voice · sentence ${Math.min(e.done+1,e.of)} of ${e.of}</div>
+     <div style="font-size:1.5em;font-weight:700;margin:10px 0;line-height:1.3">"${esc(e.phrases[Math.min(e.done,e.of-1)])}"</div>
+     <div class="sub">${e.retry ? "Pip didn't catch that: read it again after the beep." : "After Pip's beep, read this out loud in your normal voice."}</div>
+     <div style="display:flex;gap:6px;margin:10px 0">${e.phrases.map((_,i) => `<span style="flex:1;height:6px;border-radius:3px;background:${i<e.done?"var(--accent)":"var(--soft)"}"></span>`).join("")}</div>
+     <button class="ghost" onclick="pAct({action:'enrol_cancel'})">Stop</button></div>` : "";
   $("people").innerHTML = ppl.people.map(p => `<div class="item"><div><b>${esc(p.name)}</b> <span class="pill ${p.role==="admin"?"ok":""}" style="background:var(--soft)">${p.role}</span>${p.opted_out?` <span class="pill stuck">left out</span>`:""}
-      <div class="sub">${p.voice_samples ? `voice learned (${p.voice_samples} samples)` : "voice not learned yet"}${p.last_heard?` · last heard ${new Date(p.last_heard*1000).toLocaleString([], {weekday:"short", hour:"numeric", minute:"2-digit"})}`:""}</div></div>
+      <div class="sub">${p.voice_samples ? `voice learned (${p.voice_samples} samples)` : `voice not learned yet: say "Pip, I'm ${esc(p.name.split(" ")[0])}"`}${p.last_heard?` · last heard ${new Date(p.last_heard*1000).toLocaleString([], {weekday:"short", hour:"numeric", minute:"2-digit"})}`:""}</div></div>
       <span style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
       ${ppl.voice_model ? `<button onclick="pAct({action:'enrol_start',id:'${p.id}'})">${p.voice_samples?"Re-learn voice":"Learn my voice"}</button>` : ""}
-      ${ppl.voice_model && ppl.m0_recordings && p.role==="admin" && !p.voice_samples ? `<button title="Use the owner's M0 test recordings" onclick="pAct({action:'voice_from_m0',id:'${p.id}'})">From M0 recordings</button>` : ""}
+      ${ppl.voice_model && ppl.m0_recordings && p.role==="admin" && !p.voice_samples ? `<button title="Uses 8 recordings you already made in the M0 tests: nothing to read" onclick="pAct({action:'voice_from_m0',id:'${p.id}'})">Use my M0 recordings</button>` : ""}
       <button class="ghost" title="${p.opted_out?"Include again":"Leave out (room speech stays on the Pi)"}" onclick="pAct({action:'opt_out',id:'${p.id}',value:${!p.opted_out}})">${p.opted_out?"Include":"Leave out"}</button>
       ${p.voice_samples ? `<button class="ghost" title="Forget voice" onclick="if(confirm('Forget ${esc(p.name)}\'s voice?')) pAct({action:'forget_voice',id:'${p.id}'})">Forget voice</button>` : ""}
       <button class="ghost" title="Remove person" onclick="if(confirm('Remove ${esc(p.name)}, their voice and memories about them?')) pAct({action:'remove',id:'${p.id}'})">✕</button></span></div>`).join("")
-    + ppl.guests.map(g => `<div class="item"><div><b>${esc(g.name)}</b> <span class="pill" style="background:var(--soft)">this visit</span>${g.opted_out?` <span class="pill stuck">left out</span>`:""}<div class="sub">forgotten after 2 hours of quiet</div></div></div>`).join("")
+    + ppl.guests.map(g => `<div class="item"><div><b>${esc(g.name)}</b> <span class="pill" style="background:var(--soft)">this visit</span>${g.opted_out?` <span class="pill stuck">left out</span>`:""}<div class="sub">forgotten after 2 hours of quiet</div></div><button class="ghost" onclick="pAct({action:'guest_join',id:'${g.id}'})">Add to household</button></div>`).join("")
     || `<div class="empty">Nobody added yet. Add yourself first (as Admin).</div>`;
   $("peoplesum").textContent = ppl.voice_model ? `${ppl.people.length} ${ppl.people.length===1?"person":"people"}` : "voice model not installed";
 }
 async function loadPeople(){ try{ const r = await (await fetch("/api/people",{cache:"no-store"})).json(); if(r.people){ ppl = r; renderPeople(); } }catch(e){} }
 async function pAct(body){ try{ const r = await (await fetch("/api/people/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})).json(); if(r.error) alert(r.error); return r; }catch(e){ alert("Couldn't reach Pip"); } finally { loadPeople(); loadMemory(); } }
 $("personadd").onsubmit = async ev => { ev.preventDefault(); const r = await pAct({action:"add", name:$("pname").value, role:$("prole").value}); if (r && r.ok) $("pname").value = ""; };
-setInterval(() => { if (ppl.enrolling) loadPeople(); }, 2000);
+setInterval(() => { if (ppl.enrolling) loadPeople(); }, 1500);
 
 loadSched(); loadConv(); loadTrace(); loadHealth(); loadMemory(); loadPeople(); if(!location.search.includes("nolive")) live();
 </script>
