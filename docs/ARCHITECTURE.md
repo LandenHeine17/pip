@@ -264,7 +264,7 @@ Built in small steps. Each step ends with something you can try.
 |---|---|
 | 1. Skeleton: the programs start, talk, log and show health on a new dashboard. **Done 2026-11-04** (pip-builder waits for M1b) | See Pip's status and the decision trace at `http://100.118.171.118:8790` |
 | 2. Ears: speakerphone, wake words, "stop", Piper voice. **Done 2026-11-04.** Talking over Pip stops him (the speakerphone removes his own voice). Pippletron needs strictness 0.8 because "Ziggletron" sounds similar | Say "Pippletron" and hear a chime and a fixed reply |
-| 3. Core + Groq + Claude: real answers. **Done 2026-11-04.** First words ~2 s after you stop (Groq 0.4 s, pre-started Claude 1.25 s). Weather from Open-Meteo; web search only when needed ("Let me look that up") | Ask questions and get spoken answers |
+| 3. Core + Groq + Claude: real answers. **Done 2026-11-04.** First words ~2 s after you stop (Groq 0.4 s, pre-started Claude 1.25 s). Weather from Open-Meteo; web search only when needed ("Let me look that up"). After the owner's test: short roommate answers (D-79), name spotted in transcripts too, sonnet at low effort, "One sec." after 3 s (D-80) | Ask questions and get spoken answers |
 | 4. Timers, reminders, alarms (incl. offline) | Use Pip for timers like Ziggletron |
 | 5. Memory (with approval inbox), people and voices | "Remember that…", recognised speakers |
 | 6. Social mode: room context, question check, chime-ins | Pip joins in like Ziggletron, with the privacy rules above |

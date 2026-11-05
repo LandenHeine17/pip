@@ -192,3 +192,44 @@ async def test_claude_reader_streams_sentences_and_spots_search(tmp_path):
     assert said == ["It's 53 degrees.", "Bring a jacket"] and searched == [True]
     assert info["searched"] and info["first_sentence_s"] is not None
     cli.cancel()
+
+
+# ------------------------------------------------------------------ name in the transcript (Ziggletron-style)
+def test_names_pip_spots_mishearings_but_not_ziggletron():
+    from pip_assistant.core.conversation import names_pip
+    for t in ["Hey Pip, what time is it?", "Pippletron, stop", "Hey, Pipp.", "pipple tron what's up",
+              "Piplotron, what's the weather?", "what's the weather, Pippletron?"]:
+        assert names_pip(t), t
+    for t in ["Ziggletron, what time is it?", "pass the pipe", "I picked it up", "the pizza is in the oven",
+              "Philip is coming over"]:
+        assert not names_pip(t), t
+
+
+async def test_name_in_room_transcript_gets_an_answer(tmp_path):
+    bus, conv, ears, got, tasks = await setup(tmp_path, "What's the capital of Australia, Pipp?")
+    await ears.emit("heard.utterance", {"reason": "room", "had_speech": True, "seconds": 2.0},
+                    private={"audio_b64": audio_b64()})
+    await asyncio.sleep(0.3)
+    assert ("ears.chime", None, None) in got
+    assert [t for k, t, _ in got if k == "ears.say"] == ["Canberra is the capital.", "Not Sydney!"]
+    await finish(bus, tasks)
+
+
+async def test_room_talk_without_the_name_is_ignored(tmp_path):
+    bus, conv, ears, got, tasks = await setup(tmp_path, "I think we should get pizza tonight.")
+    await ears.emit("heard.utterance", {"reason": "room", "had_speech": True, "seconds": 2.0},
+                    private={"audio_b64": audio_b64()})
+    await asyncio.sleep(0.3)
+    assert got == [] and "room.heard" in [r["type"] for r in bus.trace.recent()]
+    await finish(bus, tasks)
+
+
+def test_wake_during_room_capture_becomes_a_wake_request():
+    seg = Segmenter()
+    run_frames(seg, [QUIET] * 5)
+    seg.start("room", lookback=0.4)
+    run_frames(seg, [LOUD] * 10)
+    c = seg.capture
+    c["reason"], c["word"], c["after"] = "wake", "pippletron", c["had_speech"]
+    utt = run_frames(seg, [QUIET] * 12)
+    assert utt and utt.reason == "wake" and utt.word == "pippletron"

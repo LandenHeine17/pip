@@ -61,7 +61,7 @@ Every decision the owner has made about Pip, numbered `D-nn`. **Decisions overri
 | D-53 | Conversation feed (f067) | **Keep Ziggletron's way:** no login needed to view it. The dashboard is still reachable only on the owner's devices (Tailscale/localhost) |
 | D-54 | Approved behaviour changes | Yes to: person-bound follow-up (f005), guest voices only with consent (f011), admin powers from dashboard login (f014), wait/actually/ducking (f017), recognised-only greetings (f021), memory approval and no silent loss (f028), dashboard approval of code changes (f073), sandboxed coding terminal (f077), plugin permissions (f079) |
 | D-55 | Personality tone | Playful and jokey |
-| D-56 | Answer length | Medium (a few sentences) |
+| D-56 | Answer length | ~~Medium (a few sentences)~~ **Replaced by D-79** |
 | D-57 | Jokes | Sometimes |
 | D-58 | Joining frequency (Social) | Often: at most every ~3 minutes |
 | D-59 | Pronoun | He |
@@ -85,6 +85,8 @@ Every decision the owner has made about Pip, numbered `D-nn`. **Decisions overri
 | D-76 | Architecture phase | Start now (2026-11-04), while the overnight false-wake checks finish; they only tune wake-word sensitivity |
 | D-77 | Room speech sent to Groq (no wake word) | Sent for **everyone**: household members, guests and unknown voices, **except anyone who has opted out**, whose speech never leaves the Pi. Anyone (guests too) can say "Pip, leave me out"; a guest's voice is remembered only for that visit, just to keep them left out. Replaces the guest part of D-13 |
 | D-78 | Architecture | **Approved** (2026-11-04) with the D-77 change. M1a building can start |
+| D-79 | How Pip talks (owner test of step 3, 2026-11-04) | **Short, like a roommate, not an assistant**: usually one sentence, two at most; longer only when asked. No offers of more help, no "anything else?". Replaces D-56 |
+| D-80 | Hearing his name (owner test of step 3) | The on-device detector missed too often, so Pip **also checks the words for his name, like Ziggletron did**: room speech is transcribed by Groq (allowed by D-77) and Pip answers if it calls him (Pip, Pipp, Pippy, Pippletron and close mishearings; never "Ziggletron"). Faster too: sonnet model at low effort, 1.2 s wait after the name, and "One sec." if an answer hasn't started after 3 s |
 
 ## Still open (answered by M0 tests)
 

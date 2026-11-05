@@ -8,7 +8,7 @@ The short, living description of Pip 2.0. Read this first.
 
 ## 1. In one paragraph
 
-Pip is a playful companion living in a dorm room on a Raspberry Pi 5, with a USB speakerphone and a monitor showing his animated face. You call him with **"Hey Pip"** (and maybe **"Pippletron"**). He answers out loud in a few sentences, sets timers and reminders, remembers what you approve, and now and then joins a conversation when he has something useful to say. He never claims to have done something he hasn't. He can explain how he works and why he did something, and he can propose changes to his own code, which you review and approve on the dashboard before they go live. He replaces Ziggletron, keeping what worked (the face, interruptions, real ringing alarms, the personality) and fixing what didn't.
+Pip is a playful companion living in a dorm room on a Raspberry Pi 5, with a USB speakerphone and a monitor showing his animated face. You call him with **"Hey Pip"** (and maybe **"Pippletron"**). He answers out loud in a sentence or two, like a roommate (D-79), sets timers and reminders, remembers what you approve, and now and then joins a conversation when he has something useful to say. He never claims to have done something he hasn't. He can explain how he works and why he did something, and he can propose changes to his own code, which you review and approve on the dashboard before they go live. He replaces Ziggletron, keeping what worked (the face, interruptions, real ringing alarms, the personality) and fixing what didn't.
 
 ## 2. What M0 has found so far
 
@@ -26,6 +26,7 @@ Pip is a playful companion living in a dorm room on a Raspberry Pi 5, with a USB
 | Your test of Pip (step 2) | Pippletron 5/5 close and fine across the room; Hey Pip ~12/15 close, weaker far; talking over Pip stopped him every time, never by itself; no false wakes in chat; "Ziggletron" didn't wake him | — |
 | How fast does Pip answer? | First words about **2 s** after you finish (Groq 0.4 s + pre-started Claude 1.25 s + voice 0.3 s). Web searches take much longer (~19 s in M0), so weather comes from Open-Meteo instead and Pip says "Let me look that up" when he must search | — |
 | Does "Ziggletron" wake Pip? | With synthetic speech, "Ziggletron" woke the Pippletron detector 13/20 times at strictness 0.5 and 4/20 at 0.8 ("Pippletron" itself: 19/20 at 0.8). So Pippletron uses **0.8**, step 3 adds a transcript check, and a retrain with more "Ziggletron" examples is planned | — |
+| Why did step 3 feel worse than Ziggletron? (owner test) | Answers too long and assistant-like; the detector alone missed many "Hey Pip"s (Ziggletron reads the words instead); the default Claude model is slower (first words 2.3 s vs 0.9 s for sonnet); web search ~16 s with the "look that up" line not always said. Fixed by D-79 and D-80; to be re-checked by the owner | — |
 | Can the Pi run Pip comfortably? | Yes: 10 min of everyday work used 16% CPU on average (55% peak), 1.5 GB memory, 68 °C; the wake detector never fell behind | — |
 | Still running | Overnight false-wake checks for both wake words (until 07:30); they tune sensitivity only | — |
 
@@ -34,7 +35,7 @@ Live results are on the dashboard (`http://100.118.171.118:8780`).
 ## 3. How Pip behaves
 
 ### Hearing and being called
-- An on-device detector listens for **"Hey Pip"** (and "Pippletron" if it tests well). Pip also answers to Pippy, Pips and Pippletron in transcripts (D-60).
+- An on-device detector listens for **"Hey Pip"** (and "Pippletron" if it tests well). Pip also checks the words of room speech for his name, like Ziggletron did, so he answers even when the detector misses (Pip, Pipp, Pippy, Pips, Pippletron and close mishearings; never "Ziggletron") (D-60, D-80).
 - After an answer, the **same person** can follow up without the name (D-54).
 - **Interruptions:** "stop" halts him instantly, "wait" pauses and "go on" resumes, "actually…" corrects your last request instead of making a new one. He goes quieter when someone else starts talking (D-54).
 - Long silence from the speakerphone means "muted or very quiet", shown as a status, never an error (D-38).
@@ -46,7 +47,7 @@ Live results are on the dashboard (`http://100.118.171.118:8780`).
 - Quiet hours 23:00–07:00: no joining in or greetings; alarms still ring (D-66).
 
 ### Personality and voice
-- Playful and jokey, medium-length answers, jokes sometimes, "he" (D-55–D-59).
+- Playful, short roommate-style answers (D-79), jokes sometimes, "he" (D-55–D-59).
 - Voice: Piper "lessac" for now. The voice engine is **swappable** in Settings (PIP-NEW-097, D-73).
 - He says what actually happened ("Timer's on" only once the timer exists), asks one short question when unsure, and says so when he doesn't know.
 

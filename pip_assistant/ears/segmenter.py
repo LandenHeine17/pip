@@ -18,7 +18,7 @@ FRAME_S = 0.08
 
 @dataclass
 class Utterance:
-    reason: str            # "wake" | "follow_up" | "barge_in"
+    reason: str            # "wake" | "follow_up" | "barge_in" | "room" (checked for Pip's name)
     audio: np.ndarray      # int16 at 16 kHz
     had_speech: bool
     word: str = ""

@@ -22,8 +22,19 @@ from ..common.messages import Message, new_id
 
 log = logging.getLogger(__name__)
 
-PIP_NAMES = re.compile(r"\b(pip|pips|pippy|pippletron|pipple ?tron)\b", re.I)
+PIP_NAMES = re.compile(r"\b(pip|pipp|pips|pippy|pippie|pippletron|pipple ?tron|pippa ?tron|piple ?tron|pipletron)\b", re.I)
 NOT_PIP = re.compile(r"\b(zig+le ?tron|zig+y|zig+)\b", re.I)
+
+
+def names_pip(text: str) -> bool:
+    """Does this transcript call Pip? Exact names, or close mishearings of 'Pippletron' (never 'Ziggletron')."""
+    import difflib
+    if PIP_NAMES.search(text):
+        return True
+    words = re.findall(r"[a-z]+", text.lower())
+    joined = words + [a + b for a, b in zip(words, words[1:])]
+    return any(len(w) >= 7 and not w.startswith("zig") and
+               difflib.SequenceMatcher(None, w, "pippletron").ratio() >= 0.82 for w in joined)
 SAYINGS = {
     "not_caught": "Sorry, I didn't catch that. Could you say it again?",
     "stt_failed": "Sorry, I couldn't make out what you said. My hearing service isn't answering.",
@@ -37,6 +48,8 @@ class Conversation:
         self.bus = bus
         c = (cfg or {}).get("conversation", {})
         self.follow_up_s = c.get("follow_up_seconds", 8.0)
+        self.filler_after = (cfg or {}).get("thinker", {}).get("filler_after_seconds", 3.0)
+        self.filler_said = None
         self.keep_s = c.get("keep_minutes", 10.0) * 60
         self.max_turns = c.get("max_turns", 10)
         self.stt = stt
@@ -91,16 +104,26 @@ class Conversation:
             return  # from an answer that was cancelled
         text = msg.private.get("text", "")
         self.speech_done.clear()
+        self.filler_said = self.filler_said or "first sentence"  # too late for a filler now
         await self.say(text, "answer")
 
     async def on_searching(self, msg: Message) -> None:
-        if msg.data.get("answer_id") == self.answer_id:
+        if msg.data.get("answer_id") == self.answer_id and not self.filler_said:
+            self.filler_said = "searching"
             await self.say("Let me look that up.", "searching")
+
+    async def _filler(self, aid: str) -> None:
+        await asyncio.sleep(self.filler_after)
+        if self.answer_id == aid and not self.filler_said:
+            self.filler_said = "slow"
+            await self.say("One sec.", "slow answer")
 
     async def on_utterance(self, msg: Message) -> None:
         reason = msg.data.get("reason")
         if not msg.data.get("had_speech"):
             return
+        if reason == "room":
+            return await self.on_room(msg)
         if self.stt is None:
             if reason == "wake":
                 await self.say(SAYINGS["stt_failed"], "error")
@@ -133,10 +156,35 @@ class Conversation:
         await self.show("you", text, reason=reason, stt_s=stt_s)
         await self.answer(text, reason)
 
+    async def on_room(self, msg: Message) -> None:
+        """Room speech: transcribe it and check whether it called Pip (the wake detector may have missed it)."""
+        if self.stt is None:
+            return
+        try:
+            text = await self.stt.transcribe(base64.b64decode(msg.private.get("audio_b64", "")))
+        except Exception:
+            return
+        addressed = bool(text) and names_pip(text)
+        await self.bus.publish(Message("event", "room.heard", data={"seconds": msg.data.get("seconds"),
+                                                                     "addressed": addressed}))
+        if not addressed:
+            return  # (Social-mode joining in uses this in step 6)
+        self.answer_id = None
+        await self.command("thinker", "thinker.cancel")
+        await self.command("ears", "ears.chime")
+        if not re.sub(r"\b(hey|hi|ok|okay|so|yo)\b", "", PIP_NAMES.sub("", text), flags=re.I).strip(" .,?!"):
+            await self.say("Yes?", "only the name")
+            await self.command("ears", "ears.listen", {"seconds": self.follow_up_s})
+            return
+        await self.show("you", text, reason="name in transcript")
+        await self.answer(text, "transcript")
+
     # ---------------------------------------------------------------- answering
     async def answer(self, text: str, reason: str) -> None:
         aid = new_id()
         self.answer_id = aid
+        self.filler_said = None
+        filler = asyncio.create_task(self._filler(aid))
         context = self._context()
         self.history.append({"role": "user", "text": text, "ts": time.time()})
         t0 = time.perf_counter()
@@ -145,6 +193,7 @@ class Conversation:
                                            {"text": text, "context": context}, timeout=60)
         except Exception as e:
             reply = Message("reply", "thinker.ask", data={"error": f"{type(e).__name__}"})
+        filler.cancel()
         if self.answer_id != aid:
             return  # cancelled meanwhile
         self.answer_id = None

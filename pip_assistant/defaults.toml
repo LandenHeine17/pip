@@ -29,7 +29,8 @@ speech_dbfs = -50.0                # Louder than this counts as speech when cutt
 end_silence_seconds = 0.8          # A pause this long means you've finished speaking.
 max_utterance_seconds = 12.0       # Longest single request.
 wait_for_speech_seconds = 4.0      # In the follow-up window, how long to wait for you to start talking.
-after_wake_seconds = 2.0           # After the wake word, how long to wait for a question (else it came before the name).
+after_wake_seconds = 1.2           # After the wake word, how long to wait for a question (else it came before the name).
+transcript_wake = true             # Also spot Pip's name in the transcript of room speech, like Ziggletron (D-77).
 
 [stt]
 provider = "groq"                  # Speech-to-text service (swappable, PIP-NEW-008; D-48).
@@ -44,7 +45,9 @@ keep_minutes = 10.0                # How long Pip remembers the current conversa
 max_turns = 10                     # How many recent exchanges Pip keeps in mind.
 
 [thinker]
-model = ""                         # Claude model for answers ("" = your plan's default).
+filler_after_seconds = 3.0         # If an answer hasn't started after this long, Pip says "One sec."
+model = "sonnet"                   # Claude model: "sonnet" starts answering in ~0.9 s vs ~2.3 s for the default Opus.
+effort = "low"                     # How hard Claude thinks: low is quickest (like Ziggletron).
 timeout_seconds = 45.0             # Give up on an answer after this long.
 web_search = true                  # Let Claude look things up for current facts.
 location = "Lincoln, Nebraska"     # Where Pip lives (D-63).
