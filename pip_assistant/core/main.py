@@ -10,6 +10,7 @@ from .bus import Bus
 from .conversation import Conversation
 from .memory import Memory, Refused
 from .mic import MicSwitch
+from .modules import Registry
 from .net import Net
 from .people import People, m0_owner_clips
 from .schedule import Schedule
@@ -39,10 +40,15 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
     schedule = Schedule(paths.database(), bus, cfg)
     people = People(paths.database(), cfg)
     memory = Memory(paths.database())
-    conv = Conversation(bus, cfg, stt, schedule=schedule, local_stt=make_local_stt(cfg), people=people, memory=memory, mic=mic)
+    # Features that plug in (pip_assistant/modules/, ARCHITECTURE §7): calendar, to-dos, Google accounts…
+    modules = Registry.load(cfg, bus=bus, schedule=schedule, people=people, net=net)
+    conv = Conversation(bus, cfg, stt, schedule=schedule, local_stt=make_local_stt(cfg), people=people, memory=memory,
+                        mic=mic, modules=modules)
     conv.net = net
-    bus.core_handlers["core.alerts"] = lambda m: ({"count": len(schedule.active())}, schedule.snapshot())
+    bus.core_handlers["core.alerts"] = lambda m: ({"count": len(schedule.active())}, alerts_snapshot(schedule, modules))
     bus.core_handlers["core.alert_action"] = lambda m: alert_action(schedule, conv, m)
+    bus.core_handlers["module.request"] = modules.request          # a module's dashboard page (/api/m/<name>)
+    bus.core_handlers["core.modules"] = lambda m: {"modules": modules.pages()}
     bus.core_handlers["core.people"] = lambda m: ({"count": len(people.all())},
                                                    {**people.snapshot(), "enrolling": conv.enrol_status()})
     bus.core_handlers["core.people_action"] = lambda m: people_action(people, memory, conv, m)
@@ -51,7 +57,14 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
     bus.core_handlers["core.mic"] = lambda m: mic_action(conv, m)
     bus.schedule = schedule
     bus.memory = memory
+    bus.modules = modules
     return bus, trace, health
+
+
+def alerts_snapshot(schedule: Schedule, modules: Registry) -> dict:
+    """The dashboard's timers card, plus the next two weeks from the calendar module (if it's on)."""
+    cal = modules.modules.get("calendar")
+    return {**schedule.snapshot(), "events": cal.upcoming(14) if cal else []}
 
 
 def memory_snapshot(memory: Memory, people: People) -> dict:
@@ -154,7 +167,10 @@ async def alert_action(schedule: Schedule, conv: Conversation, m: Message) -> di
         schedule.cancel(str(m.data["id"]))
         return {"ok": True}
     if act == "remove_event":
-        schedule.remove_event(str(m.data["id"]))
+        cal = conv.modules.get("calendar") if conv.modules else None
+        if cal is None:
+            return {"error": "The calendar module is off"}
+        cal.remove_event(str(m.data["id"]))
         return {"ok": True}
     if act == "timer":
         secs = float(m.data.get("minutes", 0)) * 60
@@ -182,12 +198,14 @@ async def main() -> None:
     keeper = asyncio.create_task(bus.housekeeping())
     alarms = asyncio.create_task(bus.schedule.run())
     online = asyncio.create_task(bus.net.run())
+    bus.modules.start()
     from .voicecheck import voice_seconds_sync  # load the voice detector now, not on the first thing heard
     loop.run_in_executor(None, voice_seconds_sync, bytes(3200))
     await stop.wait()
     keeper.cancel()
     alarms.cancel()
     online.cancel()
+    bus.modules.stop()
     await bus.publish(Message("event", "core.stopping"))
     trace.flush()
     await bus.stop()

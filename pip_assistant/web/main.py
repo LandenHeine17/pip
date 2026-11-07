@@ -1,5 +1,10 @@
 """Start pip-web: the dashboard. Step 1 shows program health and the live decision trace;
-step 4 adds timers, alarms, reminders and the calendar (with Shut off / Snooze buttons).
+step 4 adds timers, alarms and reminders (with Shut off / Snooze buttons).
+
+Modules (pip_assistant/modules/, ARCHITECTURE §7) bring their own pages: pip-web serves a module's
+static/ folder at /m/<name>/ and passes its requests (/api/m/<name>) to pip-core, which hands them
+to the module. Everything in them (event titles, names) travels privately and is never logged;
+secrets never reach pip-web.
 
 Logins and roles arrive in step 8 (PIP-NEW-054). Until then it listens only on the address in
 settings (on the Pi: the Tailscale address), so only the owner's devices can reach it.
@@ -7,15 +12,17 @@ settings (on the Pi: the Tailscale address), so only the owner's devices can rea
 import asyncio
 import collections
 import json
+import mimetypes
 from importlib import resources
 
 import uvicorn
 from starlette.applications import Starlette
-from starlette.responses import HTMLResponse, JSONResponse, StreamingResponse
+from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from .. import __version__
 from ..common.messages import Message
+from ..common.modules import enabled as enabled_modules
 from ..common.program import make_bus, start
 
 TRACE_KEEP = 300
@@ -36,8 +43,48 @@ class State:
                 q.put_nowait((kind, data))
 
 
-def build_app(bus, state: State) -> Starlette:
+def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
     page = resources.files("pip_assistant.web").joinpath("static/index.html").read_text()
+    css = resources.files("pip_assistant.web").joinpath("static/pip.css").read_text()
+    js = resources.files("pip_assistant.web").joinpath("static/pip.js").read_text()
+    mods = {m.name: m for m in enabled_modules(cfg or {})}
+
+    async def stylesheet(request):
+        return Response(css, media_type="text/css", headers={"Cache-Control": "no-store"})
+
+    async def script(request):
+        return Response(js, media_type="text/javascript", headers={"Cache-Control": "no-store"})
+
+    async def module_list(request):
+        return JSONResponse([{"name": m.name, "label": m.label or m.name.title(), "page": f"/m/{m.name}/"}
+                             for m in sorted(mods.values(), key=lambda m: m.label or m.name) if m.page])
+
+    async def module_file(request):
+        """A file from a module's static/ folder (its dashboard page). Nothing outside that folder."""
+        m = mods.get(request.path_params["name"])
+        rel = request.path_params.get("path") or (m.page if m else "")
+        if m is None or not rel:
+            return JSONResponse({"error": "no such module page"}, status_code=404)
+        root = (m.path / "static").resolve()
+        f = (root / rel).resolve()
+        if root not in f.parents or not f.is_file():
+            return JSONResponse({"error": "not found"}, status_code=404)
+        kind = mimetypes.guess_type(f.name)[0] or "application/octet-stream"
+        return Response(f.read_bytes(), media_type=kind, headers={"Cache-Control": "no-store"})
+
+    async def module_api(request):
+        """GET ?action=…&… or POST {action, …} → the module in pip-core. All of it travels privately."""
+        name = request.path_params["name"]
+        if name not in mods:
+            return JSONResponse({"error": "no such module"}, status_code=404)
+        args = dict(request.query_params) if request.method == "GET" else await request.json()
+        action = str(args.pop("action", "status"))
+        try:
+            r = await bus.request("core", "module.request", {"module": name, "action": action},
+                                  {k: v for k, v in args.items()}, timeout=60)
+        except Exception as e:
+            return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
+        return JSONResponse(r.private if r.private else r.data)
 
     async def index(request):
         return HTMLResponse(page, headers={"Cache-Control": "no-store"})
@@ -134,7 +181,10 @@ def build_app(bus, state: State) -> Starlette:
 
         return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-store"})
 
-    return Starlette(routes=[Route("/", index), Route("/api/health", health), Route("/api/trace", trace), Route("/api/conversation", conversation),
+    return Starlette(routes=[Route("/", index), Route("/pip.css", stylesheet), Route("/pip.js", script), Route("/api/modules", module_list),
+                             Route("/m/{name}/", module_file), Route("/m/{name}/{path:path}", module_file),
+                             Route("/api/m/{name}", module_api, methods=["GET", "POST"]),
+                             Route("/api/health", health), Route("/api/trace", trace), Route("/api/conversation", conversation),
                              Route("/api/alerts", alerts), Route("/api/alerts/action", alert_action, methods=["POST"]),
                              Route("/api/people", people), Route("/api/people/action", people_action, methods=["POST"]),
                              Route("/api/memory", memory), Route("/api/memory/action", memory_action, methods=["POST"]),
@@ -185,10 +235,16 @@ async def main() -> None:
         state.push("net", {"online": state.online})
 
     bus.subscribe("net.changed", on_net)
+
+    async def on_module(msg: Message):
+        _, name, kind = (msg.type.split(".", 2) + ["", ""])[:3]
+        state.push("module", {"module": name, "type": kind})   # module pages reload what changed
+
+    bus.subscribe("module.*", on_module)
     bus.subscribe("conversation.line", on_line)
     bus.subscribe("health.snapshot", on_health)
     bus.subscribe("trace.entry", on_trace)
-    app = build_app(bus, state)
+    app = build_app(bus, state, cfg)
     server = uvicorn.Server(uvicorn.Config(app, host=cfg["web"]["host"], port=cfg["web"]["port"],
                                            log_level="warning", proxy_headers=False))
     bus_task = asyncio.create_task(bus.run())

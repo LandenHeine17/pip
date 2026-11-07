@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from modhelp import registry
+
 from pip_assistant.common.client import BusClient
 from pip_assistant.core import when
 from pip_assistant.core.bus import Bus
@@ -66,7 +68,7 @@ def test_saying_durations():
 def cmds(tmp_path):
     clock = Clock()
     s = Schedule(tmp_path / "pip.db", clock=clock)
-    c = Commands(s, clock=clock)
+    c = Commands(s, clock=clock, calendar=registry(tmp_path, s, clock).get("calendar"))   # the calendar module (D-96)
     return c, s, clock
 
 
@@ -142,7 +144,8 @@ async def setup_bus(tmp_path, clock, stt=None, local_stt=None, answers=None):
     sock = tmp_path / "core.sock"
     bus = Bus(sock, Trace(tmp_path / "pip.db"), Health(["ears", "thinker"], restart=False))
     sched = Schedule(tmp_path / "pip.db", bus, {"alarms": {"announce_every_seconds": 0.2, "ring_minutes": 0.02}}, clock=clock)
-    conv = Conversation(bus, {"conversation": {"follow_up_seconds": 8.0}}, stt, schedule=sched, local_stt=local_stt)
+    conv = Conversation(bus, {"conversation": {"follow_up_seconds": 8.0}}, stt, schedule=sched, local_stt=local_stt,
+                        modules=registry(tmp_path, sched, clock))
     await bus.start()
     ears, thinker = BusClient("ears", socket_path=sock), BusClient("thinker", socket_path=sock)
     got = []
@@ -334,11 +337,12 @@ def test_recently_due_rings_after_restart(tmp_path):
 def test_event_heads_up_and_removal(tmp_path):
     clock = Clock()
     s = Schedule(tmp_path / "pip.db", clock=clock)
-    ev = s.add_event("dentist", datetime(2026, 11, 10, 15, 0), heads_up_before=1800)
+    cal = registry(tmp_path, s, clock).get("calendar")
+    ev = cal.add_event("dentist", datetime(2026, 11, 10, 15, 0), heads_up_before=1800)
     [h] = s.active(("event",))
     assert h["due"] == datetime(2026, 11, 10, 14, 30).timestamp()
     assert Schedule.announcement(h) == "Heads up: dentist in half an hour."
-    s.remove_event(ev["id"])
+    cal.remove_event(ev["id"])
     assert s.active(("event",)) == []
 
 

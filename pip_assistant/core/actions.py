@@ -10,10 +10,12 @@ anything itself: it replies with one line
 Pip only says something is set once it really is (PIP-NEW-039). If anything doesn't check out,
 nothing is changed and Pip says so.
 
-    add     kind = timer (seconds) | alarm (at) | reminder (label, at) | event (title, at or date, all_day)
+    add     kind = timer (seconds) | alarm (at) | reminder (label, at); other kinds belong to modules
+            (kind event → the calendar module)
             optional: repeat ('', daily, weekdays, weekends, weekly, weekly:0-6), label, heads_up_minutes
     change  id ('#a1b2c3' from the summary Claude sees), and at | shift_seconds | seconds (timers)
-    cancel  id
+    cancel  id                 (an id belonging to a module's item goes to that module: "change:event")
+    other   any verb a plugged-in module declares ("add_task" → modules/todos), see core/modules.py
 
 Ringing alarms and voices (handled in core/conversation.py, which has the alarm and the audio):
     stop_alarm     turn off what's ringing
@@ -29,7 +31,7 @@ doesn't recognise wait in the memory inbox instead of being saved straight away.
 """
 import json
 import re
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 REPEATS = re.compile(r"^(|daily|weekdays|weekends|weekly|weekly:[0-6])$")
 FAILED = "Sorry, that didn't work. Nothing was changed."
@@ -113,27 +115,17 @@ def check(cmds, items: list[dict], ctx: dict | None = None) -> list[tuple]:
                 if kind == "reminder" and not label:
                     raise Invalid("reminder without text")
                 plan.append((kind, at, label, rep))
-            elif kind == "event":
-                if not label:
-                    raise Invalid("event without title")
-                if a.get("all_day") or (a.get("date") and not a.get("at")):
-                    try:
-                        d = date.fromisoformat(str(a.get("date") or a.get("at"))[:10])
-                    except ValueError:
-                        raise Invalid("bad date")
-                    if not now.date() <= d <= now.date() + timedelta(days=366):
-                        raise Invalid("date not in the coming year")
-                    at, all_day = datetime.combine(d, datetime.min.time()), True
-                else:
-                    at, all_day = _time(a.get("at"), now), False
-                heads = a.get("heads_up_minutes")
-                plan.append(("event", label, at, all_day, rep, float(heads) * 60 if heads is not None else None))
             else:
-                raise Invalid("unknown kind")
+                plan.append(_module(f"add:{kind}", a, ctx, now))   # e.g. calendar events (modules/calendar)
         elif do in ("change", "cancel"):
             found = cmds.s.find(str(a.get("id") or ""))
             if not found:
-                raise Invalid("unknown id")
+                reg = ctx.get("modules")
+                kind = reg.kind_of(str(a.get("id") or "")) if reg else None
+                if not kind:
+                    raise Invalid("unknown id")
+                plan.append(_module(f"{do}:{kind}", a, ctx, now))
+                continue
             if do == "cancel":
                 plan.append(("cancel", *found))
                 continue
@@ -146,10 +138,21 @@ def check(cmds, items: list[dict], ctx: dict | None = None) -> list[tuple]:
                 raise Invalid("timer length")
             plan.append(("change", *found, at, shift, length))
         else:
-            raise Invalid("unknown action")
+            plan.append(_module(str(do), a, ctx, now))   # an action a module added ("add_task", …)
     if not plan or len(plan) > 10:
         raise Invalid("too many or no actions")
     return plan
+
+
+def _module(verb: str, a: dict, ctx: dict, now: datetime) -> tuple:
+    """An action a plugged-in module handles (core/modules.py): checked now, done with the rest."""
+    from .modules import Call
+    reg = ctx.get("modules")
+    act = reg.action(verb) if reg else None
+    if act is None:
+        raise Invalid("unknown action")
+    call = ctx.get("call") or Call(speaker=ctx.get("speaker"), now=now)
+    return ("module", act, act.check(a, call), call)
 
 
 def _check_memory(a: dict, ctx: dict) -> tuple:
@@ -230,9 +233,9 @@ def apply(cmds, raw: str, ctx: dict | None = None) -> tuple[str, int]:
             said.append(cmds._make_alarm(step[1], step[2], step[3]))
         elif kind == "reminder":
             said.append(cmds._make_reminder(step[1], step[2], step[3]))
-        elif kind == "event":
-            _, title, at, all_day, rep, heads = step
-            said.append(cmds._add_event(title, at, all_day=all_day, rep=rep, heads=heads))
+        elif kind == "module":
+            _, act, mplan, call = step
+            said.append(act.do(mplan, call))
         elif kind == "cancel":
             said.append(cmds._cancel_item(step[1], step[2]))
         elif kind == "change":

@@ -1,0 +1,18 @@
+# Google accounts for Pip (D-97). A provider: it signs people in and gives other modules
+# (calendar, to-dos) a connection to that person's Google account. Each household member can
+# connect their own account; one shared "OAuth client" (a free Google Cloud project) is set up once.
+
+name = "google"
+kind = "provider"
+summary = "Connects household members' Google accounts, for their calendars and to-dos."
+offline = false
+permissions = ["network:googleapis.com", "network:accounts.google.com"]
+needs = []
+
+[settings.redirect_port]
+default = 8765
+explain = "The address Google sends you back to after signing in (http://127.0.0.1:<port>/). It won't load: copy it from the address bar into Pip's dashboard."
+
+[dashboard]
+page = "index.html"
+label = "Google"

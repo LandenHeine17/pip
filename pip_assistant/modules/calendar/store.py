@@ -1,0 +1,288 @@
+"""The calendar's events, kept on the Pi (the copy Pip uses even offline).
+
+Calendars: "pip" is Pip's own (on the Pi only). Each connected Google account adds its calendars
+("g:<account>:<google calendar id>"), which can be ticked on or off on the dashboard.
+
+An event belongs to one calendar. Changes Pip makes to a Google calendar's events are marked
+`pending` (add / change / delete) until the sync has sent them to Google (sync.py).
+
+Heads-ups ("Heads up: dentist in 30 minutes") are alerts in Pip's schedule linked by event id;
+they're re-made whenever an event changes. Private events never get one (D-99).
+"""
+import sqlite3
+from datetime import date, datetime, timedelta
+
+from pip_assistant.common.messages import new_id
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS calendar_calendars (
+    id          TEXT PRIMARY KEY,          -- 'pip', or 'g:<account>:<google calendar id>'
+    account_id  TEXT NOT NULL DEFAULT '',  -- the google module's account ('' for Pip's own)
+    google_id   TEXT NOT NULL DEFAULT '',
+    name        TEXT NOT NULL,
+    color       TEXT NOT NULL DEFAULT '#6c5ce7',
+    ticked      INTEGER NOT NULL DEFAULT 1,  -- shown and synced
+    writable    INTEGER NOT NULL DEFAULT 1,
+    is_primary  INTEGER NOT NULL DEFAULT 0,
+    sync_token  TEXT NOT NULL DEFAULT '',
+    reminder    REAL                         -- the calendar's default heads-up, minutes (Google's default reminder)
+);
+CREATE TABLE IF NOT EXISTS calendar_events (
+    id          TEXT PRIMARY KEY,
+    calendar_id TEXT NOT NULL DEFAULT 'pip',
+    title       TEXT NOT NULL,
+    start       REAL NOT NULL,             -- Unix time (all-day: midnight that day)
+    end         REAL NOT NULL,             -- Unix time (all-day: midnight after the last day)
+    all_day     INTEGER NOT NULL DEFAULT 0,
+    repeat      TEXT NOT NULL DEFAULT '',  -- Pip's own repeats: daily / weekdays / weekends / weekly(:0-6)
+    location    TEXT NOT NULL DEFAULT '',
+    notes       TEXT NOT NULL DEFAULT '',
+    private     INTEGER NOT NULL DEFAULT 0, -- Pip never mentions it (D-99)
+    reminder    REAL,                      -- heads-up, minutes before (NULL: none)
+    google_id   TEXT NOT NULL DEFAULT '',
+    etag        TEXT NOT NULL DEFAULT '',
+    pending     TEXT NOT NULL DEFAULT '',  -- '' / add / change / delete: waiting to be sent to Google
+    created     REAL NOT NULL,
+    updated     REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS calendar_events_start ON calendar_events (start);
+CREATE INDEX IF NOT EXISTS calendar_events_google ON calendar_events (calendar_id, google_id);
+"""
+
+FIELDS = ("calendar_id", "title", "start", "end", "all_day", "repeat", "location", "notes", "private", "reminder",
+          "google_id", "etag", "pending")
+
+
+class CalendarStore:
+    def __init__(self, db: sqlite3.Connection, schedule=None, clock=None):
+        import time
+        self.db, self.schedule, self.clock = db, schedule, clock or time.time
+        self.db.executescript(SCHEMA)
+        self.db.execute("INSERT OR IGNORE INTO calendar_calendars (id, name, color) VALUES ('pip', 'Pip', '#6c5ce7')")
+        self.db.commit()
+        self.on_change = []          # called with the event id after any change Pip makes (sync, dashboard)
+        self.version = 0             # goes up whenever anything changes (so the dashboard knows to refresh)
+        self._take_legacy()
+
+    def _take_legacy(self) -> None:
+        """Events from before the calendar became a module (core/schedule.py kept them) move in, same ids."""
+        take = getattr(self.schedule, "take_legacy_events", None)
+        for ev in (take() if take else []):
+            end = ev["start"] + (86400 if ev["all_day"] else 3600)
+            self.db.execute("INSERT OR IGNORE INTO calendar_events (id, calendar_id, title, start, end, all_day, repeat, "
+                            "created, updated) VALUES (?,?,?,?,?,?,?,?,?)",
+                            (ev["id"], "pip", ev["title"], ev["start"], end, ev["all_day"], ev["repeat"], ev["created"], ev["created"]))
+        self.db.commit()
+
+    # ---------------------------------------------------------------- calendars
+    def calendars(self) -> list[dict]:
+        return [dict(r) for r in self.db.execute("SELECT * FROM calendar_calendars ORDER BY account_id != '', name")]
+
+    def calendar(self, cid: str) -> dict | None:
+        r = self.db.execute("SELECT * FROM calendar_calendars WHERE id = ?", (cid,)).fetchone()
+        return dict(r) if r else None
+
+    def upsert_calendar(self, cid: str, **fields) -> None:
+        if self.calendar(cid):
+            self.db.execute(f"UPDATE calendar_calendars SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?",
+                            (*fields.values(), cid))
+        else:
+            cols = ["id", *fields]
+            self.db.execute(f"INSERT INTO calendar_calendars ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                            (cid, *fields.values()))
+        self.db.commit()
+
+    def remove_calendar(self, cid: str) -> None:
+        for ev in self.db.execute("SELECT id FROM calendar_events WHERE calendar_id = ?", (cid,)).fetchall():
+            self._cancel_alerts(ev["id"])
+        self.db.execute("DELETE FROM calendar_events WHERE calendar_id = ?", (cid,))
+        self.db.execute("DELETE FROM calendar_calendars WHERE id = ?", (cid,))
+        self.db.commit()
+
+    def ticked(self) -> set[str]:
+        return {r["id"] for r in self.db.execute("SELECT id FROM calendar_calendars WHERE ticked = 1")}
+
+    # ---------------------------------------------------------------- events
+    def event(self, eid: str) -> dict | None:
+        r = self.db.execute("SELECT * FROM calendar_events WHERE id = ? AND pending != 'delete'", (eid,)).fetchone()
+        return dict(r) if r else None
+
+    def by_google(self, cid: str, gid: str) -> dict | None:
+        r = self.db.execute("SELECT * FROM calendar_events WHERE calendar_id = ? AND google_id = ?", (cid, gid)).fetchone()
+        return dict(r) if r else None
+
+    def all_events(self) -> list[dict]:
+        """Events in calendars that are ticked on (not ones waiting to be deleted)."""
+        ticked = self.ticked()
+        return [dict(r) for r in self.db.execute("SELECT * FROM calendar_events WHERE pending != 'delete' ORDER BY start")
+                if r["calendar_id"] in ticked]
+
+    def pending(self, cids: set[str]) -> list[dict]:
+        return [dict(r) for r in self.db.execute("SELECT * FROM calendar_events WHERE pending != '' ORDER BY updated")
+                if r["calendar_id"] in cids]
+
+    def _google_backed(self, cid: str) -> bool:
+        c = self.calendar(cid)
+        return bool(c and c["account_id"])
+
+    def add_event(self, title: str, start: datetime, all_day: bool = False, repeat: str = "",
+                  heads_up_before: float | None = None, end: datetime | None = None, location: str = "",
+                  notes: str = "", private: bool = False, calendar_id: str = "pip") -> dict:
+        """Save an event and read it back: Pip only says it's added once it really is (PIP-NEW-039)."""
+        cal = self.calendar(calendar_id)
+        if not cal or not cal["writable"]:
+            raise ValueError("Pip can't add events to that calendar")
+        end = end or (start + (timedelta(days=1) if all_day else timedelta(hours=1)))
+        if end <= start:
+            raise ValueError("an event must end after it starts")
+        now, eid = self.clock(), new_id()
+        reminder = heads_up_before / 60 if heads_up_before is not None else None
+        self.db.execute("INSERT INTO calendar_events (id, calendar_id, title, start, end, all_day, repeat, location, notes, "
+                        "private, reminder, pending, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (eid, calendar_id, title.strip()[:200], start.timestamp(), end.timestamp(), int(all_day), repeat,
+                         location.strip()[:200], notes.strip()[:2000], int(private), reminder,
+                         "add" if self._google_backed(calendar_id) else "", now, now))
+        self.db.commit()
+        ev = self.event(eid)
+        if not ev:
+            raise RuntimeError("event was not saved")
+        self.sync_alerts(ev)
+        self._changed(eid)
+        return ev
+
+    def update_event(self, eid: str, start: datetime | None = None, all_day: bool | None = None, end: datetime | None = None,
+                     **fields) -> dict:
+        """Change an event (moving keeps its length unless a new end is given). Read back to check."""
+        ev = self.event(eid)
+        if not ev:
+            raise RuntimeError("event not found")
+        cal = self.calendar(ev["calendar_id"])
+        if cal and not cal["writable"]:
+            raise ValueError("That calendar is read-only for Pip")
+        new = {k: v for k, v in fields.items() if k in ("title", "location", "notes", "private", "repeat", "reminder")}
+        if start is not None:
+            length = ev["end"] - ev["start"]
+            new["start"] = start.timestamp()
+            new["end"] = end.timestamp() if end else start.timestamp() + length
+        elif end is not None:
+            new["end"] = end.timestamp()
+        if all_day is not None:
+            new["all_day"] = int(all_day)
+        if "private" in new:
+            new["private"] = int(bool(new["private"]))
+        if new.get("end", ev["end"]) <= new.get("start", ev["start"]):
+            raise ValueError("an event must end after it starts")
+        if self._google_backed(ev["calendar_id"]) and ev["pending"] != "add":
+            new["pending"] = "change"
+        new["updated"] = self.clock()
+        self.db.execute(f"UPDATE calendar_events SET {', '.join(f'{k} = ?' for k in new)} WHERE id = ?", (*new.values(), eid))
+        self.db.commit()
+        ev = self.event(eid)
+        if not ev or ("start" in new and abs(ev["start"] - new["start"]) > 0.01):
+            raise RuntimeError("event was not changed")
+        self.sync_alerts(ev)
+        self._changed(eid)
+        return ev
+
+    def remove_event(self, eid: str) -> None:
+        """Deleting an event removes its heads-up too (FEAT-036). A Google event waits to be deleted there."""
+        ev = self.event(eid)
+        self._cancel_alerts(eid)
+        if ev and ev["google_id"]:
+            self.db.execute("UPDATE calendar_events SET pending = 'delete', updated = ? WHERE id = ?", (self.clock(), eid))
+        else:
+            self.db.execute("DELETE FROM calendar_events WHERE id = ?", (eid,))
+        self.db.commit()
+        self._changed(eid)
+
+    def forget(self, eid: str) -> None:
+        """Gone for good (deleted at Google, or by sync): no further syncing."""
+        self._cancel_alerts(eid)
+        self.db.execute("DELETE FROM calendar_events WHERE id = ?", (eid,))
+        self.db.commit()
+        self.version += 1
+
+    def save_synced(self, eid: str | None, **row) -> dict:
+        """Store an event exactly as Google has it (from a sync): nothing pending."""
+        row["pending"], row["updated"] = "", self.clock()
+        if eid and self.db.execute("SELECT 1 FROM calendar_events WHERE id = ?", (eid,)).fetchone():
+            self.db.execute(f"UPDATE calendar_events SET {', '.join(f'{k} = ?' for k in row)} WHERE id = ?", (*row.values(), eid))
+        else:
+            eid = eid or new_id()
+            row.setdefault("created", self.clock())
+            cols = ["id", *row]
+            self.db.execute(f"INSERT INTO calendar_events ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})",
+                            (eid, *row.values()))
+        self.db.commit()
+        ev = dict(self.db.execute("SELECT * FROM calendar_events WHERE id = ?", (eid,)).fetchone())
+        self.sync_alerts(ev)
+        self.version += 1
+        return ev
+
+    def _changed(self, eid: str) -> None:
+        self.version += 1
+        for fn in self.on_change:
+            fn(eid)
+
+    # ---------------------------------------------------------------- heads-ups
+    def _cancel_alerts(self, eid: str) -> None:
+        if self.schedule is not None:
+            self.schedule.cancel_for(eid)
+
+    def sync_alerts(self, ev: dict) -> None:
+        """Re-make an event's heads-up: none if private, past, or more than a week away (re-checked later)."""
+        if self.schedule is None:
+            return
+        self.schedule.cancel_for(ev["id"])
+        if ev["private"] or ev["reminder"] is None or ev["pending"] == "delete" or ev["calendar_id"] not in self.ticked():
+            return
+        start = datetime.fromtimestamp(ev["start"])
+        base = start.replace(hour=8, minute=0) if ev["all_day"] else start   # all-day: count back from 8 AM (FEAT-036)
+        due = base.timestamp() - ev["reminder"] * 60
+        soon_enough = ev["repeat"] or due < self.clock() + 7 * 86400   # repeats re-arm themselves after ringing
+        if due > self.clock() and soon_enough:
+            self.schedule.add("event", ev["title"], due, length=ev["reminder"] * 60, repeat=ev["repeat"], event_id=ev["id"])
+
+    def refresh_alerts(self) -> None:
+        """Daily: give events coming into the next week their heads-up."""
+        soon = self.clock() + 7 * 86400
+        for ev in self.all_events():
+            if self.clock() < ev["start"] < soon and ev["reminder"] is not None and not ev["repeat"]:
+                if not self.schedule or not self.schedule.has_alert_for(ev["id"]):
+                    self.sync_alerts(ev)
+
+    # ---------------------------------------------------------------- when things happen
+    @staticmethod
+    def occurs_on(ev: dict, d: date) -> datetime | None:
+        """When this event happens on day `d` (repeats and several-day events included), or None."""
+        start = datetime.fromtimestamp(ev["start"])
+        if d < start.date():
+            return None
+        if start.date() == d:
+            return start
+        if not ev["repeat"]:
+            end = datetime.fromtimestamp(ev["end"])
+            last = (end - timedelta(seconds=1)).date()
+            return datetime.combine(d, datetime.min.time()) if d <= last else None
+        rule, wd = ev["repeat"], d.weekday()
+        ok = (rule == "daily" or (rule == "weekdays" and wd < 5) or (rule == "weekends" and wd >= 5) or
+              (rule == "weekly" and wd == start.weekday()) or (rule.startswith("weekly:") and wd == int(rule[7:])))
+        return datetime.combine(d, start.time()) if ok else None
+
+    def events_on(self, d: date, events: list[dict] | None = None) -> list[tuple[datetime, dict]]:
+        out = [(at, ev) for ev in (events if events is not None else self.all_events()) if (at := self.occurs_on(ev, d))]
+        return sorted(out, key=lambda x: (not x[1]["all_day"], x[0]))
+
+    def between(self, first: date, last: date, events: list[dict] | None = None) -> list[tuple[date, datetime, dict]]:
+        evs = events if events is not None else self.all_events()
+        out, d = [], first
+        while d <= last:
+            out += [(d, at, ev) for at, ev in self.events_on(d, evs)]
+            d += timedelta(days=1)
+        return out
+
+    def prune(self, keep_days: float = 60) -> None:
+        """Forget one-off events long past (repeating ones stay)."""
+        self.db.execute("DELETE FROM calendar_events WHERE repeat = '' AND end < ? AND pending = ''",
+                        (self.clock() - keep_days * 86400,))
+        self.db.commit()

@@ -1,0 +1,48 @@
+# The household calendar (D-98, D-99, D-101): Pip's own events, plus each connected person's
+# Google calendars, synced both ways. A month view on the dashboard.
+
+name = "calendar"
+kind = "skill"
+summary = "The calendar: events by voice or on the dashboard, synced both ways with Google Calendar."
+says_examples = ["Pip, put the dentist on Friday at 3", "what have I got tomorrow?", "move my 3 o'clock to 4",
+                 "dinner with Sam Saturday at 7, make it private"]
+offline = true                      # Pip's own calendar works offline; Google catches up when he's back
+permissions = ["network:googleapis.com"]
+needs = ["google"]
+
+[settings.sync_minutes]
+default = 2.0
+explain = "How often Pip checks Google for calendar changes (his own changes are sent straight away)."
+
+[settings.household_calendar]
+default = ""
+explain = "Where events go when Pip doesn't know whose they are: the email of a connected Google account (its main calendar), or empty for the first admin's (or Pip's own calendar if nobody is connected)."
+
+[settings.days_back]
+default = 30
+explain = "How far back Pip keeps a copy of Google events."
+
+[settings.days_ahead]
+default = 180
+explain = "How far ahead Pip keeps a copy of Google events."
+
+[settings.upload_on_connect]
+default = true
+explain = "When the household's Google account is first connected, copy Pip's own upcoming events into it."
+
+[claude]
+instructions = """
+Calendar events: each message lists the calendar for the next two weeks with ids like #e1a2b3 and whose \
+calendar each event is on. Add, move or remove events with ACTION lines (Pip's code does it and confirms):
+- add: {"do": "add", "kind": "event", "title": "dentist", "at": "2026-11-13T15:00"} or with "date" and \
+"all_day": true. Optional: "end" (local time), "location", "repeat" (as for alarms), "heads_up_minutes", \
+"private": true (when they say make it private or keep it private: Pip will never mention it), \
+"calendar": "Sam" (put it on that person's calendar; otherwise the speaker's, or the household's).
+- change: {"do": "change", "id": "#e1a2b3", "at": "..."} (or "shift_seconds"; optional "end", "title", "location").
+- cancel: {"do": "cancel", "id": "#e1a2b3"}.
+For "what do I have tomorrow" and similar, answer from the list.
+"""
+
+[dashboard]
+page = "index.html"
+label = "Calendar"

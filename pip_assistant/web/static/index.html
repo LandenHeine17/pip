@@ -4,107 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pip Dashboard</title>
-<style>
-:root{
-  --bg:#f3f4f8;--card:#ffffff;--ink:#16181d;--muted:#6a7080;--line:#e6e8ee;--soft:#f1f3f8;
-  --accent:#5b5bf0;--accent2:#8b5cf6;--accentbg:#ecebff;
-  --good:#16a06a;--goodbg:#e2f6ec;--bad:#e5484d;--badbg:#fdecec;--warn:#b7791f;--warnbg:#fdf3dc;
-  --shadow:0 1px 2px rgba(16,20,40,.04),0 4px 16px rgba(16,20,40,.06);--r:18px}
-@media (prefers-color-scheme:dark){:root{
-  --bg:#0f1115;--card:#171a21;--ink:#eceef3;--muted:#99a0b0;--line:#262a34;--soft:#1e222b;
-  --accent:#8c8cff;--accent2:#b18cff;--accentbg:#25254a;
-  --good:#4fd69c;--goodbg:#13301f;--bad:#ff6b70;--badbg:#3a1a1c;--warn:#f3c461;--warnbg:#3a2e14;
-  --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.25)}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased}
-main{max-width:1180px;margin:0 auto;padding:20px 18px 40px}
-header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:14px;margin:0 0 18px}
-.brand{display:flex;align-items:center;gap:12px}
-.logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;color:#fff;font-weight:800;font-size:1.2rem;box-shadow:var(--shadow)}
-h1{font-size:1.35rem;margin:0;letter-spacing:-.01em} h2{font-size:1rem;margin:0;letter-spacing:-.005em}
-.sub{color:var(--muted);font-size:.86rem}
-.status{display:flex;align-items:center;gap:10px}
-.state{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;background:var(--card);box-shadow:var(--shadow);font-weight:600;font-size:.9rem}
-.dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}
-.st-listening .dot{background:var(--good);animation:pulse 1.2s infinite}
-.st-thinking .dot{background:var(--accent);animation:pulse .7s infinite}
-.st-speaking .dot{background:var(--accent2);animation:pulse .5s infinite}
-.st-ringing .dot{background:var(--bad);animation:pulse .4s infinite}
-.st-offline .dot{background:var(--warn)}
-.st-mic_off .dot{background:var(--muted, #999)}
-.micbtn{border-radius:999px;padding:7px 14px;font-weight:600;font-size:.9rem;border:0;cursor:pointer;background:var(--good);color:#fff;box-shadow:var(--shadow)}
-.micbtn.off{background:var(--bad)}
-.netoff{font-size:.75rem;color:var(--muted,#888);display:inline-flex;align-items:center;gap:5px}
-.netoff::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--muted,#999)}
-.netoff[hidden]{display:none}
-.micbtn small{font-weight:400;opacity:.9}
-@keyframes pulse{50%{transform:scale(1.35);opacity:.6}}
-.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px}
-@media (max-width:860px){.grid{grid-template-columns:1fr}}
-section{background:var(--card);border-radius:var(--r);padding:18px;box-shadow:var(--shadow);min-width:0;margin-bottom:18px}
-.head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:12px}
-.ring{border-radius:16px;padding:16px;margin-bottom:14px;background:linear-gradient(135deg,var(--badbg),var(--card));border:1px solid color-mix(in srgb,var(--bad) 35%,transparent);display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;animation:glow 1.6s ease-in-out infinite}
-@keyframes glow{50%{border-color:var(--bad)}}
-.ring .what{font-weight:700;font-size:1.05rem;color:var(--bad)}
-.ring .btns{display:flex;gap:8px;align-items:center;position:relative}
-button{font:inherit;font-size:.88rem;font-weight:600;padding:8px 14px;border-radius:12px;border:0;background:var(--soft);color:var(--ink);cursor:pointer;transition:transform .08s,filter .15s}
-button:hover{filter:brightness(.96)} button:active{transform:scale(.97)}
-button.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
-button.danger{background:var(--bad);color:#fff;font-size:1rem;padding:11px 22px}
-button.ghost{background:transparent;color:var(--muted);padding:6px 10px}
-.split{display:inline-flex;border-radius:12px;overflow:hidden}
-.split button{border-radius:0;font-size:1rem;padding:11px 18px;background:var(--card)}
-.split button + button{padding:11px 12px;border-left:1px solid var(--line)}
-.menu{position:absolute;right:0;top:calc(100% + 6px);background:var(--card);border-radius:14px;box-shadow:var(--shadow);padding:6px;display:none;z-index:5;min-width:170px;border:1px solid var(--line)}
-.menu.open{display:block}
-.menu button{display:block;width:100%;text-align:left;background:transparent;border-radius:9px;font-weight:500}
-.menu button:hover{background:var(--soft)}
-.menu form{display:flex;gap:6px;padding:6px 4px 2px;margin:0}
-.items{display:flex;flex-direction:column;gap:8px}
-.item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:var(--soft)}
-.item b{font-weight:600}
-.item .big{font-size:1.4rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
-.bar{height:4px;border-radius:4px;background:var(--line);margin-top:6px;overflow:hidden;width:160px;max-width:100%}
-.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:4px}
-.tag{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--accent);margin-right:6px}
-.empty{color:var(--muted);font-size:.9rem;padding:10px 2px}
-select{font:inherit;font-size:.9rem;padding:8px 10px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
-input{font:inherit;font-size:.9rem;padding:8px 12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);outline:none}
-input:focus{border-color:var(--accent)}
-form{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-.cols2{display:grid;grid-template-columns:1fr 1fr;gap:16px} @media (max-width:560px){.cols2{grid-template-columns:1fr}}
-.label{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 8px}
-#conv{display:flex;flex-direction:column;gap:8px;max-height:520px;overflow:auto}
-.line{padding:9px 13px;border-radius:16px;max-width:85%}
-.line.you{background:var(--soft);margin-left:auto;border-bottom-right-radius:6px}
-.line.pip{background:var(--accentbg);border-bottom-left-radius:6px}
-.line .meta{font-size:.74rem;color:var(--muted);margin-bottom:2px}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
-.card{border-radius:14px;padding:12px 14px;background:var(--soft)}
-.card .name{font-weight:650;display:flex;justify-content:space-between;align-items:center}
-.card .what{color:var(--muted);font-size:.82rem;margin:2px 0 6px}
-.pill{display:inline-block;font-size:.74rem;font-weight:700;padding:2px 9px;border-radius:999px}
-.ok{background:var(--goodbg);color:var(--good)} .stuck{background:var(--warnbg);color:var(--warn)} .missing{background:var(--badbg);color:var(--bad)}
-.kv{font-size:.82rem;color:var(--muted);font-variant-numeric:tabular-nums}
-details>summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:baseline}
-details>summary::-webkit-details-marker{display:none}
-details[open]>summary{margin-bottom:12px}
-.scroll{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:.85rem}
-th,td{text-align:left;padding:7px 8px;border-top:1px solid var(--line);vertical-align:top}
-th{color:var(--muted);font-weight:600;border-top:0}
-td.t{white-space:nowrap;color:var(--muted);font-variant-numeric:tabular-nums}
-code{font-size:.8rem}
-.k-event{color:var(--accent)} .k-command{color:var(--warn)} .k-request,.k-reply{color:var(--good)}
-.fresh{animation:fresh 1.5s ease-out} @keyframes fresh{from{background:var(--accentbg)}to{background:transparent}}
-</style>
+<link rel="stylesheet" href="/pip.css">
 </head>
 <body>
 <main>
 <header>
   <div class="brand"><div class="logo">P</div>
     <div><h1>Pip</h1><div class="sub">Step 6 · listens to the room like Ziggletron and joins in; timers, calendar, memory, voices</div></div></div>
-  <div class="status"><button id="mic" class="micbtn" onclick="toggleMic()" title="Switch listening off or on. Two claps also switch it (but can't undo this switch).">Listening…</button>
+  <div class="status"><span id="modlinks" style="display:flex;gap:6px"></span><button id="mic" class="micbtn" onclick="toggleMic()" title="Switch listening off or on. Two claps also switch it (but can't undo this switch).">Listening…</button>
     <span class="state" id="state"><span class="dot"></span><span id="statetext">…</span></span>
     <span class="netoff" id="netoff" hidden title="Pip can't reach the internet: only timers, alarms and other basics work until it's back">offline</span>
     <span class="sub" id="conn">Connecting…</span></div>
@@ -117,7 +24,7 @@ code{font-size:.8rem}
   <div id="ringing"></div>
   <div class="cols2">
     <div><div class="label">Timers, alarms &amp; reminders</div><div class="items" id="alerts"></div></div>
-    <div><div class="label">Calendar · next two weeks</div><div class="items" id="events"></div></div>
+    <div><div class="label" style="display:flex;justify-content:space-between">Calendar · next two weeks <a href="/m/calendar/" id="calLink" hidden>Open calendar ›</a></div><div class="items" id="events"></div></div>
   </div>
   <form id="newtimer"><input id="tmin" type="number" min="0.1" step="0.1" placeholder="Minutes" style="width:7em" required>
     <input id="tlabel" placeholder="Label (optional)" maxlength="40" style="flex:1;min-width:8em"><button class="primary">Start timer</button></form>
@@ -274,7 +181,7 @@ function renderSched(){
       ${pct!=null?`<div class="bar"><i style="width:${pct}%"></i></div>`:""}</div>
       <span style="display:flex;align-items:center;gap:6px">${a.kind==="timer" ? `<span class="big">${left(a.due-now)}</span>` : ""}<button class="ghost" title="Cancel" onclick="act({action:'cancel',id:'${esc(a.id)}'})">✕</button></span></div>`;
   }).concat(missed).join("") || `<div class="empty">Nothing set.</div>`;
-  $("events").innerHTML = sched.events.map(e => `<div class="item"><div><b>${esc(e.title)}</b><div class="sub">${e.all_day ? new Date(e.at*1000).toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"})+" · all day" : clock(e.at)}${e.repeat?" · "+REP(e.repeat):""}</div></div>
+  $("events").innerHTML = sched.events.map(e => `<div class="item" style="border-left:4px solid ${e.color||"transparent"}"><div><b>${esc(e.title)}</b>${e.private?` <span class="pill" style="background:var(--line)">private</span>`:""}<div class="sub">${e.all_day ? new Date(e.at*1000).toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"})+" · all day" : clock(e.at)}${e.repeat?" · "+REP(e.repeat):""}</div></div>
       <button class="ghost" title="Remove" onclick="if(confirm('Remove this event${e.repeat?" (all repeats)":""}?')) act({action:'remove_event',id:'${esc(e.id)}'})">✕</button></div>`).join("")
     || `<div class="empty">Nothing on the calendar.</div>`;
 }
@@ -336,6 +243,7 @@ function renderPeople(){
       <span style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
       ${ppl.voice_model ? `<button onclick="pAct({action:'enrol_start',id:'${p.id}'})">${p.voice_samples?"Re-learn voice":"Learn my voice"}</button>` : ""}
       ${ppl.voice_model && ppl.m0_recordings && p.role==="admin" && !p.voice_samples ? `<button title="Uses 8 recordings you already made in the M0 tests: nothing to read" onclick="pAct({action:'voice_from_m0',id:'${p.id}'})">Use my M0 recordings</button>` : ""}
+      ${mods.some(m => m.name === "google") ? `<a class="ghost" style="padding:6px 10px;font-size:.88rem" href="/m/google/?person=${p.id}">Connect Google</a>` : ""}
       ${p.voice_samples ? `<button class="ghost" title="Forget voice" onclick="if(confirm('Forget ${esc(p.name)}\'s voice?')) pAct({action:'forget_voice',id:'${p.id}'})">Forget voice</button>` : ""}
       <button class="ghost" title="Remove person" onclick="if(confirm('Remove ${esc(p.name)}, their voice and memories about them?')) pAct({action:'remove',id:'${p.id}'})">✕</button></span></div>`).join("")
     + ppl.guests.map(g => `<div class="item"><div><b>${esc(g.name)}</b> <span class="pill" style="background:var(--soft)">this visit</span><div class="sub">forgotten after 2 hours of quiet</div></div><button class="ghost" onclick="pAct({action:'guest_join',id:'${g.id}'})">Add to household</button></div>`).join("")
@@ -347,7 +255,11 @@ async function pAct(body){ try{ const r = await (await fetch("/api/people/action
 $("personadd").onsubmit = async ev => { ev.preventDefault(); const r = await pAct({action:"add", name:$("pname").value, role:$("prole").value}); if (r && r.ok) $("pname").value = ""; };
 setInterval(() => { if (ppl.enrolling) loadPeople(); }, 1500);
 
-loadSched(); loadConv(); loadTrace(); loadHealth(); loadMemory(); loadPeople(); loadMic(); if(!location.search.includes("nolive")) live();
+let mods = [];
+async function loadModules(){ try{ mods = await (await fetch("/api/modules",{cache:"no-store"})).json();
+  $("modlinks").innerHTML = mods.map(m => `<a href="${m.page}"><button>${esc(m.label)}</button></a>`).join("");
+  $("calLink").hidden = !mods.some(m => m.name === "calendar"); renderPeople(); }catch(e){} }
+loadModules(); loadSched(); loadConv(); loadTrace(); loadHealth(); loadMemory(); loadPeople(); loadMic(); if(!location.search.includes("nolive")) live();
 </script>
 </body>
 </html>

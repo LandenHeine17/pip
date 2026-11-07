@@ -129,54 +129,74 @@ What else leaves the Pi:
 | To | What | When |
 |---|---|---|
 | Groq | Audio of everything said in the room while Pip is listening, plus the household's first names as spelling hints | As it happens |
-| Claude | The room transcript (last 40 lines), relevant memories, the allowed actions | Each answer, mention or join-in check (at most every ~40 s) |
+| Claude | The room transcript (last 40 lines), memories, what's set, the calendar's next two weeks and open to-dos (only what the speaker may hear; never private events), the allowed actions | Each answer, mention or join-in check (at most every ~40 s) |
 | Open-Meteo | "Lincoln, Nebraska" | Weather updates |
-| Google | Calendar events (M3, D-19) | Sync |
+| Google | For each person who connected their account (D-97): their calendar events and to-dos, both ways (D-98, D-100). Private events are kept on the Pi too but never told to Claude | Every ~2 min, and straight after a change |
 | GitHub | **Code only.** Never personal data (checked on every commit) | When changes are pushed |
 
 ## 7. Modules: how features plug in
 
-Every feature is a **module**: a folder with a short description file and a little code. Pip finds modules automatically at startup. This is the main way Pip grows, whether the module is written by you, by Claude, or by Pip's own self-change.
+Every new feature is a **module**: a folder with a short description file and a little code. Pip finds modules automatically at startup (D-96, built 2026-11-07). This is the main way Pip grows, whether the module is written by you, by Claude, or by Pip's own self-change. Today: **google** (accounts), **calendar** and **todos**. (The older built-in parts, like timers and memory, live in pip-core.)
 
 ### 7.1 Kinds of module
 
 | Kind | What it adds | Examples |
 |---|---|---|
-| **Skill** | Things Pip can do or answer | timers, reminders, shopping list, weather, dice |
+| **Skill** | Things Pip can do or answer | calendar, to-dos, (later) shopping list, dice |
 | **Widget** | A box on the TV screen | clock, timers, weather, now playing |
-| **Provider** | A swappable service behind a standard interface | speech-to-text (Groq, local Whisper), voice (Piper, Kokoro), brain (Claude, Qwen), wake word |
+| **Provider** | A service other modules use, behind a standard interface | Google accounts; (later) speech-to-text, voices, brains |
 | **Device adapter** | A kind of device (M3) | ESPHome over MQTT, Tuya (Eightree plugs) |
 | **Plugin** | Anything else, owner-written, with declared permissions | — |
 
 ### 7.2 What a module looks like
 
 ```
-pip/modules/dice/
-├── module.toml      ← description: name, what it does, settings, permissions
-├── dice.py          ← the code: small functions, one per thing it can do
-└── test_dice.py     ← its test
+pip_assistant/modules/calendar/
+├── module.toml      ← description: name, kind, what it does, permissions, settings, what Claude is told, its page
+├── module.py        ← setup(ctx): the code, in small parts (below)
+├── store.py, sync.py← more code if it needs it
+├── static/          ← its dashboard page (served at /m/calendar/)
+└── test_calendar.py ← its tests (run with all the others)
 ```
 
 ```toml
 # module.toml (the part you'd read or edit)
-name = "dice"
+name = "calendar"
 kind = "skill"
-summary = "Rolls dice and flips coins."
-says_examples = ["Pippletron, roll a die", "flip a coin"]
+summary = "The calendar: events by voice or on the dashboard, synced both ways with Google Calendar."
+says_examples = ["Pip, put the dentist on Friday at 3"]
 offline = true                      # works without the internet
-permissions = []                    # e.g. ["network"], ["devices.lights"]
+permissions = ["network:googleapis.com"]   # the only internet it may reach
+needs = ["google"]                  # other modules it uses
 
-[settings.sides]                    # shows up in Settings with this explanation
-default = 6
-explain = "How many sides a die has unless you say otherwise."
+[settings.sync_minutes]             # shows up in Settings with this explanation
+default = 2.0
+explain = "How often Pip checks Google for calendar changes."
+
+[claude]                            # added to what Claude is told
+instructions = "Calendar events: … ACTION {\"do\": \"add\", \"kind\": \"event\", …}"
+
+[dashboard]                         # a button on the main dashboard
+page = "index.html"
+label = "Calendar"
 ```
 
-From that file, Pip automatically:
-- adds the module to the **capability list** it uses to explain himself (PIP-NEW-064), so "what can you do?" stays accurate;
-- puts its settings on the **Settings page** with their explanations (PIP-NEW-093);
-- tells Claude what the module can do, and checks the **permissions** before running anything (FEAT-079).
+How it plugs in:
 
-A **template** module with a worked example will be in `pip/modules/_template/`. Adding a simple skill means copying it and filling in the marked parts.
+```mermaid
+flowchart LR
+    T["module.toml"] --> L["Loader (common/modules.py):<br/>checks it, merges settings"]
+    L --> CORE["pip-core registry (core/modules.py):<br/>setup(ctx) → the module"]
+    L --> TH["pip-thinker: adds its<br/>[claude] instructions"]
+    L --> WEB["pip-web: its page at /m/name/,<br/>a button on the dashboard"]
+    CORE --> A["Claude's ACTIONs it declares"]
+    CORE --> S["its part of what Claude reads"]
+    CORE --> J["background jobs (e.g. sync)"]
+```
+
+What a module gets (its **context**), and nothing more: its settings (`[modules.<name>]` in `~/pip-data/settings.toml` overrides the defaults; `enabled = false` switches it off); **its own tables** in `pip.db`, named `<name>_…` (writing anything else is refused); **its own section of `secrets.toml`**; an internet client limited to the hosts in its permissions; the timers schedule (for heads-ups), the people list, whether Pip is online, and the modules it `needs`. Its requests from the dashboard and its events travel privately (never logged).
+
+A **template** module with a worked example is in `pip_assistant/modules/_template/`. Adding a simple skill means copying it and filling in the marked parts.
 
 ### 7.3 Swapping a provider
 
@@ -188,8 +208,8 @@ Changing the voice from Piper to Kokoro (D-73), or speech-to-text from Groq to a
 |---|---|---|
 | `~/pip` (repo) | All code, modules, default settings, generic wake-word models (synthetic voices only), docs | Yes (public-safe) |
 | `~/pip-data/settings.toml` | Your settings (location, room, mode, voice…), written by the Settings page | **No** |
-| `~/pip-data/secrets.toml` | API keys (only pip-core and pip-thinker can read it) | **No** |
-| `~/pip-data/pip.db` | One SQLite database: memories, people and voice profiles, timers/reminders/calendar, lists, the audit trail, the 48-hour decision trace | **No** |
+| `~/pip-data/secrets.toml` | API keys, and each module's own section (e.g. `[google]`: the Google client and each connected person's sign-in key). Only pip-core and pip-thinker read it; a module only ever sees its own section | **No** |
+| `~/pip-data/pip.db` | One SQLite database: memories, people and voice profiles, timers/reminders, the 48-hour decision trace, and each module's own tables (`calendar_…`, `todos_…`, `google_…`) | **No** |
 | `~/pip-data/models/` | Wake-word models trained on your voice, the Qwen model, voices | **No** |
 | `~/pip-data/recordings/` | Your consented test recordings (kept, D-72) | **No** |
 
@@ -248,7 +268,7 @@ pip/                          (the repo)
 │   ├── web/                  pip-web program (dashboard + TV page)
 │   ├── builder/              pip-builder (self-change pipeline)
 │   ├── common/               shared bits: messages, settings, database
-│   └── modules/              skills, widgets, providers (+ _template/)
+│   └── modules/              plug-in features: google, calendar, todos (+ _template/)
 ├── models/                   generic, public-safe models
 ├── deploy/                   systemd service files (deploy/systemd/) and install.sh
 ├── tests/                    cross-program and replay tests
@@ -268,6 +288,7 @@ Built in small steps. Each step ends with something you can try.
 | 4. Timers, reminders, alarms (incl. offline). **Built 2026-11-04; fixed after your test 2026-11-05** (change anything in any wording, Claude fills in what the rules miss, and since D-94 handles everything online (D-84); no phantom "Thank you" (D-85); thinking tone and Pip's state (D-86); refreshed dashboard). Pip's own commands (timers, alarms, reminders, voice calendar, "what time is it", "stop") are understood on the Pi without Claude; everything is saved instantly and survives restarts; alarms ring until answered ("okay", "stop", "I'm up", his name, "snooze ten minutes") or shut off on the dashboard. Offline, Whisper on the Pi hears commands (D-83). Not yet: "earned" alarms (need Claude to judge, later in M1a), reminders for one person (need voice recognition, step 5), ringtone settings page (step 8) | Use Pip for timers like Ziggletron |
 | 5. Memory (with approval inbox), people and voices. **Built 2026-11-05, installed.** "Remember / forget" worded by Claude and checked by Pip; sensitive or about-someone-else items wait in the inbox (D-88); Memory Center on the dashboard; people list; voices recognised on the Pi with TitaNet (sure / probably / someone, D-87); learn a voice by saying "Pip, I'm …" and reading five sentences, or from M0 recordings; visitors remembered for the visit only (D-89) | "Remember that…", recognised speakers |
 | 6. Social mode: room transcript, answer/mention/join-in like Ziggletron, mic switch with claps, names spelled right; everything in natural language (Pip's own phrasings only offline); small offline indicator. **Built 2026-11-07, waiting for your test.** (D-90–D-95) | Pip follows the room conversation and joins in like Ziggletron |
+| 6b. Modules (D-96) with Google accounts per person, Google Calendar both ways, to-dos with Google Tasks, and a calendar page. **Built 2026-11-07, waiting for your test** (D-96–D-101) | See and change everyone's calendar and to-dos by voice or on the dashboard |
 | 7. Screen: face, widgets, layouts | The face on the monitor |
 | 8. Settings page, accounts, migration from Ziggletron | Switch Pip on side by side with Ziggletron |
 

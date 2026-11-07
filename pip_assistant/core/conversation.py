@@ -127,7 +127,7 @@ def _loop_running() -> bool:
 
 class Conversation:
     def __init__(self, bus, cfg: dict | None = None, stt=None, schedule=None, local_stt=None, people=None, memory=None,
-                 mic=None):
+                 mic=None, modules=None):
         from .commands import Commands
         from .peoplecmds import PeopleCommands
         self.bus = bus
@@ -151,7 +151,9 @@ class Conversation:
         self.enrolling: dict | None = None   # guided voice learning in progress
         self.last_started = 0.0              # when ears last started capturing someone
         self.schedule = schedule
-        self.commands = Commands(schedule, clock=schedule.clock) if schedule is not None else None
+        self.modules = modules       # plugged-in modules (core/modules.py): calendar, to-dos, …
+        self.commands = Commands(schedule, clock=schedule.clock, calendar=modules.get("calendar") if modules else None) \
+            if schedule is not None else None
         self.local_stt = local_stt
         c = (cfg or {}).get("conversation", {})
         self.follow_up_s = c.get("follow_up_seconds", 8.0)
@@ -803,8 +805,11 @@ class Conversation:
         filler = asyncio.create_task(self._thinking_tone(aid)) if kind == "direct" else None
         t0 = time.perf_counter()
         try:
-            schedule = self.schedule.summary() if self.schedule else ""
             sp = self.speaker if kind != "join" else None
+            schedule = self.schedule.summary() if self.schedule else ""
+            if self.modules is not None:   # each module's part: the calendar, to-dos, … (only what this speaker may hear)
+                from .modules import Call
+                schedule = " ".join(x for x in (schedule, self.modules.summary(Call(speaker=sp))) if x)
             people = self.people.summary(sp) if self.people is not None else ""
             if kind == "join":
                 people = people.split(". ", 1)[-1]   # nobody spoke to him: just who lives here
@@ -914,7 +919,9 @@ class Conversation:
             await self.start_enrolment(learning.person_id, first=self.last_pcm, greeting=learning.say)
 
     def _action_ctx(self) -> dict:
-        return {"memory": self.memory, "people": self.people, "speaker": self.speaker}
+        from .modules import Call
+        return {"memory": self.memory, "people": self.people, "speaker": self.speaker, "modules": self.modules,
+                "call": Call(speaker=self.speaker, now=self.commands.now()) if self.commands else Call(speaker=self.speaker)}
 
     async def _maybe_follow_up(self) -> None:
         last = self.transcript.last()

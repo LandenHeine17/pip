@@ -34,7 +34,7 @@ build-backend = "setuptools.build_meta"
 include = ["pip_assistant*"]
 
 [tool.setuptools.package-data]
-pip_assistant = ["defaults.toml", "web/static/*"]
+pip_assistant = ["defaults.toml", "web/static/*", "modules/*/module.toml", "modules/*/static/*"]
 
 [tool.uv]
 # Only use releases at least two weeks old (supply-chain caution).
@@ -45,4 +45,4 @@ override-dependencies = ["tflite-runtime; sys_platform == 'never'"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
+testpaths = ["tests", "pip_assistant/modules"]

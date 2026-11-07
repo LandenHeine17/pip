@@ -12,6 +12,7 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
 ## 2. Making the change
 
 - **Small and focused.** One purpose per change. Don't refactor unrelated code.
+- **New features are modules** (ARCHITECTURE §7, D-96): copy `pip_assistant/modules/_template/`, rename it, and fill in `module.toml` (permissions, settings, what Claude is told, its dashboard page) and `module.py`. A module keeps to its own tables (`<name>_…`), its own secrets section and the internet hosts it declares; it reaches Pip only through its `ctx`. Put its tests next to it. Don't add a feature by editing pip-core when a module can do it.
 - **Match what's there.** Same style, same patterns, same tools (`uv`; Python).
 - **Keep traceability.** When you change the spec, cite the IDs (FEAT, PIP-NEW, AC, D). New requirements get the next free `PIP-NEW` number and a row in `docs/REQUIREMENTS.md`; new decisions get the next `D-nn` in `docs/DECISIONS.md`.
 - **Keep the docs few.** Update the three living docs (`PIP-SPEC`, `DECISIONS`, `REQUIREMENTS`) instead of adding new spec files. `docs/archive/` is frozen: don't add to it or edit it (except to fix links). If a new decision overrides an archived passage, add a row to REQUIREMENTS §0. In the architecture phase, component pages in `docs/architecture/` will carry the detailed rules forward, so the archive matters less over time.

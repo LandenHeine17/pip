@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · To-dos</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+.todo{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--soft)}
+.todo input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
+.todo.done b{text-decoration:line-through;color:var(--muted);font-weight:500}
+.todo .grow{flex:1;min-width:0}
+.list{margin-bottom:18px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+    <div><h1>To-dos</h1><div class="sub">Say "Pip, add milk to my to-do list". Synced with Google Tasks · <a href="/m/google/">connect Google</a></div></div></div>
+</header>
+<section>
+  <form id="add" style="margin-top:0"><input name="title" placeholder="Add a to-do" required maxlength="300" style="flex:1;min-width:10em">
+    <input type="date" name="due" title="Due (optional)"><select name="list_id" id="pickList"></select><button class="primary">Add</button></form>
+</section>
+<div id="lists"></div>
+</main>
+<script src="/pip.js"></script>
+<script>
+let data = {lists:[], items:[]};
+async function load(){ const r = await pip.act(pip.get("list")); if (r) { data = r; render(); } }
+function render(){
+  $("pickList").innerHTML = data.lists.map(l => `<option value="${l.id}" ${l.id===data.household?"selected":""}>${esc(l.whose?l.whose+": "+l.name:l.name)}</option>`).join("");
+  $("pickList").hidden = data.lists.length < 2;
+  $("lists").innerHTML = data.lists.map(l => {
+    const items = data.items.filter(t => t.list_id === l.id);
+    if (!items.length && l.id !== data.household) return "";
+    return `<section class="list"><div class="head"><h2>${esc(l.whose?l.whose+": "+l.name:l.name)}</h2>
+      <span class="sub">${items.filter(t=>!t.done).length} open</span></div><div class="items">
+      ${items.map(t => `<div class="todo ${t.done?"done":""}"><input type="checkbox" ${t.done?"checked":""} onchange="toggle('${t.id}')">
+        <div class="grow"><b>${esc(t.title)}</b>${t.due?`<div class="sub">due ${new Date(t.due+"T12:00").toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"})}</div>`:""}
+        ${t.pending?`<div class="sub">sending to Google…</div>`:""}</div>
+        <button class="ghost" onclick="edit('${t.id}')">Edit</button><button class="ghost" title="Delete" onclick="del('${t.id}')">✕</button></div>`).join("")
+        || `<div class="empty">Nothing to do.</div>`}</div></section>`;
+  }).join("");
+}
+async function toggle(id){ await pip.act(pip.post("toggle", {id})); load(); }
+async function del(id){ await pip.act(pip.post("delete", {id})); load(); }
+async function edit(id){ const t = data.items.find(x => x.id === id); const title = prompt("To-do", t.title);
+  if (title && title !== t.title) { await pip.act(pip.post("edit", {id, title, due: t.due})); load(); } }
+$("add").onsubmit = async ev => { ev.preventDefault(); const f = Object.fromEntries(new FormData(ev.target));
+  if (await pip.act(pip.post("add", f))) { ev.target.title.value = ""; ev.target.due.value = ""; load(); } };
+pip.live(load);
+load();
+</script>
+</body>
+</html>

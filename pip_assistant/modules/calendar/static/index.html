@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Calendar</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.dow{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:center;padding:4px 0}
+.day{min-height:96px;border-radius:12px;background:var(--soft);padding:6px;cursor:pointer;display:flex;flex-direction:column;gap:3px;border:2px solid transparent;min-width:0}
+.day.other{opacity:.45} .day.today{border-color:var(--accent)} .day.sel{background:var(--accentbg)}
+.day .n{font-size:.8rem;font-weight:700}
+.chip{font-size:.72rem;border-radius:6px;padding:1px 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--card);border-left:3px solid var(--c)}
+.more{font-size:.7rem;color:var(--muted)}
+.chip.priv{font-style:italic;border-left-style:dashed}
+@media (max-width:640px){.day{min-height:54px}.chip{display:none}.day .dots{display:flex;gap:2px;flex-wrap:wrap}}
+.dots{display:none}.dots i{width:6px;height:6px;border-radius:50%;background:var(--c)}
+.ev{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:var(--soft);border-left:4px solid var(--c)}
+.ev .t{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.85rem;min-width:92px}
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+.legend label{display:inline-flex;align-items:center;gap:6px;font-size:.85rem}
+.legend i{width:10px;height:10px;border-radius:3px;background:var(--c)}
+dialog{border:0;border-radius:var(--r);padding:20px;background:var(--card);color:var(--ink);box-shadow:var(--shadow);width:min(460px,94vw)}
+dialog::backdrop{background:rgba(0,0,0,.35)}
+dialog form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+dialog form .full{grid-column:1/-1}
+dialog label{font-size:.8rem;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+dialog label.inline{flex-direction:row;align-items:center;gap:6px;color:var(--ink)}
+textarea{font:inherit;font-size:.9rem;padding:8px 12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);min-height:60px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+    <div><h1>Calendar</h1><div class="sub">Pip's calendar and everyone's connected Google calendars · <a href="/m/google/">connect Google</a></div></div></div>
+  <div class="status"><button onclick="move(-1)">‹</button><b id="title" style="min-width:150px;text-align:center"></b><button onclick="move(1)">›</button>
+    <button onclick="goToday()">Today</button><button class="primary" onclick="openForm()">+ Add</button></div>
+</header>
+<section>
+  <div class="cal" id="cal"></div>
+  <div class="legend" id="legend"></div>
+  <div class="sub" id="note" style="margin-top:8px"></div>
+</section>
+<section>
+  <div class="head"><h2 id="dayTitle"></h2><button class="ghost" onclick="openForm(sel)">+ Add on this day</button></div>
+  <div class="items" id="dayList"></div>
+</section>
+</main>
+
+<dialog id="dlg"><form id="form" method="dialog">
+  <h2 class="full" id="formTitle">New event</h2>
+  <label class="full">Title<input name="title" required maxlength="200"></label>
+  <label>Date<input type="date" name="date" required></label>
+  <label class="inline" style="align-self:end"><input type="checkbox" name="all_day" onchange="allDay()"> All day</label>
+  <label class="timed">Starts<input type="time" name="start" value="09:00"></label>
+  <label class="timed">Ends<input type="time" name="end" value="10:00"></label>
+  <label class="allday" hidden>Last day<input type="date" name="end_date"></label>
+  <label>Repeats<select name="repeat"><option value="">Doesn't repeat</option><option value="daily">Every day</option>
+    <option value="weekdays">Weekdays</option><option value="weekends">Weekends</option><option value="weekly">Every week</option></select></label>
+  <label>Heads-up<select name="heads_up"><option value="">None</option><option value="5">5 min before</option><option value="15">15 min</option>
+    <option value="30">30 min</option><option value="60">1 hour</option><option value="1440">1 day</option></select></label>
+  <label class="full">Where<input name="location" maxlength="200"></label>
+  <label class="full">Notes<textarea name="notes" maxlength="2000"></textarea></label>
+  <label class="full" id="calPick">Calendar<select name="calendar_id"></select></label>
+  <label class="inline full"><input type="checkbox" name="private"> Private: Pip never mentions it (it still shows here)</label>
+  <div class="full" style="display:flex;gap:8px;justify-content:space-between">
+    <button type="button" class="ghost" id="del" onclick="removeEv()" hidden>Delete</button>
+    <span style="display:flex;gap:8px;margin-left:auto"><button type="button" onclick="dlg.close()">Cancel</button>
+    <button class="primary" type="submit">Save</button></span></div>
+</form></dialog>
+
+<script src="/pip.js"></script>
+<script>
+const DOW = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const clock = ts => new Date(ts*1000).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+let month = new Date(); month.setDate(1);
+let sel = iso(new Date()), data = {events:[], calendars:[]}, editing = null;
+const dlg = $("dlg"), form = $("form");
+
+function gridStart(){ const d = new Date(month); const back = (d.getDay()+6)%7; d.setDate(1-back); return d; }
+async function load(){
+  const first = gridStart(), last = new Date(first); last.setDate(first.getDate()+41);
+  const r = await pip.act(pip.get("range", {from: iso(first), to: iso(last)}));
+  if (r) { data = r; render(); }
+}
+function evsOn(day){ return data.events.filter(e => e.day === day); }
+function render(){
+  $("title").textContent = month.toLocaleDateString([], {month:"long", year:"numeric"});
+  const today = iso(new Date()), d = gridStart();
+  let html = DOW.map(x => `<div class="dow">${x}</div>`).join("");
+  for (let i = 0; i < 42; i++) {
+    const day = iso(d), evs = evsOn(day);
+    html += `<div class="day ${d.getMonth()!==month.getMonth()?"other":""} ${day===today?"today":""} ${day===sel?"sel":""}" onclick="pick('${day}')">
+      <span class="n">${d.getDate()}</span>
+      ${evs.slice(0,3).map(e => `<span class="chip ${e.private?"priv":""}" style="--c:${e.color}">${e.all_day?"":clock(e.at)+" "}${esc(e.title)}</span>`).join("")}
+      ${evs.length>3?`<span class="more">+${evs.length-3} more</span>`:""}
+      <span class="dots">${evs.map(e => `<i style="--c:${e.color}"></i>`).join("")}</span></div>`;
+    d.setDate(d.getDate()+1);
+  }
+  $("cal").innerHTML = html;
+  $("legend").innerHTML = data.calendars.map(c => `<label><input type="checkbox" ${c.ticked?"checked":""} onchange="tick('${c.id}',this.checked)">
+     <i style="--c:${c.color}"></i>${esc(c.whose ? c.whose+": "+c.name : c.name)}${c.household?" <span class='sub'>(household)</span>":""}</label>`).join("");
+  $("note").textContent = data.calendars.some(c => c.id.startsWith("g:")) ? "Synced with Google every couple of minutes; Pip's changes go straight away."
+    : "Only Pip's own calendar so far. Connect Google to see yours here.";
+  const sd = new Date(sel+"T12:00");
+  $("dayTitle").textContent = sd.toLocaleDateString([], {weekday:"long", month:"long", day:"numeric"});
+  const evs = evsOn(sel);
+  $("dayList").innerHTML = evs.map(e => `<div class="ev" style="--c:${e.color}"><span class="t">${e.all_day?"All day":clock(e.at)+"–"+clock(e.end)}</span>
+     <div style="flex:1;min-width:0"><b>${esc(e.title)}</b>${e.private?` <span class="pill" style="background:var(--soft2,var(--line))">private</span>`:""}${e.repeat?` <span class="sub">· repeats</span>`:""}
+     <div class="sub">${[e.location, e.whose?e.whose+"'s calendar":e.calendar, e.pending?"sending to Google…":""].filter(Boolean).map(esc).join(" · ")}</div>
+     ${e.notes?`<div class="sub">${esc(e.notes)}</div>`:""}</div>
+     ${e.writable?`<button class="ghost" onclick="openForm(null,'${e.id}')">Edit</button>`:""}</div>`).join("")
+    || `<div class="empty">Nothing on this day.</div>`;
+}
+function pick(day){ sel = day; render(); }
+function move(n){ month.setMonth(month.getMonth()+n); load(); }
+function goToday(){ month = new Date(); month.setDate(1); sel = iso(new Date()); load(); }
+async function tick(id, on){ await pip.act(pip.post("tick", {id, value:on})); load(); }
+function allDay(){ const on = form.all_day.checked;
+  form.querySelectorAll(".timed").forEach(x => x.hidden = on); form.querySelector(".allday").hidden = !on; }
+function openForm(day, id){
+  editing = id ? data.events.find(e => e.id === id) : null;
+  form.reset();
+  $("formTitle").textContent = editing ? "Edit event" : "New event";
+  $("del").hidden = !editing;
+  const cals = data.calendars.filter(c => c.writable);
+  form.calendar_id.innerHTML = cals.map(c => `<option value="${c.id}" ${c.household?"selected":""}>${esc(c.whose?c.whose+": "+c.name:c.name)}</option>`).join("");
+  $("calPick").hidden = !!editing || cals.length < 2;
+  if (editing) {
+    const s = new Date(editing.start*1000), e = new Date(editing.end*1000);
+    form.title.value = editing.title; form.date.value = iso(s); form.all_day.checked = editing.all_day;
+    form.start.value = s.toTimeString().slice(0,5); form.end.value = e.toTimeString().slice(0,5);
+    const lastDay = new Date(e); lastDay.setDate(lastDay.getDate()-1); form.end_date.value = iso(lastDay);
+    form.repeat.value = editing.repeat; form.location.value = editing.location; form.notes.value = editing.notes;
+    form.private.checked = editing.private; form.heads_up.value = editing.reminder == null ? "" : String(Math.round(editing.reminder));
+  } else { form.date.value = day || sel; }
+  allDay(); dlg.showModal();
+}
+form.onsubmit = async ev => {
+  ev.preventDefault();
+  const f = Object.fromEntries(new FormData(form)); f.all_day = form.all_day.checked; f.private = form.private.checked;
+  const r = await pip.act(editing ? pip.post("edit", {...f, id: editing.id}) : pip.post("add", f));
+  if (r) { dlg.close(); sel = f.date; load(); }
+};
+async function removeEv(){ if (editing && confirm(`Delete ${editing.title}?`)) { await pip.act(pip.post("delete", {id: editing.id})); dlg.close(); load(); } }
+pip.live(load);
+load();
+</script>
+</body>
+</html>

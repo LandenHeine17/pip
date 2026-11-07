@@ -33,6 +33,7 @@ Pip is a playful companion living in a dorm room on a Raspberry Pi 5, with a USB
 | Can Pip recognise who's talking? (D-87) | Yes, on the Pi: TitaNet small, ~40 ms per request. Learned from 8 of your M0 clips, it was **sure it was you 82%** of the time (probably-you 94%) and **never took any of 24 other voices for you**. With TV in the background it can't tell (you become "Someone"). The other voices were studio recordings, so it needs a check with a roommate | D-87 |
 | Can two claps switch Pip off without false alarms? (D-91) | In generated tests, two claps were heard (quiet and noisy room); one clap, three claps, claps far apart, talking, claps then talking and ringing slams were not. Over all 197 of your M0 recordings (9 min) it went off **once** (a double click at the start of one recording) after tightening: a clap must be loudest straight away and short. Real claps through the speakerphone: your test | D-91 |
 | Does Pip know when to join in, and when not to reply? (D-92) | With real Claude, 12/12 as intended: joined in with something useful (egg timing, a movie name), stayed quiet in a tense talk about rent, in two people's own plans and after being ignored; passed when merely mentioned, answered when invited; stays quiet on "never mind, we're good" but answers questions and thanks. About 2 s per decision | D-92 |
+| Can Claude run the calendar and to-dos by voice? (D-98, D-100) | Yes, 7 of 7: "add eggs to my to-do list" (onto the speaker's list), "move my 3 o'clock on Monday to 4" (the right event), "dinner with Sam Friday at 7, keep it private" (private), "I bought the milk" (ticked off), "put rent due on Sam's calendar for the 15th" (all-day, on Sam's), and answered "what does Sam have tomorrow?" from the calendar. Google sync itself was tested against a pretend Google; the real one is your first test | D-98, D-100 |
 | Does Claude handle "remember / forget" well? (D-88) | Yes: 8 of 8 after one fix. It words memories in the third person ("Alex takes his coffee black"), marks health things sensitive (to the inbox), updates on "actually…", forgets the right one, and asks "Who's this?" when an unrecognised voice says "remember I like…" | D-88 |
 | Can the Pi run Pip comfortably? | Yes: 10 min of everyday work used 16% CPU on average (55% peak), 1.5 GB memory, 68 °C; the wake detector never fell behind | — |
 | How strict should the wake words be? (D-74) | **Keep Pippletron 0.8 and Hey Pip 0.5.** From 14:21 to 07:30 (17 h) they gave 0 unexplained "Hey Pip" wakes and 1 "Pippletron" (00:24), and all 55 times Pip woke someone really spoke. Looser settings would have added near-misses (Hey Pip 0.42, Pippletron 0.65). The room was silent 94% of the time, so this is about 1 h of real sound: keep watching it in daily use | D-74 |
@@ -161,7 +162,27 @@ flowchart LR
 - **The dashboard** (`:8790`) shows Pip's state, live countdowns, alarms, reminders and the next two weeks of the calendar. When something rings: one big **Shut off** and one **Snooze** (5 min; ▾ for other lengths). Plus Cancel, a "Start timer" form and a box to type a command.
 - **Offline**: Whisper on the Pi hears the request (about 2.4 s, more mistakes), and Pip's simple built-in phrasings do the basics ("timer ten minutes", "stop", "snooze", "wake me up at 7"). Anything else: "I'm offline, so I can only do the basics right now." A small grey **offline** label shows at the top of the dashboard while he can't reach the internet (D-95).
 - **Still to come**: alarms you have to earn (FEAT-038, needs Claude to judge), reminders for one person (needs person-bound delivery), ringtone and ring-length settings on the dashboard (step 8; four ringtones exist: classic, kitchen, chimes, gentle).
-- Later (M3): shared shopping and to-do lists, Google Calendar sync, phone notifications via ntfy on the Pi (D-19, D-66).
+- Later (M3): shared shopping lists, phone notifications via ntfy on the Pi (D-66).
+
+### Calendar, to-dos and Google (built as modules, 2026-11-07)
+The calendar, to-dos and Google accounts are **modules** that plug into Pip (D-96; how modules work: ARCHITECTURE §7).
+
+- **Connect Google, per person** (D-97): on Pip's dashboard → **Google**, the owner sets up a free Google Cloud "client" once (4 guided steps, ~10 minutes). Then **each person connects their own account** (People → Connect Google): sign in, then paste back the address Google sends you to (it won't load; that's expected). A roommate can connect his too.
+- **Two-way calendar** (D-98): your Google events show on Pip's calendar and he knows about them ("what have I got tomorrow?"); events added by voice or on the dashboard appear in Google within a couple of minutes, and changes on your phone reach Pip the same way. If both sides changed the same event, Google's version wins. Offline, Pip's changes wait and go when he's back.
+- **Whose calendar?** "Put it on Sam's calendar" → Sam's. Otherwise the speaker's (if Pip is sure who it is and they're connected), else the **household calendar** (the first admin's).
+- **Who may hear about it:** each person chooses on the Google page whether Pip mentions their events and to-dos **to everyone** (default) or **only to them**.
+- **Private events** (D-99): mark an event private (in Google, by saying "make it private", or the Private box on the page) and Pip **ignores it**: never mentioned, no heads-up. It still shows on the calendar page, marked private.
+- **The Calendar page** (D-101, the Calendar button): month grid with a colour per calendar, tap a day to see its events, add / edit / delete, tick calendars on or off.
+- **To-dos** (D-100): "Pip, add milk to my to-do list", "I bought the milk", "what's on my list?"; a To-dos page; synced both ways with Google Tasks. Without Google there's a household list on the Pi.
+
+```mermaid
+flowchart LR
+    V["You: 'put the dentist<br/>on Friday at 3'"] --> C["Claude → ACTION add event"]
+    C --> P["Pip's calendar module<br/>(on the Pi; works offline)"]
+    D["Calendar page:<br/>add / edit / delete"] --> P
+    P <-- "both ways, every ~2 min<br/>(Pip's changes at once)" --> G["Each connected person's<br/>Google Calendar & Tasks"]
+    P --> S["What Claude is told:<br/>next two weeks, open to-dos<br/>(never private events)"]
+```
 
 ### Pip's state (what the face will show)
 Pip is always in one of seven states, shown on the dashboard and used by the face in step 7 (D-86, D-91). When a question goes to Claude, a **soft thinking tone** plays straight away (instead of "One sec."); it can be set to always, only-if-slow, or off.
@@ -225,7 +246,7 @@ flowchart LR
 ### What Claude sees
 Each time Pip asks Claude something (an answer, a mention, or whether to join in), Claude gets:
 - **The room conversation**: the last 40 lines (up to 3 hours back), with who said each ("Landen", "Landen?" if he's only fairly sure, "Someone"), including Pip's own lines and where someone talked over him. Kept in memory only, never saved.
-- **Who's speaking** and who lives here; **what's set** (timers, alarms, reminders, the next two weeks of the calendar, and what's ringing); **what Pip remembers** (household memories, plus the speaker's private ones if he's sure who it is); the date and time; the weather.
+- **Who's speaking** and who lives here; **what's set** (timers, alarms, reminders, and what's ringing); **the calendar's next two weeks** (whose calendar each event is on, which Google calendars are connected) and **open to-dos** (only what this speaker may hear; never private events); **what Pip remembers** (household memories, plus the speaker's private ones if he's sure who it is); the date and time; the weather.
 - **What's asked**: answer (it was said to you), decide (your name came up), or join in or stay quiet.
 
 **Compared with Ziggletron:** the same idea, since step 6: Ziggletron also sent the recent conversation (40 lines, with speaker names) plus what's set and memories. Two differences: Ziggletron picked only memories that matched words in the conversation (Pip sends all active ones, up to 200), and Ziggletron added sound tags like "[sound: Doorbell]" (Pip doesn't detect sounds yet). Before step 6, Pip only sent his own back-and-forth with one person.

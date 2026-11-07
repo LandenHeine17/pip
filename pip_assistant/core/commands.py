@@ -92,8 +92,9 @@ def match_label(label: str, wanted: str) -> float:
 
 
 class Commands:
-    def __init__(self, schedule: Schedule, clock=time.time):
+    def __init__(self, schedule: Schedule, clock=time.time, calendar=None):
         self.s = schedule
+        self.cal = calendar   # the calendar module's events (modules/calendar/store.py), or None if it's off
         self.clock = clock
         self.awaiting: dict | None = None   # Pip asked a question ("For how long?") and waits for the answer
         self._focus: tuple[str, str, float] | None = None  # ("alert"/"event", id, when): what "that" and "it" mean
@@ -115,7 +116,7 @@ class Commands:
                 row = self.s._row(item_id)
                 if row and row["state"] in ("waiting", "ringing"):
                     return "alert", row
-            elif ev := self.s.event(item_id):
+            elif self.cal and (ev := self.cal.event(item_id)):
                 return "event", ev
         return None
 
@@ -262,7 +263,7 @@ class Commands:
 
     def _cancel_item(self, table: str, row: dict) -> str:
         if table == "event":
-            self.s.remove_event(row["id"])
+            self.cal.remove_event(row["id"])
             return f"Took {row['title']} off the calendar."
         self.s.cancel(row["id"])
         return self._cancelled_text([row])
@@ -324,7 +325,7 @@ class Commands:
     def _target(self, t: str, kind: str | None):
         """What they want to change: (table, row), a list to choose from, a reply ("You don't have..."), or None."""
         alerts = [("alert", a) for a in self.s.active(("timer", "alarm", "reminder")) if not kind or a["kind"] == kind]
-        events = [("event", e) for e in self.s.all_events()] if kind in (None, "event") else []
+        events = [("event", e) for e in self.cal.all_events()] if kind in (None, "event") and self.cal else []
         everything = alerts + events
         if kind != "timer" and (at := when.clock(t, self.now())):  # "the 6 AM alarm", "the dentist at 2"
             by_time = [(tb, x) for tb, x in everything if
@@ -402,7 +403,7 @@ class Commands:
         if table == "event":
             start = at or datetime.fromtimestamp(row["start"] + (shift or 0))
             all_day = bool(row["all_day"]) and at is not None and at.time() == datetime.min.time()
-            ev = self.s.update_event(row["id"], start, all_day=all_day if at else None)
+            ev = self.cal.update_event(row["id"], start, all_day=all_day if at else None)
             when_txt = when.say_day(start.date(), self.now().date()) + ("" if ev["all_day"] else f" at {when.say_clock(start)}")
             return f"Moved {ev['title']} to {when_txt}."
         if row["kind"] == "timer":
@@ -548,6 +549,8 @@ class Commands:
 
     # ---------------------------------------------------------------- calendar
     def _event_add(self, t):
+        if not self.cal:
+            return None
         m = re.search(r"\b(put|add|schedule|pencil( in)?|book|note)\b\s+(.+?)\s+\b(on|to|in|into)\b\s+(the |my |our )?(calendar|schedule)\b(.*)$", t) or \
             re.search(r"\b(add|put|schedule|create)\b\s+(an? )?(event|appointment)\s+(called |for )?(.+)$", t)
         if not m or CHANGE_WORDS.search(t):
@@ -584,7 +587,7 @@ class Commands:
         return self._add_event(title, at, all_day=all_day, rep=rep, heads=heads)
 
     def _add_event(self, title: str, at: datetime, all_day: bool = False, rep: str = "", heads: float | None = None) -> str:
-        ev = self.s.add_event(title, at, all_day=all_day, repeat=rep, heads_up_before=heads)
+        ev = self.cal.add_event(title, at, all_day=all_day, repeat=rep, heads_up_before=heads)
         self.remember("event", ev["id"])
         when_txt = when.say_day(at.date(), self.now().date()) + ("" if all_day else f" at {when.say_clock(at)}")
         if rep:
@@ -592,6 +595,8 @@ class Commands:
         return f"Added {title}, {when_txt}."
 
     def _event_remove(self, t):
+        if not self.cal:
+            return None
         m = re.search(r"\b(remove|delete|cancel|take|clear)\b\s+(.+?)\s+\b(from|off|on)\b\s+(the |my |our )?(calendar|schedule)\b", t)
         if not m:
             return None
@@ -603,11 +608,11 @@ class Commands:
             return "Which event? I'm not sure which one you mean."
         wanted_day = when.day(wanted, self.now())
         wanted = re.split(r"\s+\b(on|at|this|next|tomorrow|today)\b", f"{wanted} ")[0].strip()
-        evs = self.s.all_events()
+        evs = self.cal.all_events()
         scored = sorted(((match_label(e["title"].lower(), wanted), e) for e in evs), key=lambda x: -x[0])
         picks = [e for sc, e in scored if sc >= 0.75]
         if wanted_day:
-            picks = [e for e in picks if self.s.occurs_on(e, wanted_day)] or picks
+            picks = [e for e in picks if self.cal.occurs_on(e, wanted_day)] or picks
         if not picks:
             return f"I can't find {wanted} on the calendar."
         if len(picks) > 1:
@@ -615,6 +620,8 @@ class Commands:
         return self._cancel_item("event", picks[0])
 
     def _event_query(self, t):
+        if not self.cal:
+            return None
         if not (re.search(r"\b(calendar|schedule|planned|plans)\b", t) and re.search(r"\b(what|anything|any|is there|do (i|we) have|what's)\b", t)) and \
                 not re.match(r"^(what'?s|what is) (on|happening|going on) (today|tonight|tomorrow|this week|on \w+day|\w+day)\W*$", t) and \
                 not re.match(r"^(what do|do) (i|we) have (on |going on )?(today|tonight|tomorrow|this week|on \w+day)\W*$", t):
@@ -624,7 +631,7 @@ class Commands:
             days = [now.date() + timedelta(days=i) for i in range(7)]
         else:
             days = [when.day(t, now) or now.date()]
-        found = [(d, at, ev) for d in days for at, ev in self.s.events_on(d)]
+        found = [(d, at, ev) for d in days for at, ev in self.cal.events_on(d) if not ev["private"]]
         if not found:
             label = "this week" if len(days) > 1 else when.say_day(days[0], now.date())
             return f"Nothing on the calendar {label}."

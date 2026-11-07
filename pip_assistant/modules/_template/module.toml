@@ -1,0 +1,23 @@
+# A worked example: copy this folder, rename it, and fill in the marked parts (ARCHITECTURE §7).
+# Folders starting with "_" are never loaded, so this one stays an example.
+
+name = "_template"                  # ← must match the folder's name
+kind = "skill"                      # skill / widget / provider / device / plugin
+summary = "Rolls dice and flips coins."
+says_examples = ["Pip, roll a die", "flip a coin"]
+offline = true                      # works without the internet
+permissions = []                    # e.g. ["network:example.com"] to reach a website
+needs = []                          # other modules it uses, e.g. ["google"]
+
+[settings.sides]                    # every setting: a default and a plain-language explanation
+default = 6
+explain = "How many sides a die has unless you say otherwise."
+
+[claude]                            # told to Claude, so it knows it can use this module's actions
+instructions = """
+Dice: to roll, reply with ONLY: ACTION {"do": "roll", "sides": 6} (sides optional).
+"""
+
+# [dashboard]                       # a page on Pip's dashboard (put it in static/), with a button
+# page = "index.html"
+# label = "Dice"
