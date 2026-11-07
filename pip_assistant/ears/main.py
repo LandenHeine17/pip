@@ -47,7 +47,7 @@ class Ears:
                       "mic_off": mic_tone(False, self.voice.rate)}
         self.mic_mode = "off"      # until pip-core says (D-91)
         self.claps = ClapDetector(cfg.get("mic", {}))
-        self.claps_on = cfg.get("mic", {}).get("claps", True)
+        self.claps_on = cfg.get("mic", {}).get("claps", False)   # not finished: off until tuned (D-91)
         self.seg = Segmenter(speech_dbfs=li["speech_dbfs"], end_silence_s=li["end_silence_seconds"],
                              max_s=li["max_utterance_seconds"], wait_for_speech_s=li["wait_for_speech_seconds"],
                              after_wake_s=li["after_wake_seconds"])
