@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Google</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+ol.steps{margin:6px 0 0 18px;padding:0;line-height:1.7} ol.steps li{margin-bottom:6px}
+code{background:var(--soft);padding:1px 6px;border-radius:6px;font-size:.85em}
+.done{color:var(--good);font-weight:700}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+    <div><h1>Google</h1><div class="sub">Connect household members' Google accounts, for their calendars and to-dos</div></div></div>
+</header>
+
+<section>
+  <div class="head"><h2>1 · Set up Google for Pip (once)</h2><span id="setupState" class="sub"></span></div>
+  <details id="guide"><summary class="sub">Show the steps (about 10 minutes, free)</summary>
+  <ol class="steps">
+    <li>Open <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Google Cloud: new project</a>, name it <code>Pip</code>, Create.</li>
+    <li>Turn on the <a href="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com" target="_blank" rel="noopener">Google Calendar API</a>
+      and the <a href="https://console.cloud.google.com/apis/library/tasks.googleapis.com" target="_blank" rel="noopener">Google Tasks API</a> (Enable on each).</li>
+    <li><a href="https://console.cloud.google.com/auth/overview" target="_blank" rel="noopener">Google Auth platform</a> → Get started: app name <code>Pip</code>,
+      your email, Audience <b>External</b>, finish. Then under <b>Audience</b> press <b>Publish app</b>, so sign-ins don't expire after 7 days.
+      (Google will call it "unverified": that's fine for your own app; you just click Advanced → Continue when signing in.)</li>
+    <li><b>Clients</b> → Create client → type <b>Desktop app</b>, name <code>Pip</code> → Create. Copy the <b>Client ID</b> and <b>Client secret</b> into the boxes below.</li>
+  </ol></details>
+  <form id="client"><input name="client_id" placeholder="Client ID (….apps.googleusercontent.com)" style="flex:2;min-width:16em" required>
+    <input name="client_secret" placeholder="Client secret" type="password" style="flex:1;min-width:10em" required>
+    <button class="primary">Save</button></form>
+  <div class="sub" style="margin-top:6px">Saved only in Pip's secrets file on the Pi; never shown here again.</div>
+</section>
+
+<section>
+  <div class="head"><h2>2 · Connect someone's Google</h2></div>
+  <form id="connect" style="margin-top:0"><select name="person_id" id="person"></select><button class="primary">Connect Google</button></form>
+  <div id="paste" hidden style="margin-top:12px">
+    <div class="sub">A Google sign-in page opened. Choose the account and allow Pip. Google then sends you to an address starting
+      <code id="redir"></code> that <b>won't load</b>: that's expected. Copy that whole address from the address bar and paste it here:</div>
+    <form id="finish"><input name="pasted" placeholder="http://127.0.0.1:…/?state=…&code=…" style="flex:1;min-width:14em" required><button class="primary">Finish</button></form>
+  </div>
+  <div class="sub" style="margin-top:8px">People are added on <a href="/">Pip's dashboard</a> (People &amp; voices). Each person connects their own account.</div>
+</section>
+
+<section>
+  <div class="head"><h2>Connected accounts</h2></div>
+  <div class="items" id="accounts"></div>
+  <div class="sub" style="margin-top:8px"><b>Pip may mention</b>: whether Pip talks about that person's events and to-dos to anyone in the room,
+    or only when he's sure it's them speaking. Events marked <b>private</b> are never mentioned either way.
+    See them on the <a href="/m/calendar/">calendar</a> and <a href="/m/todos/">to-dos</a>.</div>
+</section>
+</main>
+<script src="/pip.js"></script>
+<script>
+let snap = {accounts:[], people:[]};
+async function load(){ const r = await pip.act(pip.get("status")); if (r) { snap = r; render(); } }
+function render(){
+  $("setupState").innerHTML = snap.configured ? `<span class="done">✓ set up</span>` : "not set up yet";
+  $("guide").open = !snap.configured;
+  $("redir").textContent = snap.redirect_uri || "";
+  const want = new URLSearchParams(location.search).get("person");
+  $("person").innerHTML = snap.people.map(p => `<option value="${p.id}" ${p.id===want?"selected":""}>${esc(p.name)}</option>`).join("")
+    || `<option value="">Add yourself on the dashboard first</option>`;
+  $("accounts").innerHTML = snap.accounts.map(a => `<div class="item"><div><b>${esc(a.person)}</b> · ${esc(a.email)}
+      <div class="sub">${a.status==="ok" ? (a.last_sync ? "last synced "+new Date(a.last_sync*1000).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}) : "connected")
+        : `<span style="color:var(--bad)">needs reconnecting</span>`}${a.error && a.status==="ok" ? " · last try: "+esc(a.error) : ""}</div></div>
+      <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><label class="sub">Pip may mention
+        <select onchange="sharing('${a.id}', this.value)"><option value="everyone" ${a.sharing==="everyone"?"selected":""}>to everyone</option>
+        <option value="me" ${a.sharing==="me"?"selected":""}>only to ${esc(a.person)}</option></select></label>
+      <button class="ghost" onclick="disconnect('${a.id}', '${esc(a.email)}')">Disconnect</button></span></div>`).join("")
+    || `<div class="empty">Nobody connected yet.</div>`;
+}
+$("client").onsubmit = async ev => { ev.preventDefault();
+  const r = await pip.act(pip.post("save_client", Object.fromEntries(new FormData(ev.target)))); if (r) { ev.target.reset(); snap = r; render(); } };
+$("connect").onsubmit = async ev => { ev.preventDefault();
+  const r = await pip.act(pip.post("connect", {person_id: $("person").value}));
+  if (r) { window.open(r.url, "_blank", "noopener"); $("paste").hidden = false; } };
+$("finish").onsubmit = async ev => { ev.preventDefault();
+  const r = await pip.act(pip.post("finish", {pasted: ev.target.pasted.value}));
+  if (r) { ev.target.reset(); $("paste").hidden = true; snap = r; render(); alert(`Connected ${r.email}. Pip is fetching the calendar and to-dos now.`); } };
+async function sharing(id, value){ const r = await pip.act(pip.post("sharing", {id, value})); if (r) { snap = r; render(); } }
+async function disconnect(id, email){ if (confirm(`Disconnect ${email}? Pip forgets its calendar and to-dos here (nothing is deleted in Google).`)) {
+  const r = await pip.act(pip.post("disconnect", {id})); if (r) { snap = r; render(); } } }
+pip.live(load);
+load();
+</script>
+</body>
+</html>

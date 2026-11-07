@@ -179,7 +179,7 @@ class Bus:
             if time.time() - last_prune > 3600:
                 self.trace.prune()
                 if getattr(self, "schedule", None):
-                    self.schedule.prune_events()
+                    self.schedule.prune()
                 if getattr(self, "memory", None):
                     self.memory.prune()
                 last_prune = time.time()

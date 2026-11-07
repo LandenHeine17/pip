@@ -1,4 +1,7 @@
-"""Timers, alarms, reminders and the household calendar (M1a step 4; FEAT-033–042).
+"""Timers, alarms, reminders, and the heads-ups for calendar events (M1a step 4; FEAT-033–042).
+
+The calendar itself is a module (pip_assistant/modules/calendar, D-96): it asks this schedule to
+ring heads-ups ("Heads up: dentist in 30 minutes"), linked to the event by `event_id`.
 
 Everything is saved in ~/pip-data/pip.db the moment it's made, so it survives restarts and power
 cuts (FEAT-041). A small loop checks every half second for anything due. That loop never waits
@@ -39,14 +42,6 @@ CREATE TABLE IF NOT EXISTS alerts (
     updated  REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS alerts_due ON alerts (state, due);
-CREATE TABLE IF NOT EXISTS events (
-    id        TEXT PRIMARY KEY,
-    title     TEXT NOT NULL,
-    start     REAL NOT NULL,      -- Unix time (all-day events: midnight that day)
-    all_day   INTEGER NOT NULL DEFAULT 0,
-    repeat    TEXT NOT NULL DEFAULT '',
-    created   REAL NOT NULL
-);
 """
 
 
@@ -130,136 +125,74 @@ class Schedule:
                 self._notify()
         return row
 
-    # ---------------------------------------------------------------- calendar
-    def add_event(self, title: str, start: datetime, all_day: bool = False, repeat: str = "",
-                  heads_up_before: float | None = None) -> dict:
-        now = self.clock()
-        eid = new_id()
-        self.db.execute("INSERT INTO events (id, title, start, all_day, repeat, created) VALUES (?,?,?,?,?,?)",
-                        (eid, title, start.timestamp(), int(all_day), repeat, now))
-        self.db.commit()
-        ev = self.event(eid)
-        if not ev:
-            raise RuntimeError("event was not saved")
-        if heads_up_before is not None:
-            # All-day events' heads-ups count back from 8 AM on the day (FEAT-036)
-            base = start.replace(hour=8, minute=0) if all_day else start
-            due = base.timestamp() - heads_up_before
-            if due > now:
-                self.add("event", title, due, length=heads_up_before, repeat=repeat, event_id=eid)
-        self._changed("event", {"id": eid, "kind": "event"})
-        return ev
-
-    def event(self, eid: str) -> dict | None:
-        r = self.db.execute("SELECT * FROM events WHERE id = ?", (eid,)).fetchone()
-        return dict(r) if r else None
-
-    def remove_event(self, eid: str) -> None:
-        """Deleting an event removes its heads-up too (FEAT-036)."""
-        self.db.execute("DELETE FROM events WHERE id = ?", (eid,))
+    # ---------------------------------------------------------------- heads-ups for other parts (the calendar module)
+    def cancel_for(self, item_id: str) -> None:
+        """Cancel the alerts linked to an item (an event that moved or was deleted)."""
         self.db.execute("UPDATE alerts SET state = 'cancelled', updated = ? WHERE event_id = ? AND state IN ('waiting','ringing')",
-                        (self.clock(), eid))
+                        (self.clock(), item_id))
         self.db.commit()
-        self._changed("event", {"id": eid, "kind": "event"})
+        rung = [i for i in self.ringing if (self._row(i) or {}).get("event_id") == item_id]
+        for i in rung:
+            self.ringing.remove(i)
+        if rung and not self.ringing and _loop_running():
+            asyncio.ensure_future(self._stop_sound())
+            self._notify()
 
-    def update_event(self, eid: str, start: datetime, all_day: bool | None = None) -> dict:
-        """Move an event. Its heads-up moves by the same amount, so it still warns the same time before."""
-        ev = self.event(eid)
-        if not ev:
-            raise RuntimeError("event not found")
-        shift = start.timestamp() - ev["start"]
-        all_day = bool(ev["all_day"]) if all_day is None else all_day
-        self.db.execute("UPDATE events SET start = ?, all_day = ? WHERE id = ?", (start.timestamp(), int(all_day), eid))
-        self.db.execute("UPDATE alerts SET due = due + ?, updated = ? WHERE event_id = ? AND state = 'waiting'",
-                        (shift, self.clock(), eid))
+    def has_alert_for(self, item_id: str) -> bool:
+        return bool(self.db.execute("SELECT 1 FROM alerts WHERE event_id = ? AND state IN ('waiting','ringing')",
+                                    (item_id,)).fetchone())
+
+    def take_legacy_events(self) -> list[dict]:
+        """Calendar events saved before the calendar became a module: handed over once, then removed."""
+        if not self.db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'events'").fetchone():
+            return []
+        rows = [dict(r) for r in self.db.execute("SELECT * FROM events")]
+        self.db.execute("DROP TABLE events")
         self.db.commit()
-        ev = self.event(eid)
-        if not ev or abs(ev["start"] - start.timestamp()) > 0.01:
-            raise RuntimeError("event was not moved")
-        self._changed("event", {"id": eid, "kind": "event"})
-        return ev
+        return rows
 
     def find(self, ref: str) -> tuple[str, dict] | None:
-        """An item from the short id Claude sees ('#a1b2c3'): ('alert', row) or ('event', row)."""
+        """A timer, alarm or reminder from the short id Claude sees ('#a1b2c3'): ('alert', row)."""
         ref = ref.strip().lstrip("#").lower()
         if len(ref) < 4:
             return None
-        hits = [("alert", a) for a in self.active() if a["id"].startswith(ref)] + \
-               [("event", e) for e in self.all_events() if e["id"].startswith(ref)]
+        hits = [("alert", a) for a in self.active(("timer", "alarm", "reminder")) if a["id"].startswith(ref)]
         return hits[0] if len(hits) == 1 else None
 
     @staticmethod
     def short(item_id: str) -> str:
         return "#" + item_id[:6]
 
-    def all_events(self) -> list[dict]:
-        return [dict(r) for r in self.db.execute("SELECT * FROM events ORDER BY start")]
-
-    @staticmethod
-    def occurs_on(ev: dict, d: date) -> datetime | None:
-        """When this event happens on day `d` (repeating events included), or None."""
-        start = datetime.fromtimestamp(ev["start"])
-        if d < start.date():
-            return None
-        if start.date() == d:
-            return start
-        rule, wd = ev["repeat"], d.weekday()
-        ok = (rule == "daily" or (rule == "weekdays" and wd < 5) or (rule == "weekends" and wd >= 5) or
-              (rule == "weekly" and wd == start.weekday()) or (rule.startswith("weekly:") and wd == int(rule[7:])))
-        return datetime.combine(d, start.time()) if ok else None
-
-    def events_on(self, d: date) -> list[tuple[datetime, dict]]:
-        out = [(at, ev) for ev in self.all_events() if (at := self.occurs_on(ev, d))]
-        return sorted(out, key=lambda x: (not x[1]["all_day"], x[0]))
-
-    def prune_events(self, keep_days: float = 60) -> None:
-        """Forget one-off events long past (repeating ones stay)."""
-        self.db.execute("DELETE FROM events WHERE repeat = '' AND start < ?", (self.clock() - keep_days * 86400,))
+    def prune(self, keep_days: float = 60) -> None:
+        """Forget finished alerts long past."""
         self.db.execute("DELETE FROM alerts WHERE state NOT IN ('waiting','ringing') AND updated < ?",
                         (self.clock() - keep_days * 86400,))
         self.db.commit()
 
     # ---------------------------------------------------------------- what Pip knows (for Claude and the dashboard)
     def snapshot(self) -> dict:
+        """For the dashboard. (Calendar events come from the calendar module; pip-core adds them.)"""
         now = self.clock()
-        today = self._now_dt().date()
         alerts = [{**a, "left_s": round(a["due"] - now, 1)} for a in self.active()]
-        upcoming = []
-        for i in range(14):
-            d = today + timedelta(days=i)
-            for at, ev in self.events_on(d):
-                upcoming.append({"id": ev["id"], "title": ev["title"], "at": at.timestamp(), "all_day": bool(ev["all_day"]),
-                                 "repeat": ev["repeat"]})
-        return {"alerts": alerts, "ringing": list(self.ringing), "events": upcoming,
-                "missed": self.recent_missed(), "now": now, "snooze_minutes": self.snooze_min}
+        return {"alerts": alerts, "ringing": list(self.ringing), "missed": self.recent_missed(), "now": now,
+                "snooze_minutes": self.snooze_min}
 
     def summary(self) -> str:
-        """A short plain description for Claude, so it can talk about them (sent privately, never logged)."""
-        now_dt = self._now_dt()
+        """Timers, alarms and reminders, plainly, for Claude (sent privately, never logged)."""
         parts = []
-        for a in self.active():
+        for a in self.active(("timer", "alarm", "reminder")):
             due = datetime.fromtimestamp(a["due"])
             if a["kind"] == "timer":
                 parts.append(f"{self.short(a['id'])} timer '{a['label']}' with {when.say_left(a['due'] - self.clock())} left")
             else:
                 rep = f" ({when.say_repeat(a['repeat'])})" if a["repeat"] else ""
                 parts.append(f"{self.short(a['id'])} {a['kind']} '{a['label']}' at {due:%a %Y-%m-%d %H:%M}{rep}")
-        evs, seen = [], set()
-        for i in range(14):
-            d = now_dt.date() + timedelta(days=i)
-            for at, ev in self.events_on(d):
-                if ev["id"] in seen:
-                    continue
-                seen.add(ev["id"])
-                rep = f" ({when.say_repeat(ev['repeat'])})" if ev["repeat"] else ""
-                evs.append(f"{self.short(ev['id'])} {ev['title']} {at:%a %Y-%m-%d}" + (" all day" if ev["all_day"] else f" {at:%H:%M}") + rep)
         out = ("Set: " + "; ".join(parts) + ".") if parts else "No timers, alarms or reminders set."
         ringing = [r for r in (self._row(i) for i in self.ringing) if r]
         if ringing:
             out = "RINGING NOW: " + "; ".join(f"{self.short(r['id'])} {r['kind']} '{r['label']}'" for r in ringing) + ". " + out
         elif self.last_rung and self.clock() - self.last_rung[1] < 15 * 60 and (r := self._row(self.last_rung[0])):
             out += f" Just rang: {self.short(r['id'])} {r['kind']} '{r['label']}'."
-        out += (" Calendar, next two weeks: " + "; ".join(evs) + ".") if evs else " Nothing on the calendar in the next two weeks."
         return out
 
     # ---------------------------------------------------------------- ringing

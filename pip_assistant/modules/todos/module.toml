@@ -1,0 +1,33 @@
+# To-dos (D-100): the household's lists, synced both ways with each connected person's Google Tasks.
+
+name = "todos"
+kind = "skill"
+summary = "To-do lists by voice and on the dashboard, synced both ways with Google Tasks."
+says_examples = ["Pip, add milk to my to-do list", "I bought the milk", "what's on my to-do list?",
+                 "remind Sam to pay the rent on Friday"]
+offline = true
+permissions = ["network:googleapis.com"]
+needs = ["google"]
+
+[settings.sync_minutes]
+default = 2.0
+explain = "How often Pip checks Google Tasks for changes (his own changes are sent straight away)."
+
+[settings.show_done_days]
+default = 7
+explain = "How many days finished to-dos stay visible on the dashboard."
+
+[claude]
+instructions = """
+To-dos: each message lists open to-dos with ids like #t1a2b3 and whose list they're on. Use ACTION lines \
+(Pip's code does it and confirms):
+- {"do": "add_task", "title": "milk", "due": "2026-11-13" (optional), "whose": "Sam" (optional: that \
+person's list; otherwise the speaker's, or the household's)}
+- {"do": "complete_task", "id": "#t1a2b3"} when they've done it ("I bought the milk")
+- {"do": "change_task", "id": "#t1a2b3", "title": "...", "due": "..."} · {"do": "delete_task", "id": "#t1a2b3"}
+For "what's on my list", answer from what you're given.
+"""
+
+[dashboard]
+page = "index.html"
+label = "To-dos"

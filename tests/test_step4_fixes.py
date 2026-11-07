@@ -8,6 +8,8 @@ from datetime import datetime
 import numpy as np
 import pytest
 
+from modhelp import registry
+
 from pip_assistant.common.client import BusClient
 from pip_assistant.core import actions
 from pip_assistant.core.bus import Bus
@@ -33,7 +35,10 @@ class Clock:
 def cmds(tmp_path):
     clock = Clock()
     s = Schedule(tmp_path / "pip.db", clock=clock)
-    return Commands(s, clock=clock), s, clock
+    reg = registry(tmp_path, s, clock)                  # the calendar is a module now (D-96)
+    c = Commands(s, clock=clock, calendar=reg.get("calendar"))
+    c.reg = reg
+    return c, s, clock
 
 
 def when_(row, key="due"):
@@ -82,16 +87,16 @@ async def test_change_and_remove_a_calendar_event_with_that(cmds):
     assert await c.handle("add dentist to the calendar on Friday at 2 p.m.") == "Added dentist, Friday at 2 PM."
     assert await c.handle("move the dentist to Saturday") == "Moved dentist to Saturday at 2 PM."
     assert await c.handle("move it to 3") == "Moved dentist to Saturday at 3 PM."
-    [e] = s.all_events()
+    [e] = c.cal.all_events()
     assert when_(e, "start") == datetime(2026, 11, 7, 15, 0)
     assert await c.handle("can you remove that from the calendar?") == "Took dentist off the calendar."
-    assert s.all_events() == []
+    assert c.cal.all_events() == []
 
 
 async def test_event_heads_up_moves_with_the_event(cmds):
     c, s, _ = cmds
-    ev = s.add_event("dentist", datetime(2026, 11, 6, 14, 0), heads_up_before=1800)
-    s.update_event(ev["id"], datetime(2026, 11, 6, 16, 0))
+    ev = c.cal.add_event("dentist", datetime(2026, 11, 6, 14, 0), heads_up_before=1800)
+    c.cal.update_event(ev["id"], datetime(2026, 11, 6, 16, 0))
     [h] = s.active(("event",))
     assert when_(h) == datetime(2026, 11, 6, 15, 30)
 
@@ -114,20 +119,21 @@ async def test_change_of_something_that_does_not_exist(cmds):
 # ------------------------------------------------------------------ 2. Claude's actions (D-84)
 async def test_actions_add_change_cancel(cmds):
     c, s, _ = cmds
-    said, n = actions.apply(c, 'ACTION {"do": "add", "kind": "event", "title": "dentist", "at": "2026-11-06T14:00"}')
+    said, n = actions.apply(c, 'ACTION {"do": "add", "kind": "event", "title": "dentist", "at": "2026-11-06T14:00"}', {'modules': c.reg})
     assert (said, n) == ("Added dentist, Friday at 2 PM.", 1)
-    [e] = s.all_events()
+    [e] = c.cal.all_events()
     ref = s.short(e["id"])
-    assert ref in s.summary()
-    said, _ = actions.apply(c, f'ACTION {{"do": "change", "id": "{ref}", "at": "2026-11-07T10:00"}}')
+    from pip_assistant.core.modules import Call
+    assert ref in c.reg.summary(Call())
+    said, _ = actions.apply(c, f'ACTION {{"do": "change", "id": "{ref}", "at": "2026-11-07T10:00"}}', {'modules': c.reg})
     assert said == "Moved dentist to Saturday at 10 AM."
     said, _ = actions.apply(c, f'ACTION [{{"do": "cancel", "id": "{ref}"}}, '
-                               '{"do": "add", "kind": "timer", "seconds": 300, "label": "tea"}]')
+                               '{"do": "add", "kind": "timer", "seconds": 300, "label": "tea"}]', {"modules": c.reg})
     assert said == "Took dentist off the calendar. Tea timer's on, 5 minutes."
     said, _ = actions.apply(c, 'ACTION {"do": "add", "kind": "reminder", "label": "call Mom", '
-                               '"at": "2026-11-05T18:00", "repeat": "weekdays"}')
+                               '"at": "2026-11-05T18:00", "repeat": "weekdays"}', {"modules": c.reg})
     assert said == "Okay, I'll remind you every weekday at 6 PM."
-    said, _ = actions.apply(c, 'ACTION {"do": "add", "kind": "event", "title": "Exam", "date": "2026-11-09", "all_day": true}')
+    said, _ = actions.apply(c, 'ACTION {"do": "add", "kind": "event", "title": "Exam", "date": "2026-11-09", "all_day": true}', {'modules': c.reg})
     assert said == "Added Exam, Monday."
 
 
@@ -141,8 +147,8 @@ async def test_actions_add_change_cancel(cmds):
 ])
 async def test_bad_actions_change_nothing(cmds, raw):
     c, s, _ = cmds
-    assert actions.apply(c, raw) == (actions.FAILED, 0)
-    assert s.active() == [] and s.all_events() == []
+    assert actions.apply(c, raw, {"modules": c.reg}) == (actions.FAILED, 0)
+    assert s.active() == [] and c.cal.all_events() == []
 
 
 async def test_action_replies_are_never_spoken(tmp_path, monkeypatch):
@@ -202,7 +208,8 @@ async def setup_bus(tmp_path, clock, stt, answer="Claude here.", cfg=None):
     sock = tmp_path / "core.sock"
     bus = Bus(sock, Trace(tmp_path / "pip.db"), Health(["ears", "thinker"], restart=False))
     sched = Schedule(tmp_path / "pip.db", bus, {"alarms": {"announce_every_seconds": 0.2, "ring_minutes": 0.02}}, clock=clock)
-    conv = Conversation(bus, cfg or {"conversation": {"follow_up_seconds": 0.3}}, stt, schedule=sched)
+    conv = Conversation(bus, cfg or {"conversation": {"follow_up_seconds": 0.3}}, stt, schedule=sched,
+                        modules=registry(tmp_path, sched, clock))
     await bus.start()
     ears, thinker = BusClient("ears", socket_path=sock), BusClient("thinker", socket_path=sock)
     got = []
@@ -307,7 +314,7 @@ async def test_claude_action_is_carried_out_and_confirmed_by_pip(tmp_path):
     await ears.emit("heard.utterance", d, private=p)
     await asyncio.sleep(0.4)
     assert [t for k, t, _ in got if k == "ears.say"] == ["Added dentist, Friday at 2 PM."]
-    assert [e["title"] for e in sched.all_events()] == ["dentist"]
+    assert [e["title"] for e in conv.modules.get("calendar").all_events()] == ["dentist"]
     trace = json.dumps(bus.trace.recent())
     assert "dentist" not in trace                                   # what was asked for is never logged
     await finish(bus, tasks)

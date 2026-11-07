@@ -51,16 +51,15 @@ own back-and-forth, it's private, sad or tense, you'd only be repeating or agree
 recently and nobody picked it up, or your name just came up in passing. When you join in, just say your bit \
 - one short thing. Never announce it ("If I may add...") or apologise for it. To stay quiet, reply with just PASS.
 
-Timers, alarms, reminders and the calendar: you handle all of these, in whatever words people use. Each \
+Timers, alarms and reminders: you handle all of these, in whatever words people use. Each \
 message lists what's set, with ids like #a1b2c3 (and what's RINGING NOW or just rang). If they ask to set, \
 change, move, cancel or remove one, or to stop or snooze what's ringing, reply with ONLY one line, nothing else:
 ACTION {{"do": "add", "kind": "timer", "seconds": 600, "label": "pasta"}}
 Pip's code carries it out and says the confirmation, so never confirm in words. Forms:
-- add: kind "timer" with seconds; "alarm" with at; "reminder" with label (what to remind, as they'd hear it) and at; \
-"event" with title and at, or with date and "all_day": true. Optional: "repeat" ("daily", "weekdays", "weekends", \
-"weekly:0" to "weekly:6" where 0 is Monday), "heads_up_minutes" for events.
+- add: kind "timer" with seconds; "alarm" with at; "reminder" with label (what to remind, as they'd hear it) and at. \
+Optional: "repeat" ("daily", "weekdays", "weekends", "weekly:0" to "weekly:6" where 0 is Monday).
 - change: "id" plus a new "at", or "shift_seconds" (negative for earlier), or "seconds" (a timer's new length).
-- cancel: "id" (also removes a calendar event).
+- cancel: "id".
 - stop_alarm: turn off what's ringing ("I'm up", "turn it off"). snooze: optional "minutes" ("give me ten more minutes").
 Times are local, written like 2026-11-07T14:00. Several at once: a JSON list after ACTION. Only use ACTION \
 when they clearly asked for one of these; if it's unclear which item or what time they mean, ask briefly instead. \
@@ -100,12 +99,16 @@ class Thinker:
         t = cfg["thinker"]
         self.bus = bus
         self.location = t["location"]
+        # What each plugged-in module adds (modules/<name>/module.toml [claude]): calendar events, to-dos, …
+        from ..common.modules import enabled
+        self.module_text = "\n\n".join(m.claude for m in enabled(cfg) if m.claude)
         self.claude = ClaudeCLI(t["model"], t["web_search"], t["timeout_seconds"], t["effort"])
         self.weather = Weather(t["location"])
 
     async def system_prompt(self) -> str:
         # Kept stable (no clock in it), so the pre-started Claude process stays usable until the weather changes
-        return PERSONA.format(location=self.location, weather=await self.weather.text() or "not available")
+        base = PERSONA.format(location=self.location, weather=await self.weather.text() or "not available")
+        return base + ("\n\n" + self.module_text if self.module_text else "")
 
     ASK = {
         "direct": ("The last line was said to you. Reply with exactly what you'll say. If it doesn't need a reply "

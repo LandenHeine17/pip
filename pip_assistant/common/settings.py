@@ -43,4 +43,9 @@ def load(path: Path | None = None) -> dict:
     """Return the merged settings. A missing user file is fine: defaults are used (fresh clone)."""
     path = path or paths.user_settings()
     user = tomllib.loads(path.read_text()) if path.exists() else {}
-    return _merge(_defaults(), user)
+    modules = user.pop("modules", {}) or {}   # [modules.<name>]: checked against each module's own module.toml
+    if not isinstance(modules, dict):
+        raise SettingsError("'modules' should be sections like [modules.calendar].")
+    out = _merge(_defaults(), user)
+    out["modules"] = modules
+    return out
