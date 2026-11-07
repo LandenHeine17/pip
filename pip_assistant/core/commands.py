@@ -1,7 +1,10 @@
-"""Pip's own commands: understood on the Pi, without Claude, so they work offline (PIP-NEW-044).
+"""Pip's own commands: understood on the Pi, without Claude. **Used only offline** (D-94).
 
-Timers, alarms, reminders, the calendar, "what time is it", "stop" and answering a ringing alarm.
-Anything that isn't clearly one of these goes to Claude as before. Replies are short (D-79), and
+Online, everything people say goes to Claude in natural language, and Claude acts through ACTION
+lines (core/actions.py). These rules are the fallback when the internet is down (PIP-NEW-044,
+D-83): timers, alarms, reminders, the calendar, "what time is it", "stop". The one thing they still
+do online is `while_ringing`: the obvious "stop", "okay", "snooze" or his name silence a ringing
+alarm instantly; anything else said to Pip while it rings goes to Claude. Replies are short (D-79), and
 Pip only says something is set once it really is (PIP-NEW-039). If a cancel matches nothing he
 says so; if it could mean several, he asks which (FEAT-042).
 
@@ -139,6 +142,8 @@ class Commands:
         if NAME.search(text):
             await self.s.acknowledge("name")
             return None if t else ""
+        if reason != "room":
+            return None  # said to Pip, but not an obvious stop/snooze: Claude works out what they want (D-94)
         return ""  # TV or chatter: recorded, but the alarm keeps ringing (FEAT-037)
 
     async def handle(self, text: str) -> str | None:

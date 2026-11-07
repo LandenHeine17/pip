@@ -10,6 +10,7 @@ from .bus import Bus
 from .conversation import Conversation
 from .memory import Memory, Refused
 from .mic import MicSwitch
+from .net import Net
 from .people import People, m0_owner_clips
 from .schedule import Schedule
 from .stt import make_local_stt, make_stt
@@ -25,8 +26,10 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
                     restart=cfg["programs"]["restart_stuck"])
     bus = Bus(paths.core_socket(), trace, health)
     mic = MicSwitch(paths.database())
+    net = Net(bus)
+    bus.net = net
     bus.core_handlers["core.health"] = lambda m: {"programs": health.snapshot(), "version": __version__,
-                                                  "mic": mic.snapshot()}
+                                                  "mic": mic.snapshot(), "online": net.online}
     bus.core_handlers["core.trace"] = lambda m: {"entries": trace.recent(int(m.data.get("limit", 200)))}
     try:
         stt = make_stt(cfg)
@@ -37,6 +40,7 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
     people = People(paths.database(), cfg)
     memory = Memory(paths.database())
     conv = Conversation(bus, cfg, stt, schedule=schedule, local_stt=make_local_stt(cfg), people=people, memory=memory, mic=mic)
+    conv.net = net
     bus.core_handlers["core.alerts"] = lambda m: ({"count": len(schedule.active())}, schedule.snapshot())
     bus.core_handlers["core.alert_action"] = lambda m: alert_action(schedule, conv, m)
     bus.core_handlers["core.people"] = lambda m: ({"count": len(people.all())},
@@ -177,11 +181,13 @@ async def main() -> None:
         loop.add_signal_handler(sig, stop.set)
     keeper = asyncio.create_task(bus.housekeeping())
     alarms = asyncio.create_task(bus.schedule.run())
+    online = asyncio.create_task(bus.net.run())
     from .voicecheck import voice_seconds_sync  # load the voice detector now, not on the first thing heard
     loop.run_in_executor(None, voice_seconds_sync, bytes(3200))
     await stop.wait()
     keeper.cancel()
     alarms.cancel()
+    online.cancel()
     await bus.publish(Message("event", "core.stopping"))
     trace.flush()
     await bus.stop()

@@ -76,19 +76,21 @@ sequenceDiagram
     participant Core as pip-core
     participant Groq
     participant Think as pip-thinker
-    You->>Ears: "Pippletron, set a timer for ten minutes"
+    You->>Ears: "Pippletron, throw ten minutes on for the laundry"
     Ears->>Ears: wake word heard (on the Pi)
     Ears->>Core: heard.wake + audio of the sentence
-    Core->>Groq: audio → text (with word list)
-    Groq-->>Core: "Pippletron, set a timer for ten minutes"
-    alt Simple command (works offline)
-        Core->>Core: local command: create timer, check it exists
-    else Anything else
-        Core->>Think: ask Claude (conversation + allowed actions)
-        Think-->>Core: reply + "create timer" action
-        Core->>Core: run action, check it really happened
+    Core->>Core: voice check; who's speaking (on the Pi)
+    Core->>Groq: audio → text (word list + household names)
+    Groq-->>Core: "Pippletron, throw ten minutes on for the laundry"
+    Core->>Core: add to the room transcript
+    alt Online (any wording, D-94)
+        Core->>Think: ask Claude (room transcript, what's set, memories)
+        Think-->>Core: ACTION add timer · laundry · 600 s
+        Core->>Core: check it, create the timer, check it really happened
+    else Offline (D-83)
+        Core->>Core: Pip's own simple phrasings: create timer
     end
-    Core->>Ears: say "Timer's on, ten minutes."
+    Core->>Ears: say "Laundry timer's on, 10 minutes."
     Ears-->>You: Piper voice
     Core->>Core: log to the trace; update screen and dashboard
 ```
@@ -101,7 +103,7 @@ sequenceDiagram
 | Groq transcription | 0.45 s *(M0)* |
 | Claude's first sentence | 1–2 s *(est., to measure in M1a)* |
 | Piper starts speaking | 0.3 s *(M0)* |
-| **Total** | **~2.3–3.3 s** (simple local commands: ~1.3 s) |
+| **Total** | **~2.3–3.3 s** (timers etc. go through Claude too since D-94; offline commands: ~2.5 s with Whisper on the Pi) |
 
 ## 5. Why "stop" and alarms always work
 
@@ -263,9 +265,9 @@ Built in small steps. Each step ends with something you can try.
 | 1. Skeleton: the programs start, talk, log and show health on a new dashboard. **Done 2026-11-04** (pip-builder waits for M1b) | See Pip's status and the decision trace at `http://100.118.171.118:8790` |
 | 2. Ears: speakerphone, wake words, "stop", Piper voice. **Done 2026-11-04.** Talking over Pip stops him (the speakerphone removes his own voice). Pippletron needs strictness 0.8 because "Ziggletron" sounds similar | Say "Pippletron" and hear a chime and a fixed reply |
 | 3. Core + Groq + Claude: real answers. **Done 2026-11-04.** First words ~2 s after you stop (Groq 0.4 s, pre-started Claude 1.25 s). Weather from Open-Meteo; web search only when needed ("Let me look that up"). After the owner's test: short roommate answers (D-79), name spotted in transcripts too, sonnet at low effort, "One sec." after 3 s (D-80); 0.7 s waits, listens quietly after just the name, joins a paused sentence, two-sentence cap (D-81) | Ask questions and get spoken answers |
-| 4. Timers, reminders, alarms (incl. offline). **Built 2026-11-04; fixed after your test 2026-11-05** (change anything in any wording, Claude fills in what the rules miss (D-84); no phantom "Thank you" (D-85); thinking tone and Pip's state (D-86); refreshed dashboard). Pip's own commands (timers, alarms, reminders, voice calendar, "what time is it", "stop") are understood on the Pi without Claude; everything is saved instantly and survives restarts; alarms ring until answered ("okay", "stop", "I'm up", his name, "snooze ten minutes") or shut off on the dashboard. Offline, Whisper on the Pi hears commands (D-83). Not yet: "earned" alarms (need Claude to judge, later in M1a), reminders for one person (need voice recognition, step 5), ringtone settings page (step 8) | Use Pip for timers like Ziggletron |
+| 4. Timers, reminders, alarms (incl. offline). **Built 2026-11-04; fixed after your test 2026-11-05** (change anything in any wording, Claude fills in what the rules miss, and since D-94 handles everything online (D-84); no phantom "Thank you" (D-85); thinking tone and Pip's state (D-86); refreshed dashboard). Pip's own commands (timers, alarms, reminders, voice calendar, "what time is it", "stop") are understood on the Pi without Claude; everything is saved instantly and survives restarts; alarms ring until answered ("okay", "stop", "I'm up", his name, "snooze ten minutes") or shut off on the dashboard. Offline, Whisper on the Pi hears commands (D-83). Not yet: "earned" alarms (need Claude to judge, later in M1a), reminders for one person (need voice recognition, step 5), ringtone settings page (step 8) | Use Pip for timers like Ziggletron |
 | 5. Memory (with approval inbox), people and voices. **Built 2026-11-05, installed.** "Remember / forget" worded by Claude and checked by Pip; sensitive or about-someone-else items wait in the inbox (D-88); Memory Center on the dashboard; people list; voices recognised on the Pi with TitaNet (sure / probably / someone, D-87); learn a voice by saying "Pip, I'm …" and reading five sentences, or from M0 recordings; visitors remembered for the visit only (D-89) | "Remember that…", recognised speakers |
-| 6. Social mode: room transcript, answer/mention/join-in like Ziggletron, mic switch with claps, names spelled right. **Built 2026-11-07, waiting for your test.** (D-90–D-93) | Pip follows the room conversation and joins in like Ziggletron |
+| 6. Social mode: room transcript, answer/mention/join-in like Ziggletron, mic switch with claps, names spelled right; everything in natural language (Pip's own phrasings only offline); small offline indicator. **Built 2026-11-07, waiting for your test.** (D-90–D-95) | Pip follows the room conversation and joins in like Ziggletron |
 | 7. Screen: face, widgets, layouts | The face on the monitor |
 | 8. Settings page, accounts, migration from Ziggletron | Switch Pip on side by side with Ziggletron |
 
@@ -273,4 +275,4 @@ Then **M1b** adds the safe self-change pipeline, and you switch over from Ziggle
 
 ## 15. Review
 
-Approved 2026-11-04 (D-78). The one change requested is in §6 (D-77).
+Approved 2026-11-04 (D-78). The one change requested then is in §6 (D-77, since replaced by D-90).

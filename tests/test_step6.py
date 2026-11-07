@@ -330,3 +330,39 @@ async def test_speech_to_text_is_told_the_names_and_fixed_after(tmp_path):
     assert conv.stt.names == ["Landen"]
     assert conv.transcript.last()["text"] == "Landen, your turn for the dishes"
     await finish(bus, tasks)
+
+
+# ------------------------------------------------------------------ natural language actions (D-94)
+def test_ringing_and_voice_actions_are_checked():
+    from pip_assistant.core import actions
+    assert actions.check_here([{"do": "snooze", "minutes": 10}, {"do": "stop_alarm"}]) == [("snooze", 10.0), ("stop_alarm",)]
+    assert actions.check_here([{"do": "learn_voice", "name": "landen"}]) == [("learn_voice", "Landen")]
+    for bad in ({"do": "snooze", "minutes": 500}, {"do": "learn_voice", "name": ""}):
+        with pytest.raises(actions.Invalid):
+            actions.check_here([bad])
+
+
+async def test_claude_learn_voice_finds_landen_even_spelled_landon(tmp_path):
+    people = People(tmp_path / "pip.db", embedder=FakeEmbedder())
+    landen = people.add_person("Landen", "admin")
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, "Pip, it's Landon here", social={"join_in": False},
+                                                    people=people)
+    conv.enrol_speech_wait = 0.02
+    conv.last_pcm = b"x" * 64000
+    await conv.claude_action('ACTION {"do": "learn_voice", "name": "Landon"}', 0.0)
+    assert conv.enrol_status()["person_id"] == landen["id"]
+    await asyncio.sleep(0.1)
+    assert says(got)[-1].startswith("Hi Landen! Let's learn your voice.")
+    conv.cancel_enrolment()
+    await finish(bus, tasks)
+
+
+async def test_offline_indicator(tmp_path):
+    from pip_assistant.core.net import Net
+    bus = Bus(tmp_path / "core.sock", Trace(tmp_path / "pip.db"), Health([], restart=False))
+    net = Net(bus)
+    await net.failed()
+    assert not net.online and "net.changed" in [r["type"] for r in bus.trace.recent()]
+    await net.set(True)
+    assert net.online and sorted(r["data"]["online"] for r in bus.trace.recent() if r["type"] == "net.changed") == [False, True]
+    bus.trace.flush()

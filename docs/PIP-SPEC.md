@@ -4,11 +4,11 @@ The short, living description of Pip 2.0. Read this first.
 
 **How the docs fit together (for building):** this page says *what* Pip does → [REQUIREMENTS.md](REQUIREMENTS.md) lists every requirement, and its **Detail** link opens the exact behaviour rules in the archived proposal ([archive/pip-v2-proposals-2026-11/](archive/pip-v2-proposals-2026-11/README.md)) → [DECISIONS.md](DECISIONS.md) (`D-nn`) **overrides** anything older, and REQUIREMENTS §0 lists the archived passages that have been overridden. What Ziggletron did (for parity) is in [archive/ziggletron-discovery/](archive/ziggletron-discovery/PRODUCT-OVERVIEW.md).
 
-*Last updated 2026-11-04 · Phase: M1a building. Steps 1–3 done: Pip hears his name, understands the question (Groq), thinks (Claude) and answers out loud (dashboard `http://100.118.171.118:8790`). Step 4 (timers, alarms, reminders, calendar, offline) built and waiting for your test.*
+*Last updated 2026-11-07 · Phase: M1a building. Steps 1–5 done and installed (hearing, answers, timers/alarms/calendar, memory, people and voices). Step 6 built, waiting for your test: Pip listens to the room like Ziggletron and joins in, understands everything in natural language, two claps or a dashboard switch turn listening off, names spelled right, a small offline indicator. Dashboard: `http://100.118.171.118:8790`.*
 
 ## 1. In one paragraph
 
-Pip is a playful companion living in a dorm room on a Raspberry Pi 5, with a USB speakerphone and a monitor showing his animated face. You call him with **"Hey Pip"** (and maybe **"Pippletron"**). He answers out loud in a sentence or two, like a roommate (D-79), sets timers and reminders, remembers what you approve, and now and then joins a conversation when he has something useful to say. He never claims to have done something he hasn't. He can explain how he works and why he did something, and he can propose changes to his own code, which you review and approve on the dashboard before they go live. He replaces Ziggletron, keeping what worked (the face, interruptions, real ringing alarms, the personality) and fixing what didn't.
+Pip is a playful companion living in a dorm room on a Raspberry Pi 5, with a USB speakerphone and a monitor showing his animated face. You call him with **"Hey Pip"** or **"Pippletron"**, or just talk to him by name. He hears the whole room like Ziggletron did, answers out loud in a sentence or two, like a roommate (D-79), understands whatever words you use for timers, alarms, reminders and the calendar, remembers what you approve, and now and then joins a conversation when he has something to add (D-92, D-94). He never claims to have done something he hasn't. He can explain how he works and why he did something, and he can propose changes to his own code, which you review and approve on the dashboard before they go live. He replaces Ziggletron, keeping what worked (the face, interruptions, real ringing alarms, the personality) and fixing what didn't.
 
 ## 2. What M0 has found so far
 
@@ -42,9 +42,9 @@ Live results are on the dashboard (`http://100.118.171.118:8780`).
 ## 3. How Pip behaves
 
 ### Hearing and being called
-- An on-device detector listens for **"Hey Pip"** (and "Pippletron" if it tests well). Pip also checks the words of room speech for his name, like Ziggletron did, so he answers even when the detector misses (Pip, Pipp, Pippy, Pips, Pippletron and close mishearings; never "Ziggletron") (D-60, D-80).
-- After an answer, the **same person** can follow up without the name (D-54).
-- **Interruptions:** "stop" halts him instantly, "wait" pauses and "go on" resumes, "actually…" corrects your last request instead of making a new one. He goes quieter when someone else starts talking (D-54).
+- An on-device detector listens for **"Hey Pip"** and **"Pippletron"** (D-74). Everything said in the room is also transcribed, so he answers when he's called by name in the words, like Ziggletron (Pip, Pipp, Pippy, Pips, Pippletron and close mishearings; never "Ziggletron") (D-80, D-92).
+- After an answer, anyone can follow up without the name for 8 s (12 s if he asked something).
+- **Interruptions:** talking over him stops him instantly; he then hears what you said and decides whether it needs an answer ("never mind" gets silence). "Actually…" corrects your last request instead of making a new one (D-54, D-92).
 - Long silence from the speakerphone means "muted or very quiet", shown as a status, never an error (D-38).
 
 ### Listening modes and privacy
@@ -64,7 +64,6 @@ flowchart LR
     J -- yes --> C["Claude: join in (SAY) or PASS"]
     J -- no --> N["Just listens"]
 ```
-- **Private mode:** "Pip, private please" stops anything being sent, for a while or until switched back.
 - **Privacy is the mic switch** (D-90, D-91): a **Listening** switch on the dashboard, or **two claps** (Pip plays a falling tone and stops listening; clap twice again for a rising tone and he's back). The two are separate: if the dashboard switched him off, claps can't turn him on. Clapped off, he hears nothing but claps; switched off on the dashboard, nothing at all. The speakerphone's mute button works too. "Leave me out" was removed. Pip's notice to new people uses your wording (D-61). You tell your roommate yourself (D-67).
 - Quiet hours 23:00–07:00: no joining in or welcome-backs; alarms still ring (D-66).
 - **Welcome back:** after the room was quiet for 20 minutes, someone he recognises gets "Hey Landen, welcome back." (once an hour).
@@ -100,7 +99,7 @@ flowchart LR
 
 ### People and voices (built in step 5)
 - **People** are added on the dashboard (you first, as Admin). Pip recognises voices on the Pi; the voiceprints never leave it and are never sent to Claude (D-87, D-89).
-- **Learning a voice:** once your name is on the list, **say "Pip, I'm Sam"** (or "Pip, learn my voice"). Pip says hi and beeps; **five short sentences appear on the dashboard**, and you read one after each beep (about a minute). If one is too short or he hears nothing, he asks again; if that happens twice in a row he stops. The "Learn my voice" button does the same, and the owner can use his M0 recordings instead (nothing to read). What you read is only turned into a voiceprint on the Pi, never transcribed.
+- **Learning a voice:** once your name is on the list, **introduce yourself however you like** ("Pip, I'm Sam", "hey, it's Sam", "learn my voice"; Claude understands it, D-94). Pip says hi and beeps; **five short sentences appear on the dashboard**, and you read one after each beep (about a minute). If one is too short or he hears nothing, he asks again; if that happens twice in a row he stops. The "Learn my voice" button does the same, and the owner can use his M0 recordings instead (nothing to read). What you read is only turned into a voiceprint on the Pi, never transcribed.
 
 ```mermaid
 flowchart LR
@@ -119,53 +118,53 @@ flowchart LR
 
 ### Timers, reminders, calendar, lists
 - Everything Ziggletron did (timers, repeating and person-targeted reminders, calendar, alarms that keep ringing until answered, "earned" alarms), plus voice snooze and dashboard creation.
-- **Works offline** for the basics (timers, stop, snooze, volume) (PIP-NEW-044).
-
-**How it works (built in step 4, fixed after your test):** Pip understands the usual requests himself, on the Pi, without asking Claude. That makes them instant and means they work offline (D-83). **Any other wording goes to Claude, who turns it into an action; Pip's own code checks it, does it and confirms** (D-84). Either way he only says "Timer's on" once it's really saved (PIP-NEW-039).
+- **Any wording** (D-94): there are no phrasings you have to learn. What you say goes to Claude, which turns it into an action; **Pip's own code checks it, does it and confirms**, so he only says "Timer's on" once it's really saved (PIP-NEW-039, D-84). It takes about 2 s (the thinking tone plays). If it's unclear, he asks.
+- **Offline** (no internet), simple phrasings still work for the basics, understood on the Pi (D-83).
 
 ```mermaid
 flowchart LR
-    Y["You: 'set a thing on the calendar<br/>in two days for the dentist'"] --> R{"Pip's own rules<br/>understand it?"}
-    R -- "yes (instant, works offline)" --> DO["Pip's code does it<br/>and reads it back"]
-    R -- "no" --> C["Claude turns it into an action:<br/>add event · dentist · Sat 2 PM"]
+    Y["You: 'throw ten minutes on<br/>for the laundry'"] --> O{"Online?"}
+    O -- "yes" --> C["Claude turns it into an action:<br/>add timer · laundry · 10 min"]
+    O -- "no" --> R["Pip's offline commands<br/>(simple phrasings only)"]
     C --> CHK{"Checks out?<br/>(real item, future time)"}
-    CHK -- "yes" --> DO
+    CHK -- "yes" --> DO["Pip's code does it"]
     CHK -- "no" --> F["'Sorry, that didn't work.<br/>Nothing was changed.'"]
-    DO --> S["Pip says it:<br/>'Added dentist, Saturday at 2 PM.'"]
+    R --> DO
+    DO --> S["Pip says it:<br/>'Laundry timer's on, 10 minutes.'"]
 ```
+
+Examples (any similar wording works; tested with real Claude, test `natural-language`):
 
 | Say | Pip |
 |---|---|
-| "Set a pasta timer for ten minutes" · "set a timer" → "For how long?" | "Pasta timer's on, 10 minutes." |
-| "…actually fifteen" · "make it 5 minutes" | Changes the same timer: "Changed it to 15 minutes." |
-| "Change that alarm to 7:30" · "move my alarm 10 minutes later" · "push the reminder back an hour" · "move the dentist to Saturday" · "move it to 3" | Moves the **same** item (never adds a second one): "Moved your alarm to 7:30 AM tomorrow." Works for timers, alarms, reminders and events alike |
-| "Cancel that" (right after setting something) · "remove that from the calendar" | "That" / "it" means the item just talked about, or the one that just rang |
-| "How long's left on the pasta?" · "add two minutes to the egg timer" | "Pasta has 4 minutes left." · "Done, 5 minutes left." |
-| "Cancel the timer" (when there are two) | "Which one: pasta or eggs?" · no match: "There's no laundry timer." |
-| "Wake me up at 7" · "set an alarm for 6:30 every weekday" | "Alarm set for 7 AM tomorrow." |
-| "Remind me at 6 to take the bins out" · "every Monday at 9…" · "in 20 minutes…" | "Okay, I'll remind you at 6 PM." |
-| "Put the dentist on the calendar Tuesday at 3" · "what do I have tomorrow?" · "take the dentist off the calendar" | "Added dentist, Tuesday at 3 PM." |
-| "What time is it?" · "stop" · "never mind" | Answers / goes quiet |
+| "Throw ten minutes on the clock for the laundry" | "Laundry timer's on, 10 minutes." |
+| "I gotta be up at like quarter to seven" · "set an alarm for 6:30 every weekday" | "Alarm set for 6:45 AM tomorrow." |
+| "Bug me about calling Mom at 6" · "every Monday at 9, bins" | "Okay, I'll remind you at 6 PM." |
+| "Bump my alarm back half an hour" · "make it 15 minutes" · "move the dentist to Saturday" | Moves the **same** item (never adds a second one). Works for timers, alarms, reminders and events alike |
+| "Ditch the pasta one" · "cancel that" · "take the dentist off the calendar" | "That" / "it" means the item just talked about, or the one that just rang |
+| "What have I got going on?" · "how long's left on the pasta?" · "what time is it?" | Answers from what's set |
+| While ringing: "okay" / "stop" / "snooze" / his name | Instant, no Claude needed |
+| While ringing: "ugh, five more" · "I'm awake, kill it" | Claude: snoozes 5 minutes / turns it off |
 
 A time with no AM/PM means the next one coming ("at 6" in the afternoon is 6 PM). A time already past means tomorrow. Repeats keep their clock time across daylight saving.
 
 ```mermaid
 flowchart LR
     D["Due"] --> R["Rings: ringtone loops,<br/>'Your pasta timer is done.'<br/>again every 30 s"]
-    R -- "'okay' / 'stop' / 'I'm up' / his name<br/>or Shut off on the dashboard" --> X["Stops<br/>(repeating ones move to their next time)"]
-    R -- "'snooze' / 'snooze ten minutes'<br/>or Snooze on the dashboard" --> S["Rings again later<br/>(default 5 min)"]
+    R -- "'okay' / 'stop' / 'I'm up' / his name (instant),<br/>anything like 'kill it' (Claude),<br/>or Shut off on the dashboard" --> X["Stops<br/>(repeating ones move to their next time)"]
+    R -- "'snooze' (instant), 'give me five more' (Claude),<br/>or Snooze on the dashboard" --> S["Rings again later<br/>(default 5 min)"]
     R -- "TV or chatter" --> R
     R -- "nobody answers for 5 min" --> N["Stops by itself,<br/>noted on the dashboard"]
 ```
 
 - **Survives restarts and power cuts**: saved the moment it's made. If Pip was off when something was due, it still rings if it's less than 30 minutes late; otherwise the dashboard shows it as missed.
 - **The dashboard** (`:8790`) shows Pip's state, live countdowns, alarms, reminders and the next two weeks of the calendar. When something rings: one big **Shut off** and one **Snooze** (5 min; ▾ for other lengths). Plus Cancel, a "Start timer" form and a box to type a command.
-- **Offline**: Whisper on the Pi hears the request (about 2.4 s, more mistakes), and only these commands work. Anything else: "I'm offline, so I can only do the basics right now."
-- **Still to come**: alarms you have to earn (FEAT-038, needs Claude to judge), reminders for one person (step 5, voice recognition), ringtone and ring-length settings on the dashboard (step 8; four ringtones exist: classic, kitchen, chimes, gentle).
+- **Offline**: Whisper on the Pi hears the request (about 2.4 s, more mistakes), and Pip's simple built-in phrasings do the basics ("timer ten minutes", "stop", "snooze", "wake me up at 7"). Anything else: "I'm offline, so I can only do the basics right now." A small grey **offline** label shows at the top of the dashboard while he can't reach the internet (D-95).
+- **Still to come**: alarms you have to earn (FEAT-038, needs Claude to judge), reminders for one person (needs person-bound delivery), ringtone and ring-length settings on the dashboard (step 8; four ringtones exist: classic, kitchen, chimes, gentle).
 - Later (M3): shared shopping and to-do lists, Google Calendar sync, phone notifications via ntfy on the Pi (D-19, D-66).
 
 ### Pip's state (what the face will show)
-Pip is always in one of six states, shown on the dashboard and used by the face in step 7 (D-86). When a question goes to Claude, a **soft thinking tone** plays straight away (instead of "One sec."); it can be set to always, only-if-slow, or off.
+Pip is always in one of seven states, shown on the dashboard and used by the face in step 7 (D-86, D-91). When a question goes to Claude, a **soft thinking tone** plays straight away (instead of "One sec."); it can be set to always, only-if-slow, or off.
 
 ```mermaid
 stateDiagram-v2
@@ -178,6 +177,8 @@ stateDiagram-v2
     Idle --> Ringing: timer or alarm due
     Ringing --> Idle: "okay" / snooze / Shut off
     Idle --> Offline: no internet (only the basics work)
+    Idle --> MicOff: two claps or the dashboard switch
+    MicOff --> Idle: two claps / switch on
 ```
 
 Sounds without a human voice in them (a click, a cough, a hiss) are dropped before speech-to-text, so Pip no longer "hears" a phantom "Thank you." (D-85).
@@ -208,17 +209,26 @@ Sounds without a human voice in them (a click, a cough, a hiss) are dropped befo
 
 ```mermaid
 flowchart LR
-    A["You: 'Hey Pip, set a timer for ten minutes'"] --> B["Speakerphone<br/>(echo cancelled)"]
-    B --> C["On-device wake detector:<br/>'Hey Pip' heard"]
-    C --> D["Groq: speech → text<br/>(with word list)"]
-    D --> E{"Simple command?"}
-    E -- "yes (works offline)" --> F["Local command:<br/>create timer"]
-    E -- no --> G["Claude: works out<br/>the answer and actions"]
-    G --> F
-    F --> H["Check it really happened"]
-    H --> I["Piper voice: 'Timer's on, ten minutes.'"]
-    H --> J["Face, TV widget, dashboard update"]
+    A["You: 'Pip, throw ten minutes<br/>on for the laundry'"] --> B["Speakerphone<br/>(echo cancelled)"]
+    B --> V["Voice check on the Pi<br/>(noise dropped)"]
+    V --> D["Groq: speech → text<br/>(household names spelled right)"]
+    D --> T["Room transcript<br/>(who said what)"]
+    T --> E{"Online?"}
+    E -- "yes" --> G["Claude reads the transcript,<br/>what's set and memories →<br/>ACTION add timer"]
+    E -- "no" --> L["Pip's offline commands"]
+    G --> F["Pip's code checks it<br/>and creates the timer"]
+    L --> F
+    F --> I["Piper voice: 'Laundry timer's on, 10 minutes.'"]
+    F --> J["Dashboard (and later the face) update"]
 ```
+
+### What Claude sees
+Each time Pip asks Claude something (an answer, a mention, or whether to join in), Claude gets:
+- **The room conversation**: the last 40 lines (up to 3 hours back), with who said each ("Landen", "Landen?" if he's only fairly sure, "Someone"), including Pip's own lines and where someone talked over him. Kept in memory only, never saved.
+- **Who's speaking** and who lives here; **what's set** (timers, alarms, reminders, the next two weeks of the calendar, and what's ringing); **what Pip remembers** (household memories, plus the speaker's private ones if he's sure who it is); the date and time; the weather.
+- **What's asked**: answer (it was said to you), decide (your name came up), or join in or stay quiet.
+
+**Compared with Ziggletron:** the same idea, since step 6: Ziggletron also sent the recent conversation (40 lines, with speaker names) plus what's set and memories. Two differences: Ziggletron picked only memories that matched words in the conversation (Pip sends all active ones, up to 200), and Ziggletron added sound tags like "[sound: Doorbell]" (Pip doesn't detect sounds yet). Before step 6, Pip only sent his own back-and-forth with one person.
 
 ## 5. Building it
 
