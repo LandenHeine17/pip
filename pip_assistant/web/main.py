@@ -27,6 +27,7 @@ class State:
         self.trace = collections.deque(maxlen=TRACE_KEEP)
         self.conversation = collections.deque(maxlen=50)  # live only, in memory; never stored (D-53)
         self.listeners: set[asyncio.Queue] = set()
+        self.online = True       # D-95: the dashboard's small offline indicator
         self.pip_state = "idle"  # idle / listening / thinking / speaking / ringing / offline / mic_off (D-86, D-91)
 
     def push(self, kind: str, data: dict) -> None:
@@ -43,7 +44,7 @@ def build_app(bus, state: State) -> Starlette:
 
     async def health(request):
         return JSONResponse({"version": __version__, "connected": bus.connected.is_set(), "programs": state.health,
-                             "state": state.pip_state})
+                             "state": state.pip_state, "online": state.online})
 
     async def trace(request):
         if not state.trace and bus.connected.is_set():
@@ -178,6 +179,12 @@ async def main() -> None:
         state.push("mic", msg.data)
 
     bus.subscribe("mic.changed", on_mic)
+
+    async def on_net(msg: Message):
+        state.online = bool(msg.data.get("online", True))
+        state.push("net", {"online": state.online})
+
+    bus.subscribe("net.changed", on_net)
     bus.subscribe("conversation.line", on_line)
     bus.subscribe("health.snapshot", on_health)
     bus.subscribe("trace.entry", on_trace)

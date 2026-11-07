@@ -14,9 +14,10 @@ Answering something said to him:
       → is there a human voice in it? (noise never reaches speech-to-text: no phantom "Thank you.", D-85)
       → speech-to-text (Groq), with household names spelled right ("Landon" → "Landen", D-93)
       → "was that really for Pip?" check (e.g. it was "Ziggletron")
-      → one of Pip's own commands (timers, alarms, reminders, calendar, time)? Done on the Pi (step 4)
-      → otherwise pip-thinker asks Claude (a soft thinking tone plays), streaming the answer sentence by sentence;
-        if Claude replies with an ACTION (a timer/calendar request the rules missed), Pip carries it out (D-84)
+      → pip-thinker asks Claude (a soft thinking tone plays), whatever the wording (D-94), streaming the answer
+        sentence by sentence; if Claude replies with an ACTION (set/change/cancel a timer, alarm, reminder or
+        event, stop or snooze a ringing alarm, remember/forget, learn a voice), Pip's code checks it, does it
+        and says the confirmation (D-84); Claude may also stay quiet (PASS)
       → each sentence goes to pip-ears to be spoken
       → afterwards, a short follow-up window: talk again without the name
 
@@ -24,15 +25,18 @@ What people say and what Pip answers travel only in messages' `private` part, so
 written to the decision trace (D-34). The room transcript is kept in memory only (PIP-NEW-028 category 5).
 When listening is switched off (dashboard or two claps, core/mic.py, D-91) nothing is heard at all.
 
-Offline (Groq can't be reached): Whisper on the Pi transcribes instead, and only Pip's own commands
-work; anything else gets "I'm offline, so I can only do the basics right now" (PIP-NEW-044, D-83).
-While an alarm rings, everything heard is checked for "stop", "okay", "snooze" or Pip's name first.
+Offline (Groq can't be reached): Whisper on the Pi transcribes instead, and Pip's own fixed-phrasing
+commands (core/commands.py) do the basics; anything else gets "I'm offline, so I can only do the basics
+right now" (PIP-NEW-044, D-83). They're also the fallback if Claude fails to answer.
+While an alarm rings, the obvious "stop", "okay", "snooze" or Pip's name silence it instantly; anything
+else said to Pip goes to Claude, which can stop or snooze it.
 
 Pip's state (idle / listening / thinking / speaking / ringing / offline / mic_off) is published as `pip.state`
 whenever it changes: the dashboard shows it, and the face (step 7) will react to it (D-86).
 """
 import asyncio
 import base64
+import json
 import logging
 import re
 import time
@@ -129,6 +133,8 @@ class Conversation:
         self.bus = bus
         self.people, self.memory = people, memory
         self.mic = mic               # the listening switches (core/mic.py); None = always on
+        self.net = None              # the online check (core/net.py), set by main
+        self.own_commands = (cfg or {}).get("conversation", {}).get("own_commands", "offline")  # D-94
         self.transcript = Transcript()
         self.joining = Joining(self, cfg)
         self.answer_kind = "direct"  # what the current answer is: direct / mentioned / join
@@ -284,8 +290,13 @@ class Conversation:
         try:
             if self.stt is None:
                 raise RuntimeError("no speech-to-text service")
-            return await self.stt.transcribe(pcm), False
+            text = await self.stt.transcribe(pcm)
+            if self.net is not None and not self.net.online:
+                await self.net.set(True)
+            return text, False
         except Exception as e:
+            if self.net is not None and self.stt is not None:
+                await self.net.failed()
             if self.local_stt is None or (reason == "room" and not self.ringing):
                 raise  # room speech is never transcribed on the Pi (D-50), except to hear "stop" during an alarm
             await self.bus.publish(Message("event", "stt.offline", data={"error": type(e).__name__, "reason": reason}))
@@ -508,10 +519,12 @@ class Conversation:
             return
         self.expect_until = 0.0
         await self.show("you", text, reason=reason, offline=offline, **data)
-        if await self.people_command(text, offline):
-            return
-        if await self.local_command(text):
-            return
+        if offline or self.own_commands == "always":
+            # No Claude without the internet: Pip's own fixed-phrasing commands do the basics (D-83, D-94)
+            if await self.people_command(text, offline):
+                return
+            if await self.local_command(text):
+                return
         if offline:
             await self.bus.publish(Message("event", "answer.offline", data={}))
             await self.say(SAYINGS["offline"], "offline")
@@ -546,7 +559,7 @@ class Conversation:
         return True
 
     async def people_command(self, text: str, offline: bool = False) -> bool:
-        """'Leave me out', 'I'm Sam', 'who am I?', offline 'remember…' (core/peoplecmds.py)."""
+        """Offline (or if Claude fails): 'I'm Sam', 'learn my voice', 'who am I?', 'remember…' (core/peoplecmds.py)."""
         if not self.people_cmds:
             return False
         try:
@@ -812,6 +825,9 @@ class Conversation:
         if reply.data.get("error"):
             await self.bus.publish(Message("event", "answer.failed", data={"error": reply.data["error"], "kind": kind}))
             if kind == "direct":
+                # Claude didn't answer: Pip's own commands may still manage it ("timer ten minutes")
+                if text and (await self.people_command(text) or await self.local_command(text)):
+                    return
                 await self.say(SAYINGS["thinker_failed"], "error")
             return
         if reply.private.get("action") and self.commands:
@@ -847,19 +863,58 @@ class Conversation:
             self.refresh_state()
 
     async def claude_action(self, raw: str, t0: float) -> None:
-        """Claude turned a request the rules missed into an action; Pip checks it, does it and confirms (D-84)."""
+        """Claude turned a request into actions; Pip checks them, does them and confirms (D-84, D-94).
+        Ringing alarms and voice learning are handled here (they need the alarm and the audio);
+        the rest by core/actions.py. Anything invalid means nothing at all is done."""
         from . import actions
+        from .peoplecmds import StartLearning
+        said, done, learning = [], 0, None
         try:
-            said, done = actions.apply(self.commands, raw, {"memory": self.memory, "people": self.people,
-                                                           "speaker": self.speaker})
-        except Exception:
-            log.exception("action failed")
-            said, done = actions.FAILED, 0
+            items = actions.parse(raw)
+            here = [a for a in items if a.get("do") in actions.HERE]
+            rest = [a for a in items if a.get("do") not in actions.HERE]
+            plan = actions.check_here(here)
+            if rest:
+                actions.check(self.commands, rest, self._action_ctx())   # validate before doing anything
+            for step in plan:
+                if step[0] == "stop_alarm":
+                    n = await self.schedule.acknowledge("claude")
+                    said.append("" if n else "Nothing's ringing.")
+                elif step[0] == "snooze":
+                    n = await self.schedule.snooze(step[1], how="claude")
+                    from . import when
+                    said.append(f"Snoozed for {when.say_duration((step[1] or self.schedule.snooze_min) * 60)}." if n
+                                else "Nothing's ringing.")
+                elif step[0] == "learn_voice":
+                    r = await self.people_cmds.introduced(step[1], True, self.speaker, self.last_pcm) \
+                        if self.people_cmds else "I can't recognise voices yet."
+                    if isinstance(r, StartLearning):
+                        learning = r
+                    else:
+                        said.append(r)
+                done += 1
+            if rest:
+                s, n = actions.apply(self.commands, json.dumps(rest), self._action_ctx())
+                said.append(s)
+                done += n
+        except Exception as e:
+            if not isinstance(e, (actions.Invalid, ValueError, TypeError, KeyError)):
+                log.exception("action failed")
+            said, done, learning = [actions.FAILED], 0, None
         await self.bus.publish(Message("event", "action.done", data={"count": done, "ok": bool(done)}))
-        self.said(said)
-        self.speech_done.clear()
-        await self.say(said, "command")
-        await self.show("pip", said, total_s=round(time.perf_counter() - t0, 2), local=True)
+        text = " ".join(s for s in said if s)
+        if text:
+            self.said(text)
+            self.speech_done.clear()
+            await self.say(text, "command")
+            await self.show("pip", text, total_s=round(time.perf_counter() - t0, 2), local=True)
+        if learning:
+            self.said(learning.say)
+            await self.show("pip", learning.say, local=True)
+            await self.start_enrolment(learning.person_id, first=self.last_pcm, greeting=learning.say)
+
+    def _action_ctx(self) -> dict:
+        return {"memory": self.memory, "people": self.people, "speaker": self.speaker}
 
     async def _maybe_follow_up(self) -> None:
         last = self.transcript.last()

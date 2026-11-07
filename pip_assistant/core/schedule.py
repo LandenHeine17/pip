@@ -254,6 +254,11 @@ class Schedule:
                 rep = f" ({when.say_repeat(ev['repeat'])})" if ev["repeat"] else ""
                 evs.append(f"{self.short(ev['id'])} {ev['title']} {at:%a %Y-%m-%d}" + (" all day" if ev["all_day"] else f" {at:%H:%M}") + rep)
         out = ("Set: " + "; ".join(parts) + ".") if parts else "No timers, alarms or reminders set."
+        ringing = [r for r in (self._row(i) for i in self.ringing) if r]
+        if ringing:
+            out = "RINGING NOW: " + "; ".join(f"{self.short(r['id'])} {r['kind']} '{r['label']}'" for r in ringing) + ". " + out
+        elif self.last_rung and self.clock() - self.last_rung[1] < 15 * 60 and (r := self._row(self.last_rung[0])):
+            out += f" Just rang: {self.short(r['id'])} {r['kind']} '{r['label']}'."
         out += (" Calendar, next two weeks: " + "; ".join(evs) + ".") if evs else " Nothing on the calendar in the next two weeks."
         return out
 

@@ -1,4 +1,7 @@
-"""Pip's own commands about people and voices, done on the Pi (they work offline too).
+"""People and voices without Claude: used **offline** (D-94), and by Claude's learn_voice action.
+
+Online, "I'm Landen", "learn my voice" and "who am I?" are understood by Claude in any wording, which
+replies with ACTION {"do": "learn_voice", "name": …} (or just answers); `introduced` then does the work.
 
     "Pip, I'm Landen" / "my name is Landen"   someone on the household list: Pip starts learning their voice
                                               (sentences to read pop up on the dashboard); already learned:
@@ -71,7 +74,7 @@ class PeopleCommands:
             name, learn = m.group(1), True          # the answer to "Who am I learning?"
         if name:
             self.awaiting_name_until = 0.0
-            return await self._introduced(name, learn, speaker, pcm)
+            return await self.introduced(name, learn, speaker, pcm)
         if learn:
             if not p.embedder.available:
                 return "I can't recognise voices yet: the voice model isn't installed."
@@ -92,7 +95,7 @@ class PeopleCommands:
                 "I'm offline, so I put that in the memory inbox to check later."
         return None
 
-    async def _introduced(self, name: str, learn: bool, speaker, pcm: bytes):
+    async def introduced(self, name: str, learn: bool, speaker, pcm: bytes):
         p = self.people
         person = p.by_name(name)
         if person is None:

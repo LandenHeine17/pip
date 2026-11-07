@@ -138,7 +138,7 @@ async def test_time_and_stop(cmds):
 
 
 # ------------------------------------------------------------------ ringing (with a fake pip-ears)
-async def setup_bus(tmp_path, clock, stt=None, local_stt=None):
+async def setup_bus(tmp_path, clock, stt=None, local_stt=None, answers=None):
     sock = tmp_path / "core.sock"
     bus = Bus(sock, Trace(tmp_path / "pip.db"), Health(["ears", "thinker"], restart=False))
     sched = Schedule(tmp_path / "pip.db", bus, {"alarms": {"announce_every_seconds": 0.2, "ring_minutes": 0.02}}, clock=clock)
@@ -155,8 +155,11 @@ async def setup_bus(tmp_path, clock, stt=None, local_stt=None):
 
     async def ask(msg):
         got.append(("thinker.ask", msg.private.get("text"), msg.private.get("schedule")))
-        await thinker.emit("answer.sentence", {"answer_id": msg.data["answer_id"]}, private={"text": "Claude here."})
-        return msg.reply({}, private={"text": "Claude here."}, source="thinker")
+        answer = (answers or {}).get(msg.private.get("text"), "Claude here.")
+        if answer.startswith("ACTION"):
+            return msg.reply({"action": True}, private={"text": "", "action": answer}, source="thinker")
+        await thinker.emit("answer.sentence", {"answer_id": msg.data["answer_id"]}, private={"text": answer})
+        return msg.reply({}, private={"text": answer}, source="thinker")
 
     thinker.on("thinker.ask", ask)
     tasks = [asyncio.create_task(x.run()) for x in (ears, thinker)] + [asyncio.create_task(sched.run())]
@@ -242,20 +245,39 @@ async def test_unanswered_alarm_stops_by_itself(tmp_path):
     await finish(bus, tasks)
 
 
-async def test_spoken_command_is_done_without_claude(tmp_path):
+async def test_any_wording_goes_to_claude_whose_action_pip_carries_out(tmp_path):
+    """Online, there are no fixed phrasings: Claude understands the request, Pip's code does it and confirms (D-94)."""
     clock = Clock()
-    stt = FakeSTT("Pippletron, set a timer for ten minutes")
-    bus, sched, conv, ears, got, tasks = await setup_bus(tmp_path, clock, stt)
+    said = "Pippletron, could you give me like ten minutes on a timer"
+    stt = FakeSTT(said)
+    bus, sched, conv, ears, got, tasks = await setup_bus(
+        tmp_path, clock, stt, answers={said: 'ACTION {"do": "add", "kind": "timer", "seconds": 600}'})
+    d, p = utt("wake")
+    await ears.emit("heard.utterance", d, private=p)
+    await asyncio.sleep(0.3)
+    assert [k for k, _, _ in got if k == "thinker.ask"] == ["thinker.ask"]
+    assert [t for k, t, _ in got if k == "ears.say"] == ["Timer's on, 10 minutes."] and len(sched.active()) == 1
+    stt.text = "Pip, what's the capital of Australia?"         # Claude sees what's set
+    await ears.emit("heard.utterance", d, private=p)
+    await asyncio.sleep(0.3)
+    ask = [x for x in got if x[0] == "thinker.ask"][-1]
+    assert "timer 'timer' with 10 minutes left" in ask[2]
+    await finish(bus, tasks)
+
+
+async def test_if_claude_fails_pips_own_commands_still_try(tmp_path):
+    clock = Clock()
+    said = "Pip, set a timer for ten minutes"
+    bus, sched, conv, ears, got, tasks = await setup_bus(tmp_path, clock, FakeSTT(said))
+
+    async def broken(*a, **k):
+        from pip_assistant.common.messages import Message
+        return Message("reply", "thinker.ask", data={"error": "TimeoutError"})
+    conv.bus_request = broken
     d, p = utt("wake")
     await ears.emit("heard.utterance", d, private=p)
     await asyncio.sleep(0.3)
     assert [t for k, t, _ in got if k == "ears.say"] == ["Timer's on, 10 minutes."]
-    assert "thinker.ask" not in [k for k, _, _ in got]
-    stt.text = "Pip, what's the capital of Australia?"         # ordinary questions still go to Claude, who sees what's set
-    await ears.emit("heard.utterance", d, private=p)
-    await asyncio.sleep(0.3)
-    [ask] = [x for x in got if x[0] == "thinker.ask"]
-    assert "timer 'timer' with 10 minutes left" in ask[2]
     await finish(bus, tasks)
 
 
@@ -333,4 +355,33 @@ async def test_dashboard_can_shut_off_and_make_timers(tmp_path):
     assert sched.ringing
     r = await alert_action(sched, conv, Message("request", "core.alert_action", data={"action": "stop"}))
     assert r["stopped"] == 1 and not sched.ringing
+    await finish(bus, tasks)
+
+
+# ------------------------------------------------------------------ natural language while ringing (D-94)
+async def test_ringing_obvious_words_are_instant_and_anything_else_goes_to_claude(tmp_path):
+    clock = Clock()
+    said = "ugh, give me a little extra time, would you"
+    stt = FakeSTT(said)
+    bus, sched, conv, ears, got, tasks = await setup_bus(
+        tmp_path, clock, stt, answers={said: 'ACTION {"do": "snooze", "minutes": 10}'})
+    sched.add("alarm", "alarm", clock() + 60)
+    clock.t += 61
+    await asyncio.sleep(0.4)
+    assert sched.ringing
+    d, p = utt("barge_in")                                    # said to Pip, but not an obvious stop/snooze word
+    await ears.emit("heard.utterance", d, private=p)
+    await asyncio.sleep(0.4)
+    asks = [x for x in got if x[0] == "thinker.ask"]
+    assert len(asks) == 1 and asks[0][2].startswith("RINGING NOW:")
+    assert not sched.ringing and sched.active()[0]["due"] == clock() + 600
+    assert "Snoozed for 10 minutes." in [t for k, t, _ in got if k == "ears.say"]
+    # The obvious words never wait for Claude
+    clock.t += 601
+    await asyncio.sleep(0.4)
+    assert sched.ringing
+    stt.text = "okay, I'm up"
+    await ears.emit("heard.utterance", d, private=p)
+    await asyncio.sleep(0.3)
+    assert not sched.ringing and len([x for x in got if x[0] == "thinker.ask"]) == 1
     await finish(bus, tasks)

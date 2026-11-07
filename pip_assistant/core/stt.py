@@ -5,7 +5,8 @@
 Groq Whisper Large V3 Turbo with a word list is the default (D-48). When Groq can't be reached,
 Pip falls back to Whisper base on the Pi (LocalWhisperSTT): about 2 s per request and fine for
 clear, close commands like "timer ten minutes" or "snooze" (M0: 12% of words wrong close up), but
-not for room speech (D-50). The owner agreed offline only needs to understand everyday phrasings (D-83).
+not for room speech (D-50). The owner agreed offline only needs to understand everyday phrasings (D-83); online,
+Claude understands any wording (D-94).
 """
 import asyncio
 import os

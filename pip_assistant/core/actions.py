@@ -1,8 +1,8 @@
-"""Claude fills in what Pip's own rules didn't understand (D-84).
+"""How Claude makes things happen (D-84, D-94).
 
-Pip's rules handle everyday phrasings instantly and offline. Anything else ("set a thing on the
-calendar in two days for the dentist") goes to Claude. Claude doesn't set anything itself: it
-replies with one line
+Online, everything said to Pip goes to Claude in natural language, whatever the wording ("set a
+thing on the calendar in two days for the dentist", "give me ten more minutes"). Claude doesn't set
+anything itself: it replies with one line
 
     ACTION {"do": "add", "kind": "event", "title": "dentist", "at": "2026-11-07T14:00"}
 
@@ -14,6 +14,11 @@ nothing is changed and Pip says so.
             optional: repeat ('', daily, weekdays, weekends, weekly, weekly:0-6), label, heads_up_minutes
     change  id ('#a1b2c3' from the summary Claude sees), and at | shift_seconds | seconds (timers)
     cancel  id
+
+Ringing alarms and voices (handled in core/conversation.py, which has the alarm and the audio):
+    stop_alarm     turn off what's ringing
+    snooze         minutes (optional; default from settings)
+    learn_voice    name: start learning that household member's voice (or remember a visitor for the visit)
 
 Memory (step 5):
     remember       text (third person, with names), category, about [names], sensitive, private
@@ -32,6 +37,29 @@ FAILED = "Sorry, that didn't work. Nothing was changed."
 
 class Invalid(ValueError):
     pass
+
+
+HERE = ("stop_alarm", "snooze", "learn_voice")   # done by Conversation, not apply()
+
+
+def check_here(items: list[dict]) -> list[tuple]:
+    plan = []
+    for a in items:
+        do = a.get("do")
+        if do == "stop_alarm":
+            plan.append(("stop_alarm",))
+        elif do == "snooze":
+            mins = a.get("minutes")
+            mins = float(mins) if mins not in (None, "") else None
+            if mins is not None and not 1 <= mins <= 180:
+                raise Invalid("snooze length")
+            plan.append(("snooze", mins))
+        elif do == "learn_voice":
+            name = str(a.get("name") or "").strip()
+            if not name or len(name) > 30:
+                raise Invalid("no name")
+            plan.append(("learn_voice", name.split()[0].title() if name.islower() else name.split()[0]))
+    return plan
 
 
 def parse(raw: str) -> list[dict]:

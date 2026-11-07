@@ -321,23 +321,24 @@ async def test_guided_voice_learning(tmp_path):
 
 async def test_introducing_yourself_out_loud_learns_your_voice(tmp_path):
     clock = Clock()
-    stt = FakeSTT("Hey Pip, I'm Alex.")
-    bus, people, memory, conv, ears, got, tasks = await setup_bus(tmp_path, clock, stt)
+    stt = FakeSTT("Hey Pip, I'm Alex.")      # Claude understands the introduction (any wording, D-94)
+    bus, people, memory, conv, ears, got, tasks = await setup_bus(tmp_path, clock, stt,
+                                                                  'ACTION {"do": "learn_voice", "name": "Alex"}')
     conv.enrol_speech_wait = 0.05
     alex = people.add_person("Alex", "admin")
     await ears.emit("heard.utterance", *utt("wake", voice("alex", 2.0)))
     await asyncio.sleep(0.2)
     assert conv.enrol_status()["name"] == "Alex"
     assert [t for k, t, _ in got if k == "ears.say"][0].startswith("Hi Alex! Let's learn your voice.")
-    assert not [x for x in got if x[0] == "thinker.ask"]                      # Pip's own command, not Claude
+    assert len([x for x in got if x[0] == "thinker.ask"]) == 1
     for i in range(5):
         await ears.emit("heard.utterance", *utt("room" if i == 2 else "follow_up", voice("alex", 2.5)))  # one read late
         await asyncio.sleep(0.1)
     assert people.all()[0]["voice_samples"] == 6 and stt.calls == 1          # 5 sentences + the introduction
-    stt.text = "Pip, who am I?"
+    stt.text = "Pip, who am I?"                # Claude is told who's speaking
     await ears.emit("heard.utterance", *utt("wake", voice("alex2")))
     await asyncio.sleep(0.2)
-    assert [t for k, t, _ in got if k == "ears.say"][-1] in ("You sound like Alex.", "I think you're Alex, but I'm not sure.")
+    assert [x for x in got if x[0] == "thinker.ask"][-1][2]["people"].startswith("Speaking: Alex (")
     await finish(bus, tasks)
 
 

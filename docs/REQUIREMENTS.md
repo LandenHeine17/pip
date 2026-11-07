@@ -21,7 +21,7 @@ Where the archive says one thing and a decision says another, **the decision win
 | [04 §2.2](archive/pip-v2-proposals-2026-11/04-SPEECH-RECOGNITION-RESEARCH.md) (mic options) | Far-field array suggested | Speakerphone over USB as mic and speaker; echo cancellation verified in M0; no hardware upgrade | D-12, D-49 |
 | [14](archive/pip-v2-proposals-2026-11/14-ACCEPTANCE-CRITERIA.md) AC-SP-09 | 8-hour local room transcription criterion | Obsolete | D-51 |
 | [10 §5](archive/pip-v2-proposals-2026-11/10-SAFE-SELF-MODIFICATION.md) (sandbox "container or OS sandbox") | Sandbox technology open | M0 showed a **systemd user sandbox** works with no installs (secrets, recordings, repo and internet blocked) | M0 result |
-| [03 §1.2](archive/pip-v2-proposals-2026-11/03-CONVERSATION-AND-PERSONALITY.md) (guests gate Social mode) | Guests and unknown voices are never sent to the cloud unless addressed | **Everyone except opted-out people** is sent to Groq in Social mode; guests can opt out by voice (visit-only voice memory) | D-77 |
+| [03 §1.2](archive/pip-v2-proposals-2026-11/03-CONVERSATION-AND-PERSONALITY.md) (guests gate Social mode) | Guests and unknown voices are never sent to the cloud unless addressed | **Everyone except opted-out people** is sent to Groq in Social mode; guests can opt out by voice (visit-only voice memory) | D-77 **Replaced by D-90** (everyone is transcribed while the mic is on) |
 
 Requirement rows below already include their own overrides (struck-through or marked with the decision).
 
@@ -72,7 +72,7 @@ Requirement rows below already include their own overrides (struck-through or ma
 | PIP-NEW-041 | Routines | Named, editable, previewable; triggers need approval | M3 | P2 | [07 §7](archive/pip-v2-proposals-2026-11/07-SMART-HOME-AND-INTEGRATIONS.md) |
 | PIP-NEW-042 | Environmental events and sensor context | Configured sensor/event topics; announcement rules; one weather source | M3 | P2 | [07 §6](archive/pip-v2-proposals-2026-11/07-SMART-HOME-AND-INTEGRATIONS.md) |
 | PIP-NEW-043 | Custom hardware via ESPHome/MQTT | ESP32 devices usable with no new Pip integration | M3 | P2 | [07 §1.2](archive/pip-v2-proposals-2026-11/07-SMART-HOME-AND-INTEGRATIONS.md) |
-| PIP-NEW-044 | Offline command path | Timers, cancel, snooze, volume, stop, pause listening, status, and (M3) basic devices, all without cloud reasoning | M1 | P1 | [12 §3](archive/pip-v2-proposals-2026-11/12-RELIABILITY-AND-OFFLINE.md) |
+| PIP-NEW-044 | Offline command path | Timers, cancel, snooze, volume, stop, pause listening, status, and (M3) basic devices, all without cloud reasoning. **D-94:** these fixed phrasings run only offline (and if Claude fails); online, Claude understands any wording | M1 | P1 | [12 §3](archive/pip-v2-proposals-2026-11/12-RELIABILITY-AND-OFFLINE.md) |
 | PIP-NEW-045 | Voice snooze | "Snooze ten minutes" | M1 | P2 | [12 §3](archive/pip-v2-proposals-2026-11/12-RELIABILITY-AND-OFFLINE.md) |
 | PIP-NEW-046 | Dashboard scheduling parity | Create reminders, set repeats on events, richer recurrence (weekdays, monthly) | M1 | P2 | [08 §3](archive/pip-v2-proposals-2026-11/08-DASHBOARD-AND-TV-REDESIGN.md#3-calendar-and-tasks) |
 | PIP-NEW-047 | Shopping list | Shared list by voice and dashboard; live on the TV | M3 | P2 | [08 §3](archive/pip-v2-proposals-2026-11/08-DASHBOARD-AND-TV-REDESIGN.md) |
@@ -165,7 +165,7 @@ KEEP · IMPROVE · REDESIGN · REPLACE · MERGE · REVIEW. What each FEAT did or
 | 030 | Selective recall | IMPROVE | Plus visibility rules for the people present | PIP-NEW-028 | [06 §4](archive/pip-v2-proposals-2026-11/06-MEMORY-AND-DATA-POLICY.md) |
 | 031 | Background sorting | MERGE | Into save-time categorisation and the inbox | PIP-NEW-029 | [06 §3.1](archive/pip-v2-proposals-2026-11/06-MEMORY-AND-DATA-POLICY.md) |
 | 032 | Dashboard memory management | REPLACE | Memory Center (PIP-NEW-030) | PIP-NEW-030, 034 | [06 §5](archive/pip-v2-proposals-2026-11/06-MEMORY-AND-DATA-POLICY.md) |
-| 033 | Timers | IMPROVE | Created offline by local commands (PIP-NEW-044); confirmed only after creation | PIP-NEW-044 | [12 §3](archive/pip-v2-proposals-2026-11/12-RELIABILITY-AND-OFFLINE.md) |
+| 033 | Timers | IMPROVE | Any wording via Claude online (D-94), local commands offline (PIP-NEW-044); confirmed only after creation | PIP-NEW-044 | [12 §3](archive/pip-v2-proposals-2026-11/12-RELIABILITY-AND-OFFLINE.md) |
 | 034 | Reminders | IMPROVE | Dashboard creation; weekday and monthly repeats (PIP-NEW-046) | PIP-NEW-046 | [08 §3](archive/pip-v2-proposals-2026-11/08-DASHBOARD-AND-TV-REDESIGN.md) |
 | 035 | Targeted reminders | IMPROVE | P-06 wording fixed; uses recognised presence (and MQTT/GPIO presence sensors in M3) | — | — |
 | 036 | Calendar | IMPROVE | Repeat on the dashboard (P-05); sync evaluated (PIP-NEW-049) | PIP-NEW-046, 049 | [08 §3](archive/pip-v2-proposals-2026-11/08-DASHBOARD-AND-TV-REDESIGN.md) |
@@ -250,7 +250,7 @@ Targets marked † are starting values (confirmed in M0, D-25).
 | AC-CV-08 | Guest voice profiles are absent from storage after restart unless consent was recorded | PIP-NEW-025 |
 | AC-CV-09 | No administrative action can be performed by voice alone (test every admin action) | PIP-NEW-027 |
 | AC-CV-10 | ~~After an adult opts out (dashboard or "Pip, leave me out"), none of their unaddressed lines reach the model provider (request-log check)~~ **Replaced by D-90** | PIP-NEW-004 |
-| AC-CV-11 | Every household adult is shown the opt-out notice at enrolment, and it is reachable in one step from the dashboard | PIP-NEW-004 |
+| AC-CV-11 | ~~Every household adult is shown the opt-out notice at enrolment~~ **Changed by D-90:** shown how to switch listening off (dashboard switch, two claps) | PIP-NEW-004 |
 | AC-CV-12 | When the speakerphone is muted, Pip shows "muted" on the TV and dashboard within 2 s and raises no fault; unmuting resumes listening | PIP-NEW-084 |
 | AC-MEM-01 | Unaddressed speech never creates an active memory (scripted overheard-facts test) | PIP-NEW-029 |
 | AC-MEM-02 | Saving 1,000 memories deletes none | PIP-NEW-031 |

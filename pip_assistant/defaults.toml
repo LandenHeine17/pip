@@ -75,6 +75,8 @@ clap_quiet_before_ms = 300         # And the room must have been quiet just befo
 clap_talk_dbfs = -45.0             # Louder than this counts as talking, not quiet.
 
 [conversation]
+own_commands = "offline"           # Pip's fixed-phrasing commands: "offline" = only without internet (D-94; online, Claude
+                                   # understands any wording); "always" = try them first, as before step 6.
 follow_up_seconds = 8.0            # After Pip answers, talk again within this time without saying his name.
 wait_after_name_seconds = 5.0      # Said only his name? Pip listens quietly this long for the rest (no "Yes?" talking over you).
 unfinished_wait_seconds = 2.0      # Stopped mid-sentence ("what's the...")? Pip waits this long for the rest before answering.

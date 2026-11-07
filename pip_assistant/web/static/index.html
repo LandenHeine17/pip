@@ -34,6 +34,9 @@ h1{font-size:1.35rem;margin:0;letter-spacing:-.01em} h2{font-size:1rem;margin:0;
 .st-mic_off .dot{background:var(--muted, #999)}
 .micbtn{border-radius:999px;padding:7px 14px;font-weight:600;font-size:.9rem;border:0;cursor:pointer;background:var(--good);color:#fff;box-shadow:var(--shadow)}
 .micbtn.off{background:var(--bad)}
+.netoff{font-size:.75rem;color:var(--muted,#888);display:inline-flex;align-items:center;gap:5px}
+.netoff::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--muted,#999)}
+.netoff[hidden]{display:none}
 .micbtn small{font-weight:400;opacity:.9}
 @keyframes pulse{50%{transform:scale(1.35);opacity:.6}}
 .grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px}
@@ -103,6 +106,7 @@ code{font-size:.8rem}
     <div><h1>Pip</h1><div class="sub">Step 6 · listens to the room like Ziggletron and joins in; timers, calendar, memory, voices</div></div></div>
   <div class="status"><button id="mic" class="micbtn" onclick="toggleMic()" title="Switch listening off or on. Two claps also switch it (but can't undo this switch).">Listening…</button>
     <span class="state" id="state"><span class="dot"></span><span id="statetext">…</span></span>
+    <span class="netoff" id="netoff" hidden title="Pip can't reach the internet: only timers, alarms and other basics work until it's back">offline</span>
     <span class="sub" id="conn">Connecting…</span></div>
 </header>
 
@@ -221,7 +225,7 @@ function renderConv(){
 async function loadConv(){ try{ conv = await (await fetch("/api/conversation",{cache:"no-store"})).json(); renderConv(); }catch(e){} }
 async function loadHealth(){
   try{
-    const h = await (await fetch("/api/health",{cache:"no-store"})).json(); renderHealth(h.programs||{}); if(h.state) setState(h.state);
+    const h = await (await fetch("/api/health",{cache:"no-store"})).json(); renderHealth(h.programs||{}); if(h.state) setState(h.state); if(h.online !== undefined) $("netoff").hidden = h.online;
     $("conn").textContent = h.connected ? `v${h.version}` : "pip-core not reachable";
   }catch(e){ $("conn").textContent = "Dashboard unreachable"; }
 }
@@ -232,6 +236,7 @@ function live(){
   es.addEventListener("health", ev => { renderHealth(JSON.parse(ev.data)); $("conn").textContent = "Live"; });
   es.addEventListener("state", ev => setState(JSON.parse(ev.data).state));
   es.addEventListener("mic", ev => renderMic(JSON.parse(ev.data)));
+  es.addEventListener("net", ev => { $("netoff").hidden = JSON.parse(ev.data).online; });
   es.addEventListener("conversation", ev => { const l = JSON.parse(ev.data); conv.unshift(l); renderConv(); if (l.who === "pip") { loadMemory(); loadPeople(); } });
   es.addEventListener("people", () => loadPeople());
   es.addEventListener("trace", ev => { const e = JSON.parse(ev.data); e._fresh = true; rows.unshift(e); rows = rows.slice(0,200); renderTrace(); });
