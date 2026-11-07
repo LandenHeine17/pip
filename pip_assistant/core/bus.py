@@ -25,6 +25,7 @@ class Bus:
         self.core_handlers: dict = {}           # requests addressed to "core"
         self.core_listeners: list = []          # (pattern, coroutine) for events core itself reacts to
         self.core_waiting: dict = {}            # request id -> future, for requests core itself sent
+        self.on_connect: list = []              # coroutines called with a program's name when it (re)connects
         self.server = None
 
     async def start(self) -> None:
@@ -58,6 +59,8 @@ class Bus:
                     self.writers[name] = writer
                     self.health.heartbeat(name, {"pid": msg.data.get("pid")})
                     await self.publish(Message("event", "program.connected", source="core", data={"program": name}))
+                    for hook in self.on_connect:
+                        asyncio.create_task(hook(name))
                     continue
                 if not name:
                     continue  # must say hello first

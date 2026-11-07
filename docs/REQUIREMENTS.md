@@ -32,7 +32,7 @@ Requirement rows below already include their own overrides (struck-through or ma
 | PIP-NEW-001 | Local address detection | An on-device name spotter decides whether Pip was called, before any audio leaves the house | M1 | P1 | [04 §2](archive/pip-v2-proposals-2026-11/04-SPEECH-RECOGNITION-RESEARCH.md#2-proposed-pipeline-behavioural-not-a-library-choice) |
 | PIP-NEW-002 | Rolling RAM pre-roll | Keeps about 10 s of audio in memory, so words spoken *before* the name are included | M1 | P1 | [04 §2](archive/pip-v2-proposals-2026-11/04-SPEECH-RECOGNITION-RESEARCH.md) |
 | PIP-NEW-003 | Listening modes | Private / Room-Aware / Social, visible on the dashboard, TV and by voice | M1 (Social, Private); M2 (Room-Aware refinements) | P1 | [03 §1](archive/pip-v2-proposals-2026-11/03-CONVERSATION-AND-PERSONALITY.md#1-listening-modes) |
-| PIP-NEW-004 | Per-person opt-out and guest gating | Household adults are included unless they opt out (dashboard or "Pip, leave me out"); everyone is told how. Guests and opted-out speakers → Room-Aware behaviour | M1 | P1 | [03 §1.2](archive/pip-v2-proposals-2026-11/03-CONVERSATION-AND-PERSONALITY.md) |
+| PIP-NEW-004 | ~~Per-person opt-out and guest gating~~ **Replaced by D-90** (no opt-outs; the mic switch, D-91) | Household adults are included unless they opt out (dashboard or "Pip, leave me out"); everyone is told how. Guests and opted-out speakers → Room-Aware behaviour | M1 | P1 | [03 §1.2](archive/pip-v2-proposals-2026-11/03-CONVERSATION-AND-PERSONALITY.md) |
 | PIP-NEW-005 | Voice privacy switch | "Pip, private please" / "Pip, start listening", handled locally and works offline | M1 | P1 | [03 §1.2](archive/pip-v2-proposals-2026-11/03-CONVERSATION-AND-PERSONALITY.md) |
 | PIP-NEW-006 | Local fast-path words | Stop / wait / actually / alarm acknowledgement / snooze detected on device, with no transcription round trip | M1 | P1 | [04 §2](archive/pip-v2-proposals-2026-11/04-SPEECH-RECOGNITION-RESEARCH.md), [03 §3](archive/pip-v2-proposals-2026-11/03-CONVERSATION-AND-PERSONALITY.md) |
 | PIP-NEW-007 | Adaptive end of utterance | Waits longer when speech sounds unfinished; avoids clipping | M1 | P1 | [04 §2.3](archive/pip-v2-proposals-2026-11/04-SPEECH-RECOGNITION-RESEARCH.md) |
@@ -243,13 +243,13 @@ Targets marked † are starting values (confirmed in M0, D-25).
 | AC-CV-01 | "Stop" halts audio within 100 ms P95, measured on a loopback recording, online and offline | PIP-NEW-006 |
 | AC-CV-02 | "Wait" then "go on" within 30 s resumes at the next unspoken sentence | PIP-NEW-016 |
 | AC-CV-03 | A correction ("actually fifteen") changes the existing timer; no second timer exists | PIP-NEW-021 |
-| AC-CV-04 | In Social mode, with an unknown voice heard in the last 15 minutes, no unaddressed room text is sent to the model (verified from request logs) | PIP-NEW-004 |
+| AC-CV-04 | ~~In Social mode, with an unknown voice heard in the last 15 minutes, no unaddressed room text is sent to the model (verified from request logs)~~ **Replaced by D-90** | PIP-NEW-004 |
 | AC-CV-05 | No unprompted contribution starts while anyone is speaking (100 scripted trials) | PIP-NEW-018 |
 | AC-CV-06 | Unprompted contributions never exceed the per-hour budget for the configured level over a 1-week trial | PIP-NEW-018 |
 | AC-CV-07 | Media-only speech (a TV playing dialogue for 30 minutes) causes no join, greeting, alarm acknowledgement or "stop listening" | PIP-NEW-012 |
 | AC-CV-08 | Guest voice profiles are absent from storage after restart unless consent was recorded | PIP-NEW-025 |
 | AC-CV-09 | No administrative action can be performed by voice alone (test every admin action) | PIP-NEW-027 |
-| AC-CV-10 | After an adult opts out (dashboard or "Pip, leave me out"), none of their unaddressed lines reach the model provider (request-log check) | PIP-NEW-004 |
+| AC-CV-10 | ~~After an adult opts out (dashboard or "Pip, leave me out"), none of their unaddressed lines reach the model provider (request-log check)~~ **Replaced by D-90** | PIP-NEW-004 |
 | AC-CV-11 | Every household adult is shown the opt-out notice at enrolment, and it is reachable in one step from the dashboard | PIP-NEW-004 |
 | AC-CV-12 | When the speakerphone is muted, Pip shows "muted" on the TV and dashboard within 2 s and raises no fault; unmuting resumes listening | PIP-NEW-084 |
 | AC-MEM-01 | Unaddressed speech never creates an active memory (scripted overheard-facts test) | PIP-NEW-029 |

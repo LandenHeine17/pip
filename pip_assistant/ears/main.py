@@ -3,9 +3,15 @@ instantly when talked over.
 
 Events it sends:   heard.wake {word, score} · heard.started {reason} · heard.utterance {reason, seconds, had_speech} (+ private audio)
                    speech.started · speech.interrupted · speech.finished {interrupted}
-                   ears.status {state}  (listening / speaking / muted_or_quiet)
-Commands it takes: ears.say (private.text) · ears.chime · ears.tone {name: "thinking"} · ears.stop · ears.listen {seconds} (follow-up window)
+                   ears.status {state}  (listening / speaking / muted_or_quiet / mic_off)
+                   mic.clapped   (two claps: pip-core decides what that switches, D-91)
+Commands it takes: ears.say (private.text) · ears.chime · ears.tone {name: "thinking" / "mic_on" / "mic_off"} · ears.stop
+                   ears.listen {seconds} (follow-up window) · ears.mic {mode: on / claps_only / off}
                    ears.ring {tone, max_seconds} · ears.ring_stop   (alarms: loop a ringtone until told to stop)
+
+Listening switched off (ears.mic): "claps_only" means only the clap detector hears the room (no wake
+words, nothing captured or sent); "off" means nothing listens at all. It starts "off" and pip-core
+says which mode to use as soon as it's connected, so a restart never listens when it shouldn't.
 
 While an alarm rings, talking over it cuts the ringtone for a moment and captures what you said, so
 "stop" or "snooze" works; if it wasn't for the alarm, ringing carries on. The ringing stops by
@@ -18,7 +24,8 @@ import time
 
 from ..common.messages import Message
 from ..common.program import make_bus, serve, start
-from .audio import Microphone, Speaker, chime, level_dbfs, ringtone, thinking_tone
+from .audio import Microphone, Speaker, chime, level_dbfs, mic_tone, ringtone, thinking_tone
+from .clap import ClapDetector
 from .segmenter import Segmenter
 from .voice import make_voice
 from .wake import WakeDetector
@@ -36,7 +43,11 @@ class Ears:
         self.wake = WakeDetector(e["wake_words"], thresholds=e["wake_thresholds"])
         self.voice = make_voice(e["voice_engine"], e["voice"], e["speech_rate"])
         self.chime = chime(self.voice.rate)
-        self.tones = {"thinking": thinking_tone(self.voice.rate)}
+        self.tones = {"thinking": thinking_tone(self.voice.rate), "mic_on": mic_tone(True, self.voice.rate),
+                      "mic_off": mic_tone(False, self.voice.rate)}
+        self.mic_mode = "off"      # until pip-core says (D-91)
+        self.claps = ClapDetector(cfg.get("mic", {}))
+        self.claps_on = cfg.get("mic", {}).get("claps", True)
         self.seg = Segmenter(speech_dbfs=li["speech_dbfs"], end_silence_s=li["end_silence_seconds"],
                              max_s=li["max_utterance_seconds"], wait_for_speech_s=li["wait_for_speech_seconds"],
                              after_wake_s=li["after_wake_seconds"])
@@ -53,9 +64,17 @@ class Ears:
     async def listen(self) -> None:
         loop = asyncio.get_running_loop()
         async for frame in self.mic.frames():
+            if self.mic_mode == "off":
+                await self._update_state(frame)
+                continue  # switched off on the dashboard: nothing listens
             db = level_dbfs(frame)
             self.bus.status["level_dbfs"] = db
             await self._update_state(frame)
+            if self.claps_on and not self.speaking and not self.ring_task and self.claps.feed(frame):
+                log.info("heard two claps")
+                await self.bus.emit("mic.clapped", {})
+            if self.mic_mode != "on":
+                continue  # switched off by claps: only the clap detector listens
             if self.speaking and self.cfg["barge_in"]:
                 # The speakerphone removes Pip's own voice, so sound now is someone talking over him.
                 self.loud_frames = self.loud_frames + 1 if db > self.cfg["barge_in_dbfs"] else 0
@@ -70,7 +89,8 @@ class Ears:
                     self.seg.start("follow_up", lookback=0.4)
                     await self.bus.emit("heard.started", {"reason": "follow_up"})
                 elif self.transcript_wake:
-                    self.seg.start("room", lookback=0.4)  # transcribed to spot Pip's name, like Ziggletron
+                    self.seg.start("room", lookback=0.4)  # everything heard is transcribed, like Ziggletron (D-92)
+                    await self.bus.emit("heard.started", {"reason": "room"})
             utt = self.seg.feed(frame, db)
             if utt and (utt.reason != "room" or utt.seconds >= 0.5):
                 await self._send_utterance(utt)
@@ -97,7 +117,7 @@ class Ears:
             self.silent_since = None
         elif self.silent_since is None:
             self.silent_since = now
-        state = "speaking" if self.speaking else (
+        state = "mic_off" if self.mic_mode != "on" else "speaking" if self.speaking else (
             "muted_or_quiet" if self.silent_since and now - self.silent_since > 10 else "listening")
         if state != self.state:
             self.state = state
@@ -187,6 +207,19 @@ class Ears:
         await self.stop_ring()
         return {"ok": True}
 
+    async def on_mic(self, msg: Message):
+        mode = msg.data.get("mode", "on")
+        if mode not in ("on", "claps_only", "off"):
+            return {"error": "unknown mode"}
+        if mode != "on":
+            self.seg.cancel()          # anything half-heard is dropped, never sent
+            self.follow_until = 0.0
+        if mode != self.mic_mode:
+            self.claps.reset()
+        self.mic_mode = mode
+        self.bus.status["mic"] = mode
+        return {"ok": True}
+
     async def on_listen(self, msg: Message):
         self.follow_until = time.monotonic() + float(msg.data.get("seconds", 8))
         if self.seg.capturing and self.seg.capture["reason"] == "room":
@@ -203,6 +236,7 @@ async def main() -> None:
     bus.on("ears.stop", ears.on_stop)
     bus.on("ears.tone", ears.on_tone)
     bus.on("ears.listen", ears.on_listen)
+    bus.on("ears.mic", ears.on_mic)
     bus.on("ears.ring", ears.on_ring)
     bus.on("ears.ring_stop", ears.on_ring_stop)
     bus.status.update(activity="listening", wake_words=cfg["ears"]["wake_words"])

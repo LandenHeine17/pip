@@ -12,8 +12,12 @@ with the profiles and says how sure it is:
 Voice is never enough for anything administrative; that needs the dashboard (PIP-NEW-027).
 Voiceprints never leave the Pi and are never sent to Claude (memory policy category 8).
 
-Guests: someone Pip doesn't know who introduces themselves or says "leave me out" gets a voice
-remembered **only for this visit** (in memory, forgotten after 2 hours of silence or a restart, D-77).
+Guests: someone Pip doesn't know who introduces themselves ("I'm Jordan") gets a voice remembered
+**only for this visit** (in memory, forgotten after 2 hours of silence or a restart), so the room
+transcript can say "Jordan" instead of "Someone".
+
+Names: speech-to-text spells names its own way ("Landon" for "Landen"). `match_name` finds the
+household name that sounds the same, and `fix_names` corrects the spelling in what was heard (D-93).
 """
 import asyncio
 import json
@@ -33,7 +37,7 @@ CREATE TABLE IF NOT EXISTS people (
     id        TEXT PRIMARY KEY,
     name      TEXT NOT NULL,
     role      TEXT NOT NULL DEFAULT 'member',   -- admin / member
-    opted_out INTEGER NOT NULL DEFAULT 0,       -- room speech never leaves the Pi (D-77)
+    opted_out INTEGER NOT NULL DEFAULT 0,       -- unused since D-90 (privacy is the mic switch); kept so old databases open
     created   REAL NOT NULL,
     last_heard REAL
 );
@@ -55,7 +59,6 @@ class Match:
     level: str = "unknown"        # sure / probably / unknown
     score: float = 0.0
     guest: bool = False
-    opted_out: bool = False
 
     @property
     def label(self) -> str:
@@ -97,6 +100,7 @@ class People:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
+        self.db.execute("UPDATE people SET opted_out = 0")   # "leave me out" was removed (D-90)
         self.db.commit()
         self.clock = clock
         self.model = v.get("model", "nemo_en_titanet_small")
@@ -105,7 +109,7 @@ class People:
         self.margin = v.get("margin", 0.05)
         self.min_seconds = v.get("min_seconds", 0.8)
         self.embedder = embedder or Embedder(paths.data_dir() / "models" / "speaker" / f"{self.model}.onnx")
-        self.guests: dict[str, dict] = {}   # visit-only voices: {id: {name, emb, opted_out, last}}
+        self.guests: dict[str, dict] = {}   # visit-only voices: {id: {name, emb, last}}
         self._profiles = None               # cache: {person_id: mean voiceprint}
 
     # ---------------------------------------------------------------- people
@@ -121,11 +125,34 @@ class People:
         return dict(r) if r else None
 
     def by_name(self, name: str) -> dict | None:
+        """The household member with this name, allowing for how speech-to-text spells it ("Landon" → Landen)."""
         name = name.strip().lower()
-        for p in self.all():
+        people = self.all()
+        for p in people:
             if p["name"].lower() == name or p["name"].lower().split()[0] == name:
                 return p
-        return None
+        hits = [p for p in people if sounds_like(name, p["name"].split()[0])]
+        return hits[0] if len(hits) == 1 else None
+
+    def names(self) -> list[str]:
+        """First names of the household and this visit's guests (for speech-to-text and the transcript)."""
+        self._expire_guests()
+        out = [p["name"].split()[0] for p in self.all()] + [g["name"] for g in self.guests.values()]
+        return list(dict.fromkeys(n for n in out if n))
+
+    def fix_names(self, text: str) -> str:
+        """Correct the spelling of household names in what was heard: "Landon said…" → "Landen said…"."""
+        names = self.names()
+        if not names or not text:
+            return text
+
+        def fix(m):
+            w = m.group(0)
+            if w in names:
+                return w
+            hits = [n for n in names if sounds_like(w, n)]
+            return hits[0] if len(hits) == 1 else w
+        return re.sub(r"\b[A-Z][a-z]{2,}\b", fix, text)
 
     def add_person(self, name: str, role: str = "member") -> dict:
         name = re.sub(r"\s+", " ", name).strip()[:40]
@@ -142,9 +169,7 @@ class People:
         return self.get(pid)
 
     def update_person(self, pid: str, **fields) -> dict:
-        allowed = {k: v for k, v in fields.items() if k in ("name", "role", "opted_out")}
-        if "opted_out" in allowed:
-            allowed["opted_out"] = int(bool(allowed["opted_out"]))
+        allowed = {k: v for k, v in fields.items() if k in ("name", "role")}
         if allowed:
             self.db.execute(f"UPDATE people SET {', '.join(f'{k} = ?' for k in allowed)} WHERE id = ?", (*allowed.values(), pid))
             self.db.commit()
@@ -189,11 +214,6 @@ class People:
             self._profiles = {pid: (m := np.mean(v, 0)) / (np.linalg.norm(m) or 1.0) for pid, v in by.items()}
         return self._profiles
 
-    def has_opt_outs(self) -> bool:
-        self._expire_guests()
-        return any(g["opted_out"] for g in self.guests.values()) or \
-            bool(self.db.execute("SELECT 1 FROM people WHERE opted_out = 1 LIMIT 1").fetchone())
-
     async def identify(self, pcm: bytes) -> Match:
         """Who is this? Compares with every profile (household and this visit's guests)."""
         if not self.embedder.available or len(pcm) < 2 * 16000 * self.min_seconds:
@@ -215,20 +235,20 @@ class People:
         if guest:
             g = self.guests[pid]
             g["last"] = self.clock()
-            return Match(pid, g["name"], level, round(best, 3), guest=True, opted_out=g["opted_out"])
-        p = self.get(pid) or {"name": "?", "opted_out": 0}
+            return Match(pid, g["name"], level, round(best, 3), guest=True)
+        p = self.get(pid) or {"name": "?"}
         if level == "sure":
             self.db.execute("UPDATE people SET last_heard = ? WHERE id = ?", (self.clock(), pid))
             self.db.commit()
-        return Match(pid, p["name"], level, round(best, 3), opted_out=bool(p["opted_out"]))
+        return Match(pid, p["name"], level, round(best, 3))
 
     # ---------------------------------------------------------------- guests (this visit only)
-    async def add_guest(self, name: str, pcm: bytes, opted_out: bool = False) -> dict | None:
+    async def add_guest(self, name: str, pcm: bytes) -> dict | None:
         if not self.embedder.available or len(pcm) < 2 * 16000 * self.min_seconds:
             return None
         gid = "guest-" + new_id()
         self.guests[gid] = {"name": (name or "Guest").strip()[:30] or "Guest", "emb": await self.embedder.embed(pcm),
-                            "opted_out": opted_out, "last": self.clock()}
+                            "last": self.clock()}
         return self.guests[gid]
 
     def promote_guest(self, gid: str) -> dict:
@@ -240,8 +260,6 @@ class People:
         self.db.execute("INSERT INTO voices (id, person_id, model, emb, source, created) VALUES (?,?,?,?,?,?)",
                         (new_id(), person["id"], self.model, g["emb"].astype(np.float32).tobytes(), "introduction", self.clock()))
         self.db.commit()
-        if g["opted_out"]:
-            self.update_person(person["id"], opted_out=True)
         del self.guests[gid]
         self._profiles = None
         return person
@@ -259,8 +277,40 @@ class People:
     def snapshot(self) -> dict:
         self._expire_guests()
         return {"people": self.all(), "voice_model": self.embedder.available,
-                "guests": [{"id": gid, "name": g["name"], "opted_out": g["opted_out"]} for gid, g in self.guests.items()],
+                "guests": [{"id": gid, "name": g["name"]} for gid, g in self.guests.items()],
                 "m0_recordings": bool(m0_owner_clips(limit_only=True))}
+
+
+COMMON_WORDS = {"london", "landing", "lemon", "listen", "lantern", "london's", "monday", "sunday", "maybe", "money",
+                "mommy", "daddy", "sorry", "sammy", "salmon", "summer", "sandy", "candy", "alexa", "siri"}
+
+
+def _soundex(w: str) -> str:
+    codes = {**dict.fromkeys("bfpv", "1"), **dict.fromkeys("cgjkqsxz", "2"), **dict.fromkeys("dt", "3"),
+             "l": "4", **dict.fromkeys("mn", "5"), "r": "6"}
+    w = re.sub(r"[^a-z]", "", w.lower())
+    if not w:
+        return ""
+    out, last = w[0], codes.get(w[0], "")
+    for ch in w[1:]:
+        c = codes.get(ch, "")
+        if c and c != last:
+            out += c
+        if ch not in "hw":
+            last = c
+    return (out + "000")[:4]
+
+
+def sounds_like(heard: str, name: str) -> bool:
+    """Could speech-to-text have written `heard` for this name? (Landon/Landen yes; London, Lemon no.)"""
+    import difflib
+    a, b = heard.lower().strip(), name.lower().strip()
+    if a == b:
+        return True
+    if not a or not b or a[0] != b[0] or abs(len(a) - len(b)) > 2 or a in COMMON_WORDS or len(b) < 3:
+        return False
+    ratio = difflib.SequenceMatcher(None, a, b).ratio()
+    return ratio >= 0.8 or (ratio >= 0.6 and _soundex(a) == _soundex(b) and (a[-1] == b[-1] or len(a) == len(b)))
 
 
 def m0_owner_clips(limit_only: bool = False) -> list[bytes]:

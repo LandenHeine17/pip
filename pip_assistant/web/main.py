@@ -27,7 +27,7 @@ class State:
         self.trace = collections.deque(maxlen=TRACE_KEEP)
         self.conversation = collections.deque(maxlen=50)  # live only, in memory; never stored (D-53)
         self.listeners: set[asyncio.Queue] = set()
-        self.pip_state = "idle"  # idle / listening / thinking / speaking / ringing / offline (D-86)
+        self.pip_state = "idle"  # idle / listening / thinking / speaking / ringing / offline / mic_off (D-86, D-91)
 
     def push(self, kind: str, data: dict) -> None:
         for q in list(self.listeners):
@@ -103,6 +103,15 @@ def build_app(bus, state: State) -> Starlette:
     async def memory_action(request):
         return await core_action(request, "core.memory_action", ("text", "about"), ("action", "id", "category", "private", "value"))
 
+    async def mic(request):
+        """GET: is Pip listening? POST {"value": true/false}: the dashboard's Listening switch (D-91)."""
+        data = {"value": bool((await request.json()).get("value"))} if request.method == "POST" else {}
+        try:
+            r = await bus.request("core", "core.mic", data, timeout=5)
+        except Exception as e:
+            return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
+        return JSONResponse(r.data)
+
     async def conversation(request):
         return JSONResponse(list(state.conversation)[::-1])
 
@@ -128,7 +137,7 @@ def build_app(bus, state: State) -> Starlette:
                              Route("/api/alerts", alerts), Route("/api/alerts/action", alert_action, methods=["POST"]),
                              Route("/api/people", people), Route("/api/people/action", people_action, methods=["POST"]),
                              Route("/api/memory", memory), Route("/api/memory/action", memory_action, methods=["POST"]),
-                             Route("/api/stream", stream)])
+                             Route("/api/mic", mic, methods=["GET", "POST"]), Route("/api/stream", stream)])
 
 
 async def main() -> None:
@@ -164,6 +173,11 @@ async def main() -> None:
         state.push("people", {"type": msg.type, **msg.data})
 
     bus.subscribe("voice.*", on_voice)
+
+    async def on_mic(msg: Message):
+        state.push("mic", msg.data)
+
+    bus.subscribe("mic.changed", on_mic)
     bus.subscribe("conversation.line", on_line)
     bus.subscribe("health.snapshot", on_health)
     bus.subscribe("trace.entry", on_trace)

@@ -30,7 +30,7 @@ end_silence_seconds = 0.7          # A pause this long means you've finished spe
 max_utterance_seconds = 12.0       # Longest single request.
 wait_for_speech_seconds = 4.0      # In the follow-up window, how long to wait for you to start talking.
 after_wake_seconds = 0.7           # After the wake word, how long to wait for a question (else it came before the name).
-transcript_wake = true             # Also spot Pip's name in the transcript of room speech, like Ziggletron (D-77).
+transcript_wake = true             # Transcribe everything said in the room, like Ziggletron (D-92). Off: only the wake word.
 
 [voices]
 # Recognising who's speaking (step 5, D-87). Voiceprints stay on the Pi and are never sent to Claude.
@@ -50,10 +50,32 @@ offline_model = "base.en"          # Whisper model on the Pi, used only when Gro
 # Words that help speech-to-text spell names and terms right (from the M0 benchmark).
 word_list = "Pip, Hey Pip, Pippletron, Pippy, Pips, Ziggletron. Raspberry Pi, ESP32, ESPHome, MQTT, Tailscale, Groq, Claude, Eightree plug, desk lamp, Lincoln, Nebraska."
 
+[social]
+# Pip listens to the room like Ziggletron and decides for himself when to join in (D-92).
+join_in = true                     # Off: he only answers when called or his name comes up.
+mood = "normal"                    # How often he considers joining in: quiet (2 min), normal (40 s), chatty (15 s).
+pause_seconds = 1.2                # The room must pause this long first.
+live_conversation_seconds = 60.0   # Only if someone spoke within this long.
+quiet_hours = "23:00-07:00"        # Never joins in (or says welcome back) at these times (D-66).
+welcome_back_minutes = 20          # "Hey Landen, welcome back" after the room was quiet this long (0 = never).
+
+[mic]
+# Switching listening off (D-91): the dashboard's Listening switch, or two claps. Both must be on.
+claps = true                       # Two claps switch listening off and on.
+clap_peak_dbfs = -20.0             # A clap must be at least this loud at its peak…
+clap_rise_db = 20.0                # …jump this far above the room's background…
+clap_drop_db = 15.0                # …and fall this far again…
+clap_decay_ms = 150                # …within this long.
+clap_attack_ms = 10                # Loudest at most this long after it starts (speech builds up slower).
+clap_width_ms = 80                 # Near its loudest for at most this long.
+clap_gap_min_ms = 150              # The two claps come this far apart…
+clap_gap_max_ms = 800              # …at most.
+clap_quiet_after_ms = 600          # Then this long with no third clap and no talking.
+clap_quiet_before_ms = 300         # And the room must have been quiet just before the first.
+clap_talk_dbfs = -45.0             # Louder than this counts as talking, not quiet.
+
 [conversation]
 follow_up_seconds = 8.0            # After Pip answers, talk again within this time without saying his name.
-keep_minutes = 10.0                # How long Pip remembers the current conversation (in memory only).
-max_turns = 10                     # How many recent exchanges Pip keeps in mind.
 wait_after_name_seconds = 5.0      # Said only his name? Pip listens quietly this long for the rest (no "Yes?" talking over you).
 unfinished_wait_seconds = 2.0      # Stopped mid-sentence ("what's the...")? Pip waits this long for the rest before answering.
 max_sentences = 2                  # Pip stops after this many sentences unless you asked for detail or a story (D-79).

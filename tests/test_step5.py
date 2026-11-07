@@ -172,18 +172,14 @@ async def test_people_commands(people, mem):
     await people.add_samples(alex["id"], [voice("alex")], "guided")
     me = await people.identify(voice("alex"))
     assert await pc.handle("Pip, who am I?", me, voice("alex")) == "You sound like Alex."
-    assert (await pc.handle("Pip, leave me out", me, voice("alex"))).startswith("Okay Alex, I'll leave you out")
-    assert people.get(alex["id"])["opted_out"] == 1 and people.has_opt_outs()
-    assert (await pc.handle("Pip, include me again", me, voice("alex"))) == "Okay Alex, you're back in."
+    assert await pc.handle("Pip, leave me out", me, voice("alex")) is None   # removed (D-90): the mic switch instead
     # A visitor: remembered for this visit only
     assert await pc.handle("Hey Pip, I'm Jordan.", Match(), voice("guest")) == \
         "Nice to meet you, Jordan! I'll remember your voice for this visit."
     g = await people.identify(voice("guest"))
     assert g.guest and g.name == "Jordan"
-    assert await pc.handle("Pip, leave me out", g, voice("guest")) == "Okay, I'll leave you out for this visit."
-    assert (await people.identify(voice("guest"))).opted_out
     people.clock.t += 3 * 3600                               # 2 hours of quiet: forgotten
-    assert not people.has_opt_outs() and (await people.identify(voice("guest"))).level == "unknown"
+    assert (await people.identify(voice("guest"))).level == "unknown"
     # Introducing yourself as a household member with no voice yet starts voice learning
     sam = people.add_person("Sam")
     r = await pc.handle("Hey Pip, my name is Sam.", Match(), voice("sam"))
@@ -282,19 +278,21 @@ async def test_claude_hears_who_is_talking_and_what_pip_remembers(tmp_path):
     await finish(bus, tasks)
 
 
-async def test_opted_out_room_speech_never_leaves_the_pi(tmp_path):
+async def test_room_speech_from_everyone_goes_in_the_transcript_with_who_said_it(tmp_path):
     clock = Clock()
     stt = FakeSTT("did you see the game")
     bus, people, memory, conv, ears, got, tasks = await setup_bus(tmp_path, clock, stt)
     sam = people.add_person("Sam")
     await people.add_samples(sam["id"], [voice("sam")], "guided")
-    people.update_person(sam["id"], opted_out=True)
+    people.db.execute("UPDATE people SET opted_out = 1")       # an old opt-out is ignored now (D-90)
     await ears.emit("heard.utterance", *utt("room", voice("sam")))
     await asyncio.sleep(0.2)
-    assert stt.calls == 0 and "room.left_out" in [r["type"] for r in bus.trace.recent()]
-    await ears.emit("heard.utterance", *utt("room", voice("tv")))   # someone else: still transcribed (D-77)
+    stt.text = "yeah, Landon's team won"
+    await ears.emit("heard.utterance", *utt("room", voice("tv")))
     await asyncio.sleep(0.2)
-    assert stt.calls == 1
+    assert stt.calls == 2
+    assert [x.split("] ", 1)[1] for x in conv.transcript.render()] == ["Sam: did you see the game",
+                                                                         "Someone: yeah, Landon's team won"]
     await finish(bus, tasks)
 
 

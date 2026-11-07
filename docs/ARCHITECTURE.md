@@ -113,23 +113,21 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    S["Someone speaks"] --> W{"Wake word?"}
-    W -- yes --> UP["Send to Groq, then answer<br/>(anyone)"]
-    W -- no --> M{"Mode"}
-    M -- Private --> DROP["Nothing leaves the Pi"]
-    M -- Social --> ID{"Has this speaker opted out?<br/>(recognised on the Pi)"}
-    ID -- "no: household member,<br/>guest or unknown voice" --> ROOM["Send to Groq → room context;<br/>question check may ask Claude to chime in"]
-    ID -- "yes, opted out" --> DROP
+    S["Someone speaks"] --> L{"Listening?<br/>(dashboard switch AND clap switch;<br/>speakerphone not muted)"}
+    L -- "no" --> DROP["Nothing is heard or sent<br/>(clapped off: only the clap detector runs, on the Pi)"]
+    L -- "yes" --> V{"A human voice?<br/>(checked on the Pi)"}
+    V -- "no (noise)" --> DROP2["Dropped on the Pi"]
+    V -- "yes" --> UP["Send to Groq → room transcript (RAM only)<br/>→ answer, Claude decides, or maybe join in"]
 ```
 
-**Owner decision D-77:** in Social mode, speech nobody addressed to Pip is sent to Groq for **everyone** (household members, guests and unknown voices), **except people who have opted out**, whose speech never leaves the Pi. Pip recognises the speaker on the Pi first (a fraction of a second) to check for opt-outs. Anyone can say "Pip, leave me out". For a guest, Pip remembers their voice **for that visit only**, just to keep leaving them out, then forgets it.
+**Owner decisions D-90 to D-92 (2026-11-07):** like Ziggletron, while Pip is listening **everything said in the room is sent to Groq** and kept in a short in-memory transcript that Claude sees. There are no per-person opt-outs (D-77's "leave me out" was removed); the privacy control is **switching listening off**: the dashboard's Listening switch or two claps (separate switches; claps can't undo the dashboard), or the speakerphone's mute button.
 
 What else leaves the Pi:
 
 | To | What | When |
 |---|---|---|
-| Groq | Audio of addressed requests, and (Social mode) room speech from everyone who hasn't opted out | As it happens |
-| Claude | The text of the conversation, relevant memories, the allowed actions | Each answer or chime-in check |
+| Groq | Audio of everything said in the room while Pip is listening, plus the household's first names as spelling hints | As it happens |
+| Claude | The room transcript (last 40 lines), relevant memories, the allowed actions | Each answer, mention or join-in check (at most every ~40 s) |
 | Open-Meteo | "Lincoln, Nebraska" | Weather updates |
 | Google | Calendar events (M3, D-19) | Sync |
 | GitHub | **Code only.** Never personal data (checked on every commit) | When changes are pushed |
@@ -266,8 +264,8 @@ Built in small steps. Each step ends with something you can try.
 | 2. Ears: speakerphone, wake words, "stop", Piper voice. **Done 2026-11-04.** Talking over Pip stops him (the speakerphone removes his own voice). Pippletron needs strictness 0.8 because "Ziggletron" sounds similar | Say "Pippletron" and hear a chime and a fixed reply |
 | 3. Core + Groq + Claude: real answers. **Done 2026-11-04.** First words ~2 s after you stop (Groq 0.4 s, pre-started Claude 1.25 s). Weather from Open-Meteo; web search only when needed ("Let me look that up"). After the owner's test: short roommate answers (D-79), name spotted in transcripts too, sonnet at low effort, "One sec." after 3 s (D-80); 0.7 s waits, listens quietly after just the name, joins a paused sentence, two-sentence cap (D-81) | Ask questions and get spoken answers |
 | 4. Timers, reminders, alarms (incl. offline). **Built 2026-11-04; fixed after your test 2026-11-05** (change anything in any wording, Claude fills in what the rules miss (D-84); no phantom "Thank you" (D-85); thinking tone and Pip's state (D-86); refreshed dashboard). Pip's own commands (timers, alarms, reminders, voice calendar, "what time is it", "stop") are understood on the Pi without Claude; everything is saved instantly and survives restarts; alarms ring until answered ("okay", "stop", "I'm up", his name, "snooze ten minutes") or shut off on the dashboard. Offline, Whisper on the Pi hears commands (D-83). Not yet: "earned" alarms (need Claude to judge, later in M1a), reminders for one person (need voice recognition, step 5), ringtone settings page (step 8) | Use Pip for timers like Ziggletron |
-| 5. Memory (with approval inbox), people and voices. **Built 2026-11-05 overnight, waiting for your test.** "Remember / forget" worded by Claude and checked by Pip; sensitive or about-someone-else items wait in the inbox (D-88); Memory Center on the dashboard; people list; voices recognised on the Pi with TitaNet (sure / probably / someone, D-87); learn a voice by reading five sentences or from M0 recordings; "leave me out" keeps your room speech on the Pi; visitors remembered for the visit only (D-89) | "Remember that…", recognised speakers |
-| 6. Social mode: room context, question check, chime-ins | Pip joins in like Ziggletron, with the privacy rules above |
+| 5. Memory (with approval inbox), people and voices. **Built 2026-11-05, installed.** "Remember / forget" worded by Claude and checked by Pip; sensitive or about-someone-else items wait in the inbox (D-88); Memory Center on the dashboard; people list; voices recognised on the Pi with TitaNet (sure / probably / someone, D-87); learn a voice by saying "Pip, I'm …" and reading five sentences, or from M0 recordings; visitors remembered for the visit only (D-89) | "Remember that…", recognised speakers |
+| 6. Social mode: room transcript, answer/mention/join-in like Ziggletron, mic switch with claps, names spelled right. **Built 2026-11-07, waiting for your test.** (D-90–D-93) | Pip follows the room conversation and joins in like Ziggletron |
 | 7. Screen: face, widgets, layouts | The face on the monitor |
 | 8. Settings page, accounts, migration from Ziggletron | Switch Pip on side by side with Ziggletron |
 
