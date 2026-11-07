@@ -65,7 +65,7 @@ flowchart LR
     J -- yes --> C["Claude: join in (SAY) or PASS"]
     J -- no --> N["Just listens"]
 ```
-- **Privacy is the mic switch** (D-90, D-91): a **Listening** switch on the dashboard, or **two claps** (Pip plays a falling tone and stops listening; clap twice again for a rising tone and he's back). The two are separate: if the dashboard switched him off, claps can't turn him on. Clapped off, he hears nothing but claps; switched off on the dashboard, nothing at all. The speakerphone's mute button works too. "Leave me out" was removed. Pip's notice to new people uses your wording (D-61). You tell your roommate yourself (D-67).
+- **Privacy is the mic switch** (D-90, D-91): a **Listening** switch on the dashboard. **Two claps** will do the same (a falling tone, and he stops listening; clap twice again for a rising tone) once the clap detector is tuned on your recordings: **not finished, off for now**. The two are separate: if the dashboard switched him off, claps can't turn him on. Clapped off, he hears nothing but claps; switched off on the dashboard, nothing at all. The speakerphone's mute button works too. "Leave me out" was removed. Pip's notice to new people uses your wording (D-61). You tell your roommate yourself (D-67).
 - Quiet hours 23:00–07:00: no joining in or welcome-backs; alarms still ring (D-66).
 - **Welcome back:** after the room was quiet for 20 minutes, someone he recognises gets "Hey Landen, welcome back." (once an hour).
 
