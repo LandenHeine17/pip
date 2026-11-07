@@ -42,6 +42,17 @@ def thinking_tone(rate: int = 22050) -> np.ndarray:
     return (sound * 32767).astype(np.int16)
 
 
+def mic_tone(on: bool, rate: int = 22050) -> np.ndarray:
+    """Listening switched back on (rising two notes) or off (falling two notes) (D-91)."""
+    def tone(freq, secs):
+        t = np.arange(int(rate * secs)) / rate
+        env = np.minimum(1, t / 0.015) * np.exp(-t * 9)
+        return 0.16 * np.sin(2 * np.pi * freq * t) * env
+    notes = (523, 784) if on else (784, 523)
+    sound = np.concatenate([tone(notes[0], 0.12), tone(notes[1], 0.22)])
+    return (sound * 32767).astype(np.int16)
+
+
 RINGTONES = ("classic", "kitchen", "chimes", "gentle")
 
 

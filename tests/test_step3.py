@@ -82,6 +82,9 @@ class FakeSTT:
         return self.text
 
 
+asked = []
+
+
 async def setup(tmp_path, stt_text, sentences=("Canberra is the capital.", "Not Sydney!")):
     sock = tmp_path / "core.sock"
     bus = Bus(sock, Trace(tmp_path / "pip.db"), Health(["ears", "thinker"], restart=False))
@@ -98,6 +101,7 @@ async def setup(tmp_path, stt_text, sentences=("Canberra is the capital.", "Not 
         ears.on(t, record)
 
     async def ask(msg):
+        asked.append(msg.private.get("text"))
         for s in sentences:
             await thinker.emit("answer.sentence", {"answer_id": msg.data["answer_id"]}, private={"text": s})
         return msg.reply({"first_sentence_s": 0.5}, private={"text": " ".join(sentences)}, source="thinker")
@@ -133,7 +137,7 @@ async def test_question_is_answered_out_loud(tmp_path):
     assert ("ears.chime", None, None) in got
     assert says == ["Canberra is the capital.", "Not Sydney!"]
     assert ("ears.listen", None, 8.0) in got                      # follow-up window opened
-    assert [h["role"] for h in conv.history] == ["user", "pip"]   # remembered for follow-ups (RAM only)
+    assert [(x["speaker"], x["ours"]) for x in conv.transcript.lines] == [("Someone", False), ("Pip", True)]  # RAM only
     trace = json.dumps(bus.trace.recent())
     assert "Canberra" not in trace and "Australia" not in trace   # words never logged
     await finish(bus, tasks)
@@ -177,7 +181,7 @@ async def test_paused_mid_sentence_waits_and_joins_the_rest(tmp_path):
     await ears.emit("heard.utterance", {"reason": "follow_up", "had_speech": True, "seconds": 1.5},
                     private={"audio_b64": audio_b64()})
     await asyncio.sleep(0.3)
-    assert conv.history[0]["text"] == "Pippletron, what's the capital of Australia?"
+    assert asked[-1] == "Pippletron, what's the capital of Australia?"
     assert [t for k, t, _ in got if k == "ears.say"] == ["Canberra is the capital.", "Not Sydney!"]
     await finish(bus, tasks)
 

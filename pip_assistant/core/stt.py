@@ -25,6 +25,12 @@ def wav_bytes(pcm: bytes, rate: int = 16000) -> bytes:
     return buf.getvalue()
 
 
+def with_names(word_list: str, names: list[str]) -> str:
+    """The word list plus the household's names, so Whisper spells them the household's way (D-93)."""
+    extra = [n for n in names if n and n.lower() not in word_list.lower()]
+    return (word_list.rstrip(". ") + ". " + ", ".join(extra) + ".") if extra else word_list
+
+
 def secret(name: str) -> str:
     f = paths.data_dir() / "secrets.toml"
     return tomllib.loads(f.read_text()).get(name, "") if f.exists() else ""
@@ -35,6 +41,7 @@ class GroqSTT:
 
     def __init__(self, model: str, word_list: str, timeout: float = 6.0):
         self.model, self.word_list = model, word_list
+        self.names: list[str] = []   # household names, set by pip-core before each request (D-93)
         key = secret("groq_api_key")
         if not key:
             raise RuntimeError("No groq_api_key in ~/pip-data/secrets.toml")
@@ -43,8 +50,8 @@ class GroqSTT:
 
     async def transcribe(self, pcm: bytes) -> str:
         data = {"model": self.model, "language": "en", "temperature": "0", "response_format": "json"}
-        if self.word_list:
-            data["prompt"] = self.word_list
+        if prompt := with_names(self.word_list, self.names):
+            data["prompt"] = prompt
         r = await self.http.post(self.URL, data=data, files={"file": ("speech.wav", wav_bytes(pcm), "audio/wav")})
         r.raise_for_status()
         return r.json().get("text", "").strip()
@@ -55,6 +62,7 @@ class LocalWhisperSTT:
 
     def __init__(self, model: str = "base.en", word_list: str = "", threads: int = 2):
         self.model_name, self.word_list, self.threads = model, word_list, threads
+        self.names: list[str] = []
         self.model = None
         self.lock = asyncio.Lock()
 
@@ -68,7 +76,7 @@ class LocalWhisperSTT:
         if self.model is None:
             self.model = self._load()
         audio = np.frombuffer(pcm, np.int16).astype(np.float32) / 32768
-        segs, _ = self.model.transcribe(audio, language="en", beam_size=1, initial_prompt=self.word_list or None,
+        segs, _ = self.model.transcribe(audio, language="en", beam_size=1, initial_prompt=with_names(self.word_list, self.names) or None,
                                         vad_filter=True, condition_on_previous_text=False)
         return " ".join(s.text.strip() for s in segs).strip()
 

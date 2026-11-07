@@ -9,6 +9,7 @@ from ..common.messages import Message
 from .bus import Bus
 from .conversation import Conversation
 from .memory import Memory, Refused
+from .mic import MicSwitch
 from .people import People, m0_owner_clips
 from .schedule import Schedule
 from .stt import make_local_stt, make_stt
@@ -23,7 +24,9 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
     health = Health(cfg["programs"]["expected"], stuck_after=cfg["programs"]["stuck_after_seconds"],
                     restart=cfg["programs"]["restart_stuck"])
     bus = Bus(paths.core_socket(), trace, health)
-    bus.core_handlers["core.health"] = lambda m: {"programs": health.snapshot(), "version": __version__}
+    mic = MicSwitch(paths.database())
+    bus.core_handlers["core.health"] = lambda m: {"programs": health.snapshot(), "version": __version__,
+                                                  "mic": mic.snapshot()}
     bus.core_handlers["core.trace"] = lambda m: {"entries": trace.recent(int(m.data.get("limit", 200)))}
     try:
         stt = make_stt(cfg)
@@ -33,7 +36,7 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
     schedule = Schedule(paths.database(), bus, cfg)
     people = People(paths.database(), cfg)
     memory = Memory(paths.database())
-    conv = Conversation(bus, cfg, stt, schedule=schedule, local_stt=make_local_stt(cfg), people=people, memory=memory)
+    conv = Conversation(bus, cfg, stt, schedule=schedule, local_stt=make_local_stt(cfg), people=people, memory=memory, mic=mic)
     bus.core_handlers["core.alerts"] = lambda m: ({"count": len(schedule.active())}, schedule.snapshot())
     bus.core_handlers["core.alert_action"] = lambda m: alert_action(schedule, conv, m)
     bus.core_handlers["core.people"] = lambda m: ({"count": len(people.all())},
@@ -41,6 +44,7 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
     bus.core_handlers["core.people_action"] = lambda m: people_action(people, memory, conv, m)
     bus.core_handlers["core.memory"] = lambda m: (memory.counts(), memory_snapshot(memory, people))
     bus.core_handlers["core.memory_action"] = lambda m: memory_action(memory, people, m)
+    bus.core_handlers["core.mic"] = lambda m: mic_action(conv, m)
     bus.schedule = schedule
     bus.memory = memory
     return bus, trace, health
@@ -70,9 +74,6 @@ async def people_action(people: People, memory: Memory, conv: Conversation, m: M
         if act == "role":
             people.update_person(pid, role=m.data.get("role"))
             return {"ok": True}
-        if act == "opt_out":
-            people.update_person(pid, opted_out=bool(m.data.get("value")))
-            return {"ok": True}
         if act == "remove":
             n = memory.forget_person(pid)
             people.remove_person(pid)
@@ -94,6 +95,13 @@ async def people_action(people: People, memory: Memory, conv: Conversation, m: M
     except ValueError as e:
         return {"error": str(e)}
     return {"error": f"unknown action {act}"}
+
+
+async def mic_action(conv: Conversation, m: Message) -> dict:
+    """The dashboard's Listening switch (D-91). No "value": just report the state."""
+    if "value" in m.data:
+        return {"ok": True, **await conv.set_mic(bool(m.data["value"]))}
+    return {"ok": True, **conv.mic.snapshot()}
 
 
 def memory_action(memory: Memory, people: People, m: Message):

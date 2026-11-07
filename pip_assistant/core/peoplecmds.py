@@ -4,8 +4,7 @@
                                               (sentences to read pop up on the dashboard); already learned:
                                               one more sample. Someone new: remembered for this visit only.
     "Pip, learn my voice"                      the same; if Pip doesn't know who's talking he asks their name
-    "Pip, leave me out"        your room speech stays on the Pi from now on (D-77); guests: this visit only
-    "Pip, include me again"    undo that
+    (names are matched the way they sound, so "I'm Landon" finds Landen, D-93)
     "Pip, who am I?"           who Pip thinks is talking
     offline "remember that…"   goes to the memory inbox, since Claude can't word and sort it right now
 
@@ -16,9 +15,6 @@ import re
 import time
 from dataclasses import dataclass
 
-LEAVE_OUT = re.compile(r"\b(leave me out|opt me out|don'?t (listen to|send) me|stop listening to me|"
-                       r"don'?t send my (voice|speech))\b", re.I)
-INCLUDE = re.compile(r"\b(include me( again| back)?|opt me (back )?in|you can listen to me( again)?)\b", re.I)
 WHO = re.compile(r"\b(who am i|do you know who i am|do you recogni[sz]e (me|my voice)|whose voice is this|who'?s talking)\b", re.I)
 LEARN = re.compile(r"\b((learn|remember|know|recogni[sz]e|save|record|get|train on) (my|our|me by my) voice|"
                    r"(re-?learn|retrain|update) my voice|learn (who i am|to recogni[sz]e me|me)|voice (learning|training))\b", re.I)
@@ -60,26 +56,6 @@ class PeopleCommands:
 
     async def handle(self, text: str, speaker, pcm: bytes, offline: bool = False) -> str | None:
         p = self.people
-        if LEAVE_OUT.search(text):
-            if speaker and speaker.level != "unknown" and speaker.person_id:
-                if speaker.guest:
-                    p.guests[speaker.person_id]["opted_out"] = True
-                    return "Okay, I'll leave you out for this visit."
-                p.update_person(speaker.person_id, opted_out=True)
-                return f"Okay {speaker.name}, I'll leave you out. What you say in the room stays on the Pi. You can still call me by name."
-            if not p.embedder.available:
-                return "I can't recognise voices yet, so I can't leave just you out."
-            if await p.add_guest("Guest", pcm, opted_out=True):
-                return "Okay, I'll leave you out for this visit."
-            return "Say that again a bit longer, so I can learn your voice."
-        if INCLUDE.search(text):
-            if speaker and speaker.person_id and speaker.level != "unknown":
-                if speaker.guest:
-                    p.guests[speaker.person_id]["opted_out"] = False
-                else:
-                    p.update_person(speaker.person_id, opted_out=False)
-                return f"Okay {speaker.name}, you're back in."
-            return "I don't recognise your voice, so you weren't left out."
         if WHO.search(text):
             if speaker and speaker.level == "sure":
                 return f"You sound like {speaker.name}."

@@ -64,6 +64,27 @@ def is_action(text: str) -> bool:
     return text.lstrip(" `\n").upper().startswith("ACTION")
 
 
+SAY = re.compile(r"\bSAY:\s*")
+
+
+def classify(head: str, held: bool = False, final: bool = False):
+    """How to treat a reply from its start (D-84, D-92). Returns (mode, text to speak) or None if it's too
+    early to tell. Modes: "speak", "action" (an ACTION line for pip-core, never spoken), "pass" (stay quiet).
+    held=True (joining in): nothing is spoken unless it comes after "SAY:"; anything else is thinking aloud."""
+    h = head.lstrip(" `\n")
+    if not final and len(h) < 6 and not SAY.search(head):
+        return None
+    if is_action(h):
+        return "action", ""
+    if re.match(r"PASS\b", h):
+        return "pass", ""
+    if m := SAY.search(head):
+        return "speak", head[m.end():]
+    if held:
+        return ("pass", "") if final else None
+    return "speak", head
+
+
 class ClaudeCLI:
     def __init__(self, model: str = "", web_search: bool = True, timeout: float = 45.0, effort: str = ""):
         self.exe = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
@@ -94,9 +115,11 @@ class ClaudeCLI:
                 self.warm.kill()
         self.warm, self.warm_prompt = await self._spawn(system_prompt), system_prompt
 
-    async def ask(self, answer_id: str, system_prompt: str, user_text: str, on_sentence, on_searching):
+    async def ask(self, answer_id: str, system_prompt: str, user_text: str, on_sentence, on_searching,
+                  held: bool = False):
         """Stream an answer. Calls on_sentence(text) per sentence and on_searching() once if it searches.
-        Returns (full_text, info)."""
+        held=True: only words after "SAY:" are spoken (joining in). Returns (full_text, info); info["passed"]
+        is True when Claude chose to stay quiet."""
         if self.warm and self.warm.returncode is None and self.warm_prompt == system_prompt:
             proc, self.warm = self.warm, None
         else:
@@ -106,7 +129,7 @@ class ClaudeCLI:
         t0 = time.perf_counter()
         info = {"first_sentence_s": None, "searched": False}
         split, full = SentenceSplitter(), []
-        mode, head, pieces = None, "", []  # mode: "speak", or "action" (a timer/calendar request for pip-core, never spoken)
+        mode, head, pieces = None, "", []  # mode: "speak", "action" (for pip-core, never spoken) or "pass" (quiet)
 
         async def speak(piece: str):
             for s in split.feed(piece):
@@ -138,27 +161,28 @@ class ClaudeCLI:
                             pieces.append(piece)
                             if mode is None:
                                 head += piece
-                                if len(head.lstrip(" `\n")) < 6:
-                                    continue  # not sure yet whether it's an ACTION line
-                                mode = "action" if is_action(head) else "speak"
-                                piece = head
+                                decided = classify(head, held)
+                                if decided is None:
+                                    continue  # not sure yet whether it's an ACTION line, PASS or SAY:
+                                mode, piece = decided
                             if mode == "speak":
                                 await speak(piece)
                     elif ev.get("type") == "result":
                         info["is_error"] = ev.get("is_error", False)
                         info["cost_usd"] = ev.get("total_cost_usd")
             await asyncio.wait_for(read(), self.timeout)
-            if mode is None:  # a very short answer ("Sure.")
-                mode = "action" if is_action(head) else "speak"
+            if mode is None:  # a very short answer ("Sure."), or a join-in that never said SAY:
+                mode, rest = classify(head, held, final=True)
                 if mode == "speak":
-                    await speak(head)
+                    await speak(rest)
             if mode == "action":
                 info["action"] = "".join(pieces)
+            info["passed"] = mode == "pass"
             for s in split.flush():
                 full.append(s)
                 await on_sentence(s)
             await proc.wait()
-            if proc.returncode not in (0, None) and not full and mode != "action":
+            if proc.returncode not in (0, None) and not full and mode not in ("action", "pass"):
                 err = (await proc.stderr.read()).decode(errors="replace")[-200:]
                 raise RuntimeError(f"claude exited {proc.returncode}: {err}")
         finally:

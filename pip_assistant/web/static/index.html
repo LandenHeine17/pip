@@ -31,6 +31,10 @@ h1{font-size:1.35rem;margin:0;letter-spacing:-.01em} h2{font-size:1rem;margin:0;
 .st-speaking .dot{background:var(--accent2);animation:pulse .5s infinite}
 .st-ringing .dot{background:var(--bad);animation:pulse .4s infinite}
 .st-offline .dot{background:var(--warn)}
+.st-mic_off .dot{background:var(--muted, #999)}
+.micbtn{border-radius:999px;padding:7px 14px;font-weight:600;font-size:.9rem;border:0;cursor:pointer;background:var(--good);color:#fff;box-shadow:var(--shadow)}
+.micbtn.off{background:var(--bad)}
+.micbtn small{font-weight:400;opacity:.9}
 @keyframes pulse{50%{transform:scale(1.35);opacity:.6}}
 .grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px}
 @media (max-width:860px){.grid{grid-template-columns:1fr}}
@@ -96,8 +100,9 @@ code{font-size:.8rem}
 <main>
 <header>
   <div class="brand"><div class="logo">P</div>
-    <div><h1>Pip</h1><div class="sub">Step 5 · answers out loud; timers, alarms and the calendar; memory, people and voices</div></div></div>
-  <div class="status"><span class="state" id="state"><span class="dot"></span><span id="statetext">…</span></span>
+    <div><h1>Pip</h1><div class="sub">Step 6 · listens to the room like Ziggletron and joins in; timers, calendar, memory, voices</div></div></div>
+  <div class="status"><button id="mic" class="micbtn" onclick="toggleMic()" title="Switch listening off or on. Two claps also switch it (but can't undo this switch).">Listening…</button>
+    <span class="state" id="state"><span class="dot"></span><span id="statetext">…</span></span>
     <span class="sub" id="conn">Connecting…</span></div>
 </header>
 
@@ -146,7 +151,7 @@ code{font-size:.8rem}
     <select id="prole"><option value="member">Member</option><option value="admin">Admin</option></select><button class="primary">Add person</button></form>
   <div class="sub" style="margin-top:8px"><b>Teaching Pip your voice:</b> once your name is on this list, just say <b>"Pip, I'm</b> <i>your name</i><b>"</b> (or "Pip, learn my voice"). Pip says hi, beeps, and five short sentences appear here: read each one out loud after the beep. It takes about a minute. Check with "Pip, who am I?".<br>
   <b>Use my M0 recordings</b> (owner only): uses 8 recordings you already made in the M0 tests instead; nothing to read.<br>
-  Voiceprints stay on the Pi. <b>Left out</b>: what that person says in the room stays on the Pi (they can still call Pip by name). Visitors who say "Pip, I'm Sam" are remembered for that visit only; if they live here, press <b>Add to household</b>.</div>
+  Voiceprints stay on the Pi. Pip hears everyone in the room; to stop him listening, use the <b>Listening</b> switch at the top or clap twice. Visitors who say "Pip, I'm Sam" are remembered for that visit only; if they live here, press <b>Add to household</b>.</div>
 </section>
 </div>
 
@@ -176,7 +181,14 @@ const WHAT = {core:"The conductor: routes messages, keeps the trace, watches hea
   web:"This dashboard and the TV page"};
 const ORDER = ["core","ears","thinker","web"];
 const STATE = {ok:["ok","Running"], stuck:["stuck","Stuck"], missing:["missing","Not running"]};
-const PIPSTATE = {idle:"Idle", listening:"Listening", thinking:"Thinking", speaking:"Speaking", ringing:"Ringing", offline:"Offline"};
+const PIPSTATE = {idle:"Idle", listening:"Listening", thinking:"Thinking", speaking:"Speaking", ringing:"Ringing", offline:"Offline", mic_off:"Not listening"};
+let micState = null;
+function renderMic(m){ if(!m || m.dashboard === undefined) return; micState = m; const b = $("mic");
+  b.className = "micbtn" + (m.listening ? "" : " off");
+  b.innerHTML = m.listening ? "Listening" : !m.dashboard ? "Mic off <small>· press to turn on</small>" : "Mic off <small>(clapped) · clap twice or press</small>"; }
+async function toggleMic(){ const on = !(micState && micState.listening);
+  try{ renderMic(await (await fetch("/api/mic",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({value:on})})).json()); }catch(e){ alert("Couldn't reach Pip"); } }
+async function loadMic(){ try{ renderMic(await (await fetch("/api/mic",{cache:"no-store"})).json()); }catch(e){} }
 function setState(s){ $("state").className = "state st-"+s; $("statetext").textContent = PIPSTATE[s] || s; }
 function dur(s){ if(s==null) return "–"; s=Math.round(s); return s<60?`${s}s`:s<3600?`${Math.floor(s/60)}m`:`${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`; }
 function renderHealth(p){
@@ -219,6 +231,7 @@ function live(){
   es.onopen = () => { $("conn").textContent = "Live"; };
   es.addEventListener("health", ev => { renderHealth(JSON.parse(ev.data)); $("conn").textContent = "Live"; });
   es.addEventListener("state", ev => setState(JSON.parse(ev.data).state));
+  es.addEventListener("mic", ev => renderMic(JSON.parse(ev.data)));
   es.addEventListener("conversation", ev => { const l = JSON.parse(ev.data); conv.unshift(l); renderConv(); if (l.who === "pip") { loadMemory(); loadPeople(); } });
   es.addEventListener("people", () => loadPeople());
   es.addEventListener("trace", ev => { const e = JSON.parse(ev.data); e._fresh = true; rows.unshift(e); rows = rows.slice(0,200); renderTrace(); });
@@ -313,15 +326,14 @@ function renderPeople(){
      <div class="sub">${e.retry ? "Pip didn't catch that: read it again after the beep." : "After Pip's beep, read this out loud in your normal voice."}</div>
      <div style="display:flex;gap:6px;margin:10px 0">${e.phrases.map((_,i) => `<span style="flex:1;height:6px;border-radius:3px;background:${i<e.done?"var(--accent)":"var(--soft)"}"></span>`).join("")}</div>
      <button class="ghost" onclick="pAct({action:'enrol_cancel'})">Stop</button></div>` : "";
-  $("people").innerHTML = ppl.people.map(p => `<div class="item"><div><b>${esc(p.name)}</b> <span class="pill ${p.role==="admin"?"ok":""}" style="background:var(--soft)">${p.role}</span>${p.opted_out?` <span class="pill stuck">left out</span>`:""}
+  $("people").innerHTML = ppl.people.map(p => `<div class="item"><div><b>${esc(p.name)}</b> <span class="pill ${p.role==="admin"?"ok":""}" style="background:var(--soft)">${p.role}</span>
       <div class="sub">${p.voice_samples ? `voice learned (${p.voice_samples} samples)` : `voice not learned yet: say "Pip, I'm ${esc(p.name.split(" ")[0])}"`}${p.last_heard?` · last heard ${new Date(p.last_heard*1000).toLocaleString([], {weekday:"short", hour:"numeric", minute:"2-digit"})}`:""}</div></div>
       <span style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
       ${ppl.voice_model ? `<button onclick="pAct({action:'enrol_start',id:'${p.id}'})">${p.voice_samples?"Re-learn voice":"Learn my voice"}</button>` : ""}
       ${ppl.voice_model && ppl.m0_recordings && p.role==="admin" && !p.voice_samples ? `<button title="Uses 8 recordings you already made in the M0 tests: nothing to read" onclick="pAct({action:'voice_from_m0',id:'${p.id}'})">Use my M0 recordings</button>` : ""}
-      <button class="ghost" title="${p.opted_out?"Include again":"Leave out (room speech stays on the Pi)"}" onclick="pAct({action:'opt_out',id:'${p.id}',value:${!p.opted_out}})">${p.opted_out?"Include":"Leave out"}</button>
       ${p.voice_samples ? `<button class="ghost" title="Forget voice" onclick="if(confirm('Forget ${esc(p.name)}\'s voice?')) pAct({action:'forget_voice',id:'${p.id}'})">Forget voice</button>` : ""}
       <button class="ghost" title="Remove person" onclick="if(confirm('Remove ${esc(p.name)}, their voice and memories about them?')) pAct({action:'remove',id:'${p.id}'})">✕</button></span></div>`).join("")
-    + ppl.guests.map(g => `<div class="item"><div><b>${esc(g.name)}</b> <span class="pill" style="background:var(--soft)">this visit</span>${g.opted_out?` <span class="pill stuck">left out</span>`:""}<div class="sub">forgotten after 2 hours of quiet</div></div><button class="ghost" onclick="pAct({action:'guest_join',id:'${g.id}'})">Add to household</button></div>`).join("")
+    + ppl.guests.map(g => `<div class="item"><div><b>${esc(g.name)}</b> <span class="pill" style="background:var(--soft)">this visit</span><div class="sub">forgotten after 2 hours of quiet</div></div><button class="ghost" onclick="pAct({action:'guest_join',id:'${g.id}'})">Add to household</button></div>`).join("")
     || `<div class="empty">Nobody added yet. Add yourself first (as Admin).</div>`;
   $("peoplesum").textContent = ppl.voice_model ? `${ppl.people.length} ${ppl.people.length===1?"person":"people"}` : "voice model not installed";
 }
@@ -330,7 +342,7 @@ async function pAct(body){ try{ const r = await (await fetch("/api/people/action
 $("personadd").onsubmit = async ev => { ev.preventDefault(); const r = await pAct({action:"add", name:$("pname").value, role:$("prole").value}); if (r && r.ok) $("pname").value = ""; };
 setInterval(() => { if (ppl.enrolling) loadPeople(); }, 1500);
 
-loadSched(); loadConv(); loadTrace(); loadHealth(); loadMemory(); loadPeople(); if(!location.search.includes("nolive")) live();
+loadSched(); loadConv(); loadTrace(); loadHealth(); loadMemory(); loadPeople(); loadMic(); if(!location.search.includes("nolive")) live();
 </script>
 </body>
 </html>

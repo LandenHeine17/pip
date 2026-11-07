@@ -31,6 +31,8 @@ Pip is a playful companion living in a dorm room on a Raspberry Pi 5, with a USB
 | Can Pip tell a phantom "Thank you." from a real one? (D-85) | **Not from the words or Whisper's confidence**: Groq always reports "no speech" as 0%, and a click came back as "Thank you." more confidently than real speech said "Okay." A **voice detector on the Pi (Silero)** separated them perfectly: no voice in any of 12 noises (click, knock, hiss, breath, beep), voice found in all 56 real clips, including quiet one-word "yes" and "thank you", in about 10 ms each. Your step 4 test had 24 such phantoms in one day | D-85 |
 | Can Claude turn odd wordings into timer/calendar actions? (D-84) | Yes: 5 of 5 tried came back as correct actions ("remove that", "Mom's birthday November 20th all day", "half an hour earlier than my alarm", "every Sunday evening at 8, laundry"); it asked rather than guess when a dentist visit already existed; ordinary questions were still answered in words | D-84 |
 | Can Pip recognise who's talking? (D-87) | Yes, on the Pi: TitaNet small, ~40 ms per request. Learned from 8 of your M0 clips, it was **sure it was you 82%** of the time (probably-you 94%) and **never took any of 24 other voices for you**. With TV in the background it can't tell (you become "Someone"). The other voices were studio recordings, so it needs a check with a roommate | D-87 |
+| Can two claps switch Pip off without false alarms? (D-91) | In generated tests, two claps were heard (quiet and noisy room); one clap, three claps, claps far apart, talking, claps then talking and ringing slams were not. Over all 197 of your M0 recordings (9 min) it went off **once** (a double click at the start of one recording) after tightening: a clap must be loudest straight away and short. Real claps through the speakerphone: your test | D-91 |
+| Does Pip know when to join in, and when not to reply? (D-92) | With real Claude, 12/12 as intended: joined in with something useful (egg timing, a movie name), stayed quiet in a tense talk about rent, in two people's own plans and after being ignored; passed when merely mentioned, answered when invited; stays quiet on "never mind, we're good" but answers questions and thanks. About 2 s per decision | D-92 |
 | Does Claude handle "remember / forget" well? (D-88) | Yes: 8 of 8 after one fix. It words memories in the third person ("Alex takes his coffee black"), marks health things sensitive (to the inbox), updates on "actually…", forgets the right one, and asks "Who's this?" when an unrecognised voice says "remember I like…" | D-88 |
 | Can the Pi run Pip comfortably? | Yes: 10 min of everyday work used 16% CPU on average (55% peak), 1.5 GB memory, 68 °C; the wake detector never fell behind | — |
 | How strict should the wake words be? (D-74) | **Keep Pippletron 0.8 and Hey Pip 0.5.** From 14:21 to 07:30 (17 h) they gave 0 unexplained "Hey Pip" wakes and 1 "Pippletron" (00:24), and all 55 times Pip woke someone really spoke. Looser settings would have added near-misses (Hey Pip 0.42, Pippletron 0.65). The room was silent 94% of the time, so this is about 1 h of real sound: keep watching it in daily use | D-74 |
@@ -46,13 +48,29 @@ Live results are on the dashboard (`http://100.118.171.118:8780`).
 - Long silence from the speakerphone means "muted or very quiet", shown as a status, never an error (D-38).
 
 ### Listening modes and privacy
-- **Social mode is the default** (D-02). Room speech is transcribed by Groq (D-51). A quick on-device check spots questions, and only then does Pip ask Claude whether to chime in, at most every ~3 minutes (D-52, D-58).
+- **Pip listens like Ziggletron** (D-92, built 2026-11-07). Everything said in the room is transcribed by Groq (D-51) and kept in a short room transcript, in memory only, with who said it. Claude sees it, so Pip follows the conversation:
+  - **called** ("Pip, …", "thanks, Pip", the wake word, or right after he spoke) → he chimes and answers;
+  - **mentioned** ("Pip's been glitchy") → Claude decides whether a person would expect him to answer, and usually stays quiet;
+  - **neither** → after a short pause in a live conversation he **may join in**, at most every ~40 s ("normal" mood, a setting), never during private or tense talk.
+  - He can always **choose not to reply** ("never mind, we're good" gets silence).
+
+```mermaid
+flowchart LR
+    S["Someone speaks"] --> T["Groq → room transcript<br/>(who said it, names spelled right)"]
+    T --> Q{"For Pip?"}
+    Q -- "called by name / follow-up" --> A["Chime → answer<br/>(or stay quiet if it needs no reply)"]
+    Q -- "just mentioned" --> M["Claude: answer only if<br/>a person would expect it"]
+    Q -- "no" --> J{"Pause, live conversation,<br/>40 s since he last considered it?"}
+    J -- yes --> C["Claude: join in (SAY) or PASS"]
+    J -- no --> N["Just listens"]
+```
 - **Private mode:** "Pip, private please" stops anything being sent, for a while or until switched back.
-- **Opt-out consent** (D-13, D-77): everyone, including guests and unknown voices, is included in room transcription unless they say "Pip, leave me out"; opted-out people's speech never leaves the Pi. A guest who opts out is remembered for that visit only. Pip's notice to new people uses your wording (D-61). You tell your roommate yourself (D-67).
-- Quiet hours 23:00–07:00: no joining in or greetings; alarms still ring (D-66).
+- **Privacy is the mic switch** (D-90, D-91): a **Listening** switch on the dashboard, or **two claps** (Pip plays a falling tone and stops listening; clap twice again for a rising tone and he's back). The two are separate: if the dashboard switched him off, claps can't turn him on. Clapped off, he hears nothing but claps; switched off on the dashboard, nothing at all. The speakerphone's mute button works too. "Leave me out" was removed. Pip's notice to new people uses your wording (D-61). You tell your roommate yourself (D-67).
+- Quiet hours 23:00–07:00: no joining in or welcome-backs; alarms still ring (D-66).
+- **Welcome back:** after the room was quiet for 20 minutes, someone he recognises gets "Hey Landen, welcome back." (once an hour).
 
 ### Personality and voice
-- Playful, short roommate-style answers (D-79), jokes sometimes, "he" (D-55–D-59).
+- **Personality like Ziggletron's** (D-92): part of the household, warm and a bit cheeky, with opinions; mostly a few words, reacts like a person ("oh nice", "ugh, Mondays"). Short answers (D-79), "he" (D-55–D-59).
 - Voice: Piper "lessac" for now. The voice engine is **swappable** in Settings (PIP-NEW-097, D-73).
 - He says what actually happened ("Timer's on" only once the timer exists), asks one short question when unsure, and says so when he doesn't know.
 
@@ -94,9 +112,9 @@ flowchart LR
     L --> K["'I know your voice now'"]
 ```
 - Pip is **sure** ("Landen"), **probably** ("Landen?") or doesn't know ("Someone"). Claude is told who's talking, so "my" and "me" mean the right person. The conversation feed shows the name.
-- **"Pip, leave me out"**: what you say in the room stays on the Pi from then on (D-77). You can still call Pip by name. "Pip, include me again" undoes it. Visitors can say it too; for them it lasts this visit.
 - **Visitors** who say "Pip, I'm Jordan" are remembered for that visit only (forgotten after 2 hours of quiet or a restart).
 - "Pip, who am I?" says who he thinks you are.
+- **Names are spelled the household's way** (D-93): Groq is told the names on the list, and a name that sounds the same ("Landon") is corrected to "Landen" everywhere, so "Pip, I'm Landon" finds you instead of making a new person.
 - Voice alone is never enough for admin things (settings, approving changes); those need the dashboard.
 
 ### Timers, reminders, calendar, lists
