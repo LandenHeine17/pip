@@ -17,6 +17,10 @@
   "D": {
    "title": "Session D · Pippletron (about 3 minutes)",
    "where": "First 10 lines close to the speakerphone, the rest from across the room. The last 6 do NOT say Pippletron."
+  },
+  "E": {
+   "title": "Session E · Claps and other sounds (about 5 minutes)",
+   "where": "For tuning the clap switch (D-91). Each one: press record, make the sound, wait about 2 seconds, press Stop. Sit or stand where you usually are unless it says otherwise. (Pip may switch his listening off if he hears two claps; turn it back on with the button on Pip's dashboard.)"
   }
  },
  "phrases": [
@@ -1842,6 +1846,132 @@
    "category": "negative",
    "how": "Across the room. These do NOT call Pippletron.",
    "text": "Hey Pippy, what's up?",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "E001",
+   "session": "E",
+   "category": "clap",
+   "how": "Your normal double clap.",
+   "text": "Clap twice, normally.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "E002",
+   "session": "E",
+   "category": "clap",
+   "how": "From a different spot in the room.",
+   "text": "Clap twice, normally (again).",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "E003",
+   "session": "E",
+   "category": "clap",
+   "how": "About a second between the claps.",
+   "text": "Clap twice, slowly.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "E004",
+   "session": "E",
+   "category": "clap",
+   "how": "As fast as feels natural.",
+   "text": "Clap twice, quickly.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "E005",
+   "session": "E",
+   "category": "clap",
+   "how": "Quieter than usual.",
+   "text": "Clap twice, softly.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "E006",
+   "session": "E",
+   "category": "clap",
+   "how": "As far from the speakerphone as you can.",
+   "text": "Clap twice from across the room.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "E007",
+   "session": "E",
+   "category": "clap",
+   "how": "Clap twice, then right away say something.",
+   "text": "Clap twice, then talk.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "E008",
+   "session": "E",
+   "category": "not-clap",
+   "how": "Just one.",
+   "text": "One single clap.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "E009",
+   "session": "E",
+   "category": "not-clap",
+   "how": "Several tongue clicks.",
+   "text": "Click your tongue a few times.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "E010",
+   "session": "E",
+   "category": "not-clap",
+   "how": "Two snaps.",
+   "text": "Snap your fingers twice.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "E011",
+   "session": "E",
+   "category": "not-clap",
+   "how": "Two knocks.",
+   "text": "Knock twice on a desk or table.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "E012",
+   "session": "E",
+   "category": "not-clap",
+   "how": "Like applause.",
+   "text": "Clap three or more times.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "E013",
+   "session": "E",
+   "category": "not-clap",
+   "how": "Anything you like.",
+   "text": "Talk normally for a few seconds.",
+   "wake": "none",
+   "entities": []
+  },
+  {
+   "id": "E014",
+   "session": "E",
+   "category": "not-clap",
+   "how": "Everyday bumps.",
+   "text": "Close a drawer or door, or set something down.",
    "wake": "none",
    "entities": []
   }
