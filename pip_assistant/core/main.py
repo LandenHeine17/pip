@@ -10,6 +10,7 @@ from .bus import Bus
 from .conversation import Conversation
 from .memory import Memory, Refused
 from .mic import MicSwitch
+from .prefs import Prefs
 from .modules import Registry
 from .net import Net
 from .people import People, m0_owner_clips
@@ -27,6 +28,7 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
                     restart=cfg["programs"]["restart_stuck"])
     bus = Bus(paths.core_socket(), trace, health)
     mic = MicSwitch(paths.database())
+    prefs = Prefs(paths.database())
     net = Net(bus)
     bus.net = net
     bus.core_handlers["core.health"] = lambda m: {"programs": health.snapshot(), "version": __version__,
@@ -43,7 +45,7 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
     # Features that plug in (pip_assistant/modules/, ARCHITECTURE §7): calendar, to-dos, Google accounts…
     modules = Registry.load(cfg, bus=bus, schedule=schedule, people=people, net=net)
     conv = Conversation(bus, cfg, stt, schedule=schedule, local_stt=make_local_stt(cfg), people=people, memory=memory,
-                        mic=mic, modules=modules)
+                        mic=mic, modules=modules, prefs=prefs)
     conv.net = net
     bus.core_handlers["core.alerts"] = lambda m: ({"count": len(schedule.active())}, alerts_snapshot(schedule, modules))
     bus.core_handlers["core.alert_action"] = lambda m: alert_action(schedule, conv, m)
@@ -55,6 +57,8 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
     bus.core_handlers["core.memory"] = lambda m: (memory.counts(), memory_snapshot(memory, people))
     bus.core_handlers["core.memory_action"] = lambda m: memory_action(memory, people, m)
     bus.core_handlers["core.mic"] = lambda m: mic_action(conv, m)
+    bus.core_handlers["core.prefs"] = lambda m: conv.set_pref(m.data.get("key"), m.data["value"]) if "key" in m.data \
+        else conv.prefs_snapshot()
     bus.schedule = schedule
     bus.memory = memory
     bus.modules = modules

@@ -62,7 +62,18 @@
     <select id="prole"><option value="member">Member</option><option value="admin">Admin</option></select><button class="primary">Add person</button></form>
   <div class="sub" style="margin-top:8px"><b>Teaching Pip your voice:</b> once your name is on this list, just say <b>"Pip, I'm</b> <i>your name</i><b>"</b> (or "Pip, learn my voice"). Pip says hi, beeps, and five short sentences appear here: read each one out loud after the beep. It takes about a minute. Check with "Pip, who am I?".<br>
   <b>Use my M0 recordings</b> (owner only): uses 8 recordings you already made in the M0 tests instead; nothing to read.<br>
-  Voiceprints stay on the Pi. Pip hears everyone in the room; to stop him listening, use the <b>Listening</b> switch at the top or clap twice. Visitors who say "Pip, I'm Sam" are remembered for that visit only; if they live here, press <b>Add to household</b>.</div>
+  Voiceprints stay on the Pi. Pip hears everyone in the room; to stop him listening, use the <b>Listening</b> switch at the top (or clap twice, once a clap microphone is set up below). Visitors who say "Pip, I'm Sam" are remembered for that visit only; if they live here, press <b>Add to household</b>.</div>
+</section>
+<section>
+  <div class="head"><h2>Listening &amp; sounds</h2></div>
+  <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="chime" onchange="setPref('chime', this.checked)">
+    Chime when he hears his name <span class="sub">(a short beep: "I heard you")</span></label>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">Clap microphone
+    <select id="clapmic" onchange="setPref('clap_mic', this.value)"><option value="">…</option></select>
+    <span class="sub" id="clapnote"></span></div>
+  <div class="sub" style="margin-top:6px">Two claps switch listening off and on. The speakerphone's own noise filter removes claps,
+    so they're heard on a second, plain USB microphone (any cheap one that isn't "noise-cancelling"). Not finished yet:
+    it's tuned once you've recorded Session F on that microphone.</div>
 </section>
 </div>
 
@@ -99,6 +110,19 @@ function renderMic(m){ if(!m || m.dashboard === undefined) return; micState = m;
   b.innerHTML = m.listening ? "Listening" : !m.dashboard ? "Mic off <small>· press to turn on</small>" : "Mic off <small>(clapped) · clap twice or press</small>"; }
 async function toggleMic(){ const on = !(micState && micState.listening);
   try{ renderMic(await (await fetch("/api/mic",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({value:on})})).json()); }catch(e){ alert("Couldn't reach Pip"); } }
+// Listening & sounds (core/prefs.py): the chime, and which microphone hears the two-clap switch (D-91, D-105)
+async function loadPrefs(){ try{ renderPrefs(await (await fetch("/api/prefs",{cache:"no-store"})).json()); }catch(e){} }
+function renderPrefs(p){ if(!p || p.error) return;
+  $("chime").checked = !!p.chime;
+  const others = (p.mics||[]).filter(m => m.name !== p.speakerphone);
+  $("clapmic").innerHTML = `<option value="">None: claps do nothing</option>` + others.map(m =>
+    `<option value="${esc(m.name)}" ${m.name===p.clap_mic?"selected":""}>${esc(m.label)}</option>`).join("")
+    + (p.clap_mic && !others.some(m => m.name===p.clap_mic) ? `<option value="${esc(p.clap_mic)}" selected>(unplugged) ${esc(p.clap_mic)}</option>` : "");
+  $("clapnote").textContent = others.length ? "" : "No second microphone plugged in yet.";
+}
+async function setPref(key, value){
+  try{ const r = await (await fetch("/api/prefs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key,value})})).json();
+    if(r.error) alert(r.error); renderPrefs(r); }catch(e){ alert("Couldn't reach Pip"); } }
 async function loadMic(){ try{ renderMic(await (await fetch("/api/mic",{cache:"no-store"})).json()); }catch(e){} }
 function setState(s){ $("state").className = "state st-"+s; $("statetext").textContent = PIPSTATE[s] || s; }
 function dur(s){ if(s==null) return "–"; s=Math.round(s); return s<60?`${s}s`:s<3600?`${Math.floor(s/60)}m`:`${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`; }
@@ -259,7 +283,7 @@ let mods = [];
 async function loadModules(){ try{ mods = await (await fetch("/api/modules",{cache:"no-store"})).json();
   $("modlinks").innerHTML = mods.map(m => `<a href="${m.page}"><button>${esc(m.label)}</button></a>`).join("");
   $("calLink").hidden = !mods.some(m => m.name === "calendar"); renderPeople(); }catch(e){} }
-loadModules(); loadSched(); loadConv(); loadTrace(); loadHealth(); loadMemory(); loadPeople(); loadMic(); if(!location.search.includes("nolive")) live();
+loadModules(); loadSched(); loadConv(); loadTrace(); loadHealth(); loadMemory(); loadPeople(); loadMic(); loadPrefs(); if(!location.search.includes("nolive")) live();
 </script>
 </body>
 </html>

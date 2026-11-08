@@ -91,7 +91,8 @@ class PeopleCommands:
                                              source=f"{who}, by voice (offline)")
             except Refused:
                 return "I can't keep passwords, card or phone numbers in my memory."
-            return "I already knew that." if outcome == "duplicate" else \
+            return "I already knew that." if outcome == "duplicate" else "That's waiting in the memory inbox." \
+                if outcome == "waiting" else \
                 "I'm offline, so I put that in the memory inbox to check later."
         return None
 

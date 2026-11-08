@@ -29,6 +29,7 @@ Memory (step 5):
     remember       text (third person, with names), category, about [names], sensitive, private
     forget         id ('#m1a2b3')
     update_memory  id, text
+    approve_memory id: a memory waiting in the inbox, approved by the person it's about (recognised for sure, D-107)
 Sensitive memories, memories about someone other than the speaker, and private ones from a voice Pip
 doesn't recognise wait in the memory inbox instead of being saved straight away.
 """
@@ -102,7 +103,7 @@ def check(cmds, items: list[dict], ctx: dict | None = None) -> list[tuple]:
     plan = []
     for a in items:
         do = a.get("do")
-        if do in ("remember", "forget", "update_memory"):
+        if do in ("remember", "forget", "update_memory", "approve_memory"):
             plan.append(_check_memory(a, ctx))
             continue
         if do == "add":
@@ -115,7 +116,8 @@ def check(cmds, items: list[dict], ctx: dict | None = None) -> list[tuple]:
                 secs = float(a.get("seconds") or 0)
                 if not 1 <= secs <= 24 * 3600:
                     raise Invalid("timer length")
-                plan.append(("timer", secs, label))
+                from .commands import timer_name
+                plan.append(("timer", secs, timer_name(label)))
             elif kind in ("alarm", "reminder"):
                 at = _time(a.get("at"), now)
                 if kind == "reminder" and not label:
@@ -169,10 +171,16 @@ def _check_memory(a: dict, ctx: dict) -> tuple:
     mem, people, speaker = ctx.get("memory"), ctx.get("people"), ctx.get("speaker")
     if mem is None:
         raise Invalid("no memory")
-    if a["do"] in ("forget", "update_memory"):
+    if a["do"] in ("forget", "update_memory", "approve_memory"):
         row = mem.find(str(a.get("id") or ""))
         if not row:
             raise Invalid("unknown memory")
+        if a["do"] == "approve_memory":
+            # Only the person it's about, recognised for sure, may approve it by voice (D-107)
+            me = speaker.person_id if speaker and speaker.level == "sure" and not speaker.guest else None
+            if row["status"] != "pending" or not me or me not in row["about"]:
+                raise Invalid("only the person it's about may approve it")
+            return ("approve_memory", row)
         if a["do"] == "forget":
             return ("forget", row)
         text = str(a.get("text") or "").strip()
@@ -252,7 +260,11 @@ def _carry_out(cmds, plan: list[tuple], ctx: dict | None) -> list:
                             else "I didn't catch what to remember.")
                 continue
             said.append({"saved": f"Saved: {row['text'].rstrip('.!')}.", "duplicate": "I already knew that.",
+                         "waiting": "That's waiting in the memory inbox.",
                          "pending": "I'll remember that once it's approved in the memory inbox on the dashboard."}[outcome])
+        elif kind == "approve_memory":
+            row = mem.approve(step[1]["id"])
+            said.append(f"Saved: {row['text'].rstrip('.!')}.")
         elif kind == "forget":
             mem.delete(step[1]["id"])
             said.append(f"Forgot: {step[1]['text'].rstrip('.!')}.")

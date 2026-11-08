@@ -79,11 +79,12 @@ def ringtone(name: str = "classic", rate: int = 22050) -> np.ndarray:
 
 
 class Microphone:
-    """Yields 80 ms int16 frames from the default microphone. Reopens if the device goes away."""
+    """Yields 80 ms int16 frames from a microphone: the default one (the speakerphone), or `target`, a
+    PipeWire device name (the clap microphone, D-91). Reopens if the device goes away."""
 
-    def __init__(self, command=None):
+    def __init__(self, command=None, target: str = ""):
         self.command = command or [shutil.which("pw-record") or "pw-record", "--rate", str(RATE),
-                                   "--channels", "1", "--format", "s16", "-"]
+                                   "--channels", "1", "--format", "s16", *(["--target", target] if target else []), "-"]
         self.proc = None
 
     async def frames(self):
@@ -149,3 +150,20 @@ class Speaker:
         if self.proc and self.proc.returncode is None:
             with contextlib.suppress(ProcessLookupError):
                 self.proc.kill()
+
+
+def microphones() -> list[dict]:
+    """The microphones PipeWire can see: [{name, label}] (for choosing the clap microphone on the dashboard)."""
+    import json
+    import subprocess
+    try:
+        out = subprocess.run(["pw-dump"], capture_output=True, text=True, timeout=5).stdout
+        nodes = json.loads(out or "[]")
+    except Exception:
+        return []
+    mics = []
+    for o in nodes:
+        props = (o.get("info") or {}).get("props") or {}
+        if props.get("media.class") == "Audio/Source" and props.get("node.name"):
+            mics.append({"name": props["node.name"], "label": props.get("node.description") or props["node.name"]})
+    return mics
