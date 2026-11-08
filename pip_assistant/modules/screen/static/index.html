@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Screen</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+/* A small copy of the monitor: the 12×8 grid with the face and each box drawn to scale. */
+.preview{display:grid;grid-template-columns:repeat(12,1fr);grid-template-rows:repeat(8,1fr);gap:4px;aspect-ratio:16/9;
+  background:#09090c;border-radius:12px;padding:8px;max-width:640px}
+.preview.dim{filter:brightness(.6)}
+.preview > div{border-radius:6px;background:#1a1a21;border:1px solid #2a2a31;color:#d8d4cc;font-size:.72rem;padding:4px 6px;
+  overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.preview .faceb{background:radial-gradient(closest-side,#2b3a35,#141418);color:#5fe0b0;display:flex;align-items:center;justify-content:center;font-weight:700}
+.screens{display:flex;flex-wrap:wrap;gap:8px}
+.screens .on{outline:2px solid var(--accent,#5fe0b0)}
+.ask li{margin:3px 0}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+    <div><h1>Screen</h1><div class="sub">What's on the monitor · <a href="/tv" target="_blank">open the monitor's page</a></div></div></div>
+</header>
+
+<section>
+  <div class="head"><h2 id="now">Showing</h2><button class="ghost" id="undo" onclick="go('undo')">Undo the last change</button></div>
+  <div class="preview" id="preview"></div>
+  <div class="sub" id="summary" style="margin-top:8px"></div>
+</section>
+
+<section>
+  <div class="head"><h2>Screens</h2></div>
+  <div class="screens" id="screens"></div>
+  <div class="sub" style="margin-top:8px">Tap one to show it. Ready-made screens you've changed can be put back; your own can be deleted.</div>
+</section>
+
+<section>
+  <div class="head"><h2>Changing it by voice</h2></div>
+  <ul class="ask sub">
+    <li>"Pip, show the morning screen" · "save this as the study screen"</li>
+    <li>"Put the weather up" · "take the calendar off" · "put the shopping list up"</li>
+    <li>"Make the clock bigger" · "make your face small" · "colour the clock blue"</li>
+    <li>"Put a note up called Hall of Fame with …" · "show the conversation, without room talk"</li>
+    <li>"Undo that" · "what can go on the screen?"</li>
+  </ul>
+  <div class="sub">If something won't fit, Pip offers a fix ("I can make the face smaller to make room. Okay?").</div>
+</section>
+</main>
+
+<script src="/pip.js"></script>
+<script>
+const NAMES = {clock:"Clock", weather:"Weather", timers:"Timers", calendar:"Calendar", todos:"To-do list", notes:"Notes", health:"Pi health", conversation:"Conversation"};
+let st = null;
+const label = s => s.type === "notes" && s.title ? s.title : s.type === "todos" && s.list ? `${s.list} list` : NAMES[s.type] || s.type;
+function render(){
+  const v = st.view, f = v.face_shown || v.face;
+  $("now").textContent = `Showing: ${v.label}`;
+  $("summary").textContent = st.summary[0].toUpperCase() + st.summary.slice(1) + (v.dim ? " · dimmed" : "");
+  $("undo").disabled = !st.can_undo;
+  $("preview").className = "preview" + (v.dim ? " dim" : "");
+  $("preview").innerHTML = `<div class="faceb" style="grid-area:1/1/span ${f.h}/span ${f.w}">Pip</div>` +
+    v.sections.map(s => { const c = s.color ? (st.palette[s.color] || s.color) : "";
+      return `<div style="grid-area:${s.y+1}/${s.x+1}/span ${s.h}/span ${s.w};${c?`border-color:${esc(c)};color:${esc(c)}`:""}">${esc(label(s))}</div>`; }).join("");
+  $("screens").innerHTML = st.screens.map(x => `<span style="display:inline-flex;gap:4px;align-items:center">
+    <button class="${x.showing?"primary on":""}" onclick="go('show', '${esc(x.name)}')">${esc(x.label)}</button>
+    ${!x.built_in ? `<button class="ghost" title="Delete" onclick="if(confirm('Delete the ${esc(x.label)} screen?')) go('delete', '${esc(x.name)}')">✕</button>`
+      : x.changed ? `<button class="ghost" title="Put it back the way it was" onclick="go('delete', '${esc(x.name)}')">↺</button>` : ""}</span>`).join("");
+}
+async function load(){ const r = await pip.act(pip.get("status")); if (r) { st = r; render(); } }
+async function go(action, name){ const r = await pip.act(pip.post(action, name ? {name} : {})); if (r) { st = r; render(); } }
+load();
+pip.live(load);
+</script>
+</body>
+</html>

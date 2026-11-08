@@ -25,6 +25,7 @@ from .. import __version__
 from ..common.messages import Message
 from ..common.modules import enabled as enabled_modules
 from ..common.program import make_bus, start
+from ..common import vitals
 from ..common.weather import Weather
 
 TRACE_KEEP = 300
@@ -39,14 +40,20 @@ class State:
         self.online = True       # D-95: the dashboard's small offline indicator
         self.pip_state = "idle"  # idle / listening / thinking / speaking / interrupted / ringing / offline / mic_off
         self.tv_listeners: set[asyncio.Queue] = set()   # the TV page's own, narrower stream (D-110)
+        self.tv_boxes: list[str] = []   # the kinds of box on the monitor now (D-111)
+        self.tv_room = False            # a conversation box showing room talk is up: room lines go to the TV too
 
     def push(self, kind: str, data: dict) -> None:
         for q in list(self.listeners):
             if q.qsize() < 200:
                 q.put_nowait((kind, data))
 
+    def screen(self, boxes: list, room: bool) -> None:
+        self.tv_boxes, self.tv_room = [str(b) for b in boxes], bool(room)
+
     def push_tv(self, kind: str, data: dict) -> None:
-        """Only what the TV shows: state, the mouth level, captions of lines to Pip, and "refresh" (D-110)."""
+        """Only what the TV shows: state, the mouth level, captions of lines to Pip, "refresh", the layout
+        changing, and room talk only while a conversation box shows it (D-110, D-111)."""
         for q in list(self.tv_listeners):
             if q.qsize() < 200:
                 q.put_nowait((kind, data))
@@ -218,19 +225,33 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         try:
             r = await bus.request("core", "core.tv", timeout=3)
             out.update(r.private or {})
+            if screen := out.get("screen"):
+                sections = screen["view"]["sections"]
+                state.screen([x["type"] for x in sections],
+                             any(x["type"] == "conversation" and x.get("room", True) for x in sections))
         except Exception:
             out["error"] = "pip-core not reachable"
         try:
             out["weather"] = await weather.screen()
         except Exception:
             pass
+        if "health" in state.tv_boxes:
+            out["vitals"] = vitals_now()
         return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+    async def tv_vitals(request):
+        """The Pi health box's numbers, every few seconds while it's on the screen (nothing personal)."""
+        return JSONResponse(vitals_now() if "health" in state.tv_boxes else {}, headers={"Cache-Control": "no-store"})
+
+    def vitals_now() -> dict:
+        ok = sum(1 for p in state.health.values() if isinstance(p, dict) and p.get("state") == "ok")
+        return {**vitals.read(), "programs_ok": ok, "programs": len(state.health)}
 
     async def tv_stream(request):
         return sse(state.tv_listeners)
 
     return Starlette(routes=[Route("/", index), Route("/pip.css", stylesheet), Route("/pip.js", script), Route("/api/modules", module_list),
-                             Route("/tv", tv), Route("/api/tv", tv_data), Route("/api/tv/stream", tv_stream),
+                             Route("/tv", tv), Route("/api/tv", tv_data), Route("/api/tv/stream", tv_stream), Route("/api/tv/vitals", tv_vitals),
                              Route("/m/{name}/", module_file), Route("/m/{name}/{path:path}", module_file),
                              Route("/api/m/{name}", module_api, methods=["GET", "POST"]),
                              Route("/api/health", health), Route("/api/trace", trace), Route("/api/conversation", conversation),
@@ -243,7 +264,8 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
 
 def listen(bus, state: State) -> None:
     """What pip-web hears from pip-core, and where it goes: the dashboard's stream, and the TV page's
-    narrower one (D-110: state, mouth level, captions of lines to and from Pip only, "refresh")."""
+    narrower one (D-110: state, mouth level, captions of lines to and from Pip, "refresh"; D-111: room
+    talk only while a conversation box on the monitor shows it)."""
 
     async def on_health(msg: Message):
         state.health = msg.data.get("programs", {})
@@ -262,15 +284,15 @@ def listen(bus, state: State) -> None:
         if line.get("who") == "pip" or line.get("how") == "direct":   # captions: only lines to and from Pip
             state.push_tv("caption", {"who": "pip" if line.get("who") == "pip" else "you",
                                       "speaker": line.get("speaker", ""), "text": line["text"]})
+        elif state.tv_room:   # room talk: only while a conversation box shows it (D-111)
+            state.push_tv("line", {"who": "room", "how": line.get("how", "room"),
+                                   "speaker": line.get("speaker", ""), "text": line["text"]})
 
     def feed_event(ts: float, kind: str, **data) -> None:
         """An event bar on the conversation feed (D-108): what happened, no words."""
         line = {"ts": ts, "who": "event", "kind": kind, **data}
         state.conversation.append(line)
         state.push("conversation", line)
-        if line.get("who") == "pip" or line.get("how") == "direct":   # captions: only lines to and from Pip
-            state.push_tv("caption", {"who": "pip" if line.get("who") == "pip" else "you",
-                                      "speaker": line.get("speaker", ""), "text": line["text"]})
 
     async def on_event(msg: Message):
         feed_event(msg.ts, **msg.data)
@@ -318,8 +340,11 @@ def listen(bus, state: State) -> None:
     async def on_module(msg: Message):
         _, name, kind = (msg.type.split(".", 2) + ["", ""])[:3]
         state.push("module", {"module": name, "type": kind})   # module pages reload what changed
-        if name == "calendar":
+        if name == "calendar" or (name == "todos" and "todos" in state.tv_boxes):
             state.push_tv("refresh", {})
+        if name == "screen":   # the screen changed (D-111): the monitor fetches its new layout
+            state.screen(msg.data.get("boxes", []), msg.data.get("room", False))
+            state.push_tv("options" if kind == "options" else "refresh", {})
 
     bus.subscribe("module.*", on_module)
     bus.subscribe("conversation.line", on_line)

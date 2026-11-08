@@ -125,3 +125,47 @@ def test_six_seven_is_heard_only_as_words():
     for no in ("6:07", "167", "6.7", "67.5", "sixty seven", "1.67", "six", "seventy"):
         assert not heard(no), no
     assert 'd.who === "you" && heardSixSeven(d.text)' in page   # never his own replies
+
+
+async def test_room_talk_reaches_the_tv_only_with_a_conversation_box_showing_it():
+    """D-111: the owner wants room talk in the Conversation box; it's sent only while one shows it."""
+    bus, state = FakeBus(), State()
+    listen(bus, state)
+    q = tv_feed(state)
+    room = Message("event", "conversation.line", data={"who": "room", "how": "room"}, private={"text": "did you see the game"})
+    await bus.deliver(room)
+    assert drain(q) == []
+    await bus.deliver(Message("event", "module.screen.changed", data={"boxes": ["clock", "conversation"], "room": True}))
+    await bus.deliver(room)
+    got = drain(q)
+    assert ("refresh", {}) in got and ("line", {"who": "room", "how": "room", "speaker": "", "text": "did you see the game"}) in got
+    await bus.deliver(Message("event", "module.screen.changed", data={"boxes": ["conversation"], "room": False}))
+    await bus.deliver(room)
+    assert [k for k, _ in drain(q)] == ["refresh"]
+    await bus.deliver(Message("event", "module.screen.options", data={"boxes": [], "room": False}))
+    assert [k for k, _ in drain(q)] == ["options"]
+
+
+def test_pi_health_only_while_its_box_is_up():
+    snap = {"now": time.time(), "alerts": [], "events": [],
+            "screen": {"view": {"sections": [{"type": "clock"}]}}}
+    state = State()
+    client = TestClient(build_app(FakeBus({"core.tv": snap}), state, {}))
+    assert "vitals" not in client.get("/api/tv").json() and client.get("/api/tv/vitals").json() == {}
+    snap["screen"]["view"]["sections"].append({"type": "health"})
+    assert "memory" in client.get("/api/tv").json()["vitals"]
+    assert "cpu" in client.get("/api/tv/vitals").json()
+
+
+def test_pip_core_sends_the_screen_and_only_the_lists_on_it(tmp_path):
+    from pip_assistant.core.main import tv_snapshot
+    from pip_assistant.core.schedule import Schedule
+    from modhelp import registry
+    sched = Schedule(tmp_path / "pip.db")
+    reg = registry(tmp_path, schedule=sched, names=("google", "todos", "screen"))
+    reg.get("todos").add("milk", "pip")
+    snap = tv_snapshot(sched, reg)
+    assert snap["screen"]["name"] == "default" and snap["lists"] == {}
+    reg.modules["screen"].screen.show("morning")    # it has the household's to-do list
+    snap = tv_snapshot(sched, reg)
+    assert snap["lists"][""]["items"] == ["milk"]

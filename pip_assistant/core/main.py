@@ -80,7 +80,8 @@ def alerts_snapshot(schedule: Schedule, modules: Registry) -> dict:
 def tv_snapshot(schedule: Schedule, modules: Registry) -> dict:
     """Only what the TV page shows (D-110): timers, alarms and reminders (heads-ups due within the hour),
     what's ringing, and today's and tomorrow's events from calendars in the two-week list, never private
-    ones. Sent privately (labels and titles are personal), never logged."""
+    ones; the screen's layout and the to-do lists on it (D-111). Sent privately (labels and titles are
+    personal), never logged."""
     snap = schedule.snapshot()
     now = snap["now"]
     alerts = [{"kind": a["kind"], "label": a["label"], "due": a["due"], "length": a.get("length"), "state": a["state"],
@@ -89,7 +90,14 @@ def tv_snapshot(schedule: Schedule, modules: Registry) -> dict:
     cal = modules.modules.get("calendar")
     events = [{"title": e["title"], "at": e["at"], "all_day": e["all_day"], "color": e["color"]}
               for e in (cal.upcoming(2) if cal else []) if not e["private"]]
-    return {"now": now, "alerts": alerts, "events": events[:12]}
+    out = {"now": now, "alerts": alerts, "events": events[:12]}
+    # What's on the screen (D-111), and the to-do lists it shows (only those, and only shared ones).
+    screen, todos = modules.modules.get("screen"), modules.modules.get("todos")
+    if screen:
+        out["screen"] = screen.for_tv()
+        wanted = {s.get("list", "") for s in out["screen"]["view"]["sections"] if s["type"] == "todos"}
+        out["lists"] = {w: todos.screen_list(w) for w in wanted} if todos else {}
+    return out
 
 
 def memory_snapshot(memory: Memory, people: People) -> dict:

@@ -3,11 +3,12 @@
 <head>
 <meta charset="utf-8">
 <title>Pip</title>
-<!-- Pip's face on the monitor (step 7, D-110). The face and its drawing come from Ziggletron's tv.html;
-     the states and colours are Pip's. It only watches: no buttons, nothing sent. It gets only what
-     it shows (/api/tv and /api/tv/stream): Pip's state, the mouth level, timers, next events, weather, and
-     captions of what was said to Pip and his replies. Never room talk. The layout is fixed for now: the face
-     on the left, clock, weather, timers and next events on the right (layouts by voice come later). -->
+<!-- Pip's face on the monitor (step 7, D-110, D-111). The face and its drawing, and the way boxes are laid
+     out and animated, come from Ziggletron's tv.html; the states, colours and kinds of box are Pip's.
+     It only watches: no buttons, nothing sent. It gets only what it shows (/api/tv, /api/tv/stream,
+     /api/tv/vitals): Pip's state, the mouth level, the screen's layout, and the data of the boxes on it.
+     Captions under the face are only lines said to Pip and his replies; room talk comes only while a
+     Conversation box that shows it is on the screen (D-111). -->
 <style>
     :root {
     --bg: #09090c; --ink: #f1eee8; --muted: #aaa59d; --line: #2a2a31; --track: #24242b;
@@ -152,12 +153,15 @@
   .bar div { height: 100%; background: var(--muted); border-radius: .25rem; transition: width 1s; }
   .warning .bar div { background: var(--warning); }
   .critical .bar div { background: var(--critical); }
-  /* Pip's fixed layout: the face on the left, the boxes on the right. */
-  #face-box { grid-area: 1 / 1 / span 8 / span 7; }
-  #b-clock { grid-area: 1 / 8 / span 2 / span 5; }
-  #b-weather { grid-area: 3 / 8 / span 2 / span 5; }
-  #b-timers { grid-area: 5 / 8 / span 2 / span 5; }
-  #b-events { grid-area: 7 / 8 / span 2 / span 5; }
+  /* Until the screen module says otherwise: the face fills the screen. */
+  #face-box { grid-area: 1 / 1 / span 8 / span 12; }
+  #board { display: contents; }
+  body.dim .screen { filter: brightness(.45); }   /* the Night screen */
+  .note { padding: .4rem 0; border-bottom: 1px solid var(--line); }
+  .note:last-child { border-bottom: 0; }
+  .said.room { color: var(--muted); }
+  .said.room b { font-weight: 500; }
+  .said.you b { color: var(--good); }
   .box h2 { margin-top: 0; padding-top: 0; border-top: 0; }
   .box.empty { opacity: .5; }
   .timer-left { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ink); }
@@ -179,12 +183,10 @@
       <div class="line said-back" id="saidBack"></div>
     </div>
   </div>
-  <section class="box clock-section" id="b-clock"><div class="clock" id="clock"></div><div class="date" id="date"></div></section>
-  <section class="box" id="b-weather"><h2>Weather</h2><div id="weather" class="body"></div></section>
-  <section class="box" id="b-timers"><h2>Timers &amp; alarms</h2><div id="timers" class="body"></div></section>
-  <section class="box" id="b-events"><h2>Coming up</h2><div id="events" class="upcoming"></div></section>
+  <div id="board"></div>
   <div class="banner" id="banner"></div>
 </div>
+<div id="rail"></div>
 
 <script>
 "use strict";
@@ -619,9 +621,15 @@ function fitCanvas() {
   canvas.height = Math.round(height * scale);
 }
 
-// --- The boxes (Pip) ---------------------------------------------------------------------------------
+// --- The boxes ------------------------------------------------------------------------------------
+// The screen module (modules/screen, D-111) says what's on the screen: the face's size and each box's
+// kind and place on the 12×8 grid. Each kind has a function that fills its box; it runs again whenever
+// what it shows changes. The layout and box animations are Ziggletron's.
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-let data = { alerts: [], events: [], weather: {}, now: Date.now() / 1000 }, skew = 0;
+const KEEP_LINES = 40, LINE_S = 15 * 60;   // the conversation box: the last 40 lines, none older than 15 minutes
+const VITALS_S = 10;                       // how often the Pi health box updates
+let data = { alerts: [], events: [], weather: {}, lists: {}, now: Date.now() / 1000 }, skew = 0;
+const said = [];   // the conversation box's lines: {who: "room" | "you" | "pip", speaker, text, at}
 
 function showState() {
   const state = shown();
@@ -644,70 +652,190 @@ function showCaption(who, text, speaker) {
   live.captionTimer = setTimeout(() => $("captions").classList.add("quiet"), CAPTION_S * 1000);
 }
 
-function showClock() {
-  const d = new Date();
-  const [hm, ampm] = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).split(" ");
-  $("clock").innerHTML = `${esc(hm)}${ampm ? `<small>${esc(ampm)}</small>` : ""}`;
-  $("date").textContent = d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-}
-
 function left(s) {
   s = Math.max(0, Math.round(s));
   const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
   return h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
 }
 const at = (ts) => new Date(ts * 1000).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+const serverNow = () => Date.now() / 1000 - skew;
+const none = (text) => `<div class="none">${esc(text)}</div>`;
+function fill(box, title, html) { box.innerHTML = (title ? `<h2>${esc(title)}</h2>` : "") + html; }
 
-function showTimers() {
-  const now = Date.now() / 1000 - skew;
+const BOXES = {
+  clock(box) {
+    const d = new Date();
+    const [hm, ampm] = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).split(" ");
+    box.classList.add("clock-section");
+    fill(box, "", `<div class="clock">${esc(hm)}${ampm ? `<small>${esc(ampm)}</small>` : ""}</div>
+      <div class="date">${esc(d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }))}</div>`);
+  },
+  weather(box) {
+    const w = data.weather || {};
+    if (w.temp === undefined) return fill(box, "Weather", none("No forecast yet"));
+    fill(box, "Weather", `<div class="body"><div class="now"><div class="temp">${w.temp}°</div><div><div class="sky">${esc(w.sky)}</div>
+      <div class="feels">feels like ${w.feels}°</div></div></div>` +
+      (w.days || []).slice(0, 2).map((d) => `<div class="day"><span class="name-of-day">${esc(d.name.slice(0, 3))}</span>
+        <span class="words">${esc(d.sky)}</span><span>${d.high}°/${d.low}°</span><span class="rain">${d.rain}% rain</span></div>`).join("") + `</div>`);
+  },
+  timers(box) {
+    const now = serverNow();
+    const rows = data.alerts.filter((a) => a.state !== "ringing").slice(0, 6).map((a) => {
+      const kind = { timer: "timer", alarm: "alarm", reminder: "reminder", event: "soon" }[a.kind] || a.kind;
+      const name = a.label && !["timer", "alarm"].includes(a.label) ? esc(a.label) : "";
+      const when = a.kind === "timer" ? `<span class="timer-left">${left(a.due - now)}</span>` : at(a.due);
+      return `<div class="item"><span class="what"><small>${kind}</small>${name}</span><span class="when">${when}</span></div>`;
+    });
+    fill(box, "Timers & alarms", `<div class="body">${rows.join("") || none("Nothing set")}</div>`);
+    box.classList.toggle("empty", !rows.length);
+  },
+  calendar(box) {
+    const now = serverNow(), today = new Date().getDate();
+    const rows = data.events.filter((e) => e.all_day ? e.at + 86400 > now : e.at > now - 1800).slice(0, 8).map((e) => {
+      const tomorrow = new Date(e.at * 1000).getDate() !== today;
+      const when = (tomorrow ? "Tomorrow " : "") + (e.all_day ? "all day" : at(e.at));
+      const soon = !e.all_day && e.at - now < 3600;
+      return `<div class="item${soon ? " soon" : ""}"><span class="what">${esc(e.title)}</span><span class="when">${esc(when)}</span></div>`;
+    });
+    fill(box, "Coming up", `<div class="body">${rows.join("") || none("Nothing today or tomorrow")}</div>`);
+    box.classList.toggle("empty", !rows.length);
+  },
+  todos(box, section) {
+    const list = (data.lists || {})[section.list || ""] || { name: section.list || "To-dos", items: [] };
+    const why = list.private ? "That list is private" : list.missing ? `No list called ${list.name}` : "All done";
+    fill(box, list.name, `<div class="body">${list.items.map((t) => `<div class="item"><span class="what">○ ${esc(t)}</span></div>`).join("") || none(why)}</div>`);
+  },
+  notes(box, section) {
+    fill(box, section.title || "Notes", `<div class="body">${(section.lines || []).map((l) => `<div class="note">${esc(l)}</div>`).join("") || none("Nothing written yet")}</div>`);
+  },
+  health(box) {
+    const v = data.vitals || {};
+    const meter = (name, value, unit, warn, bad) => value == null ? "" :
+      `<div class="meter ${value >= bad ? "critical" : value >= warn ? "warning" : ""}"><div class="top"><span>${name}</span><span class="value">${Math.round(value)}${unit}</span></div>
+       <div class="bar"><div style="width:${clamp(value, 0, 100)}%"></div></div></div>`;
+    fill(box, "Pi health", `<div id="meters">${meter("Processor", v.cpu, "%", 70, 90)}${meter("Memory", v.memory, "%", 75, 90)}
+      ${meter("Temperature", v.temp_c, "°C", 70, 80)}${meter("SD card", v.disk, "%", 80, 92)}</div>` +
+      (v.programs ? `<div class="feels" style="margin-top:.8rem">${v.programs_ok} of ${v.programs} programs running</div>` : ""));
+  },
+  conversation(box, section) {
+    const cutoff = serverNow() - LINE_S;
+    const lines = said.filter((l) => l.at > cutoff && (section.room !== false || l.who !== "room"));
+    fill(box, "Conversation", `<div class="body stack">${lines.map((l) => {
+      const who = l.who === "pip" ? "Pip" : l.speaker && l.speaker !== "Someone" ? l.speaker : "Someone";
+      return `<div class="said ${l.who}"><b>${esc(who)}${l.who === "you" ? " → Pip" : ""}:</b> ${esc(l.text)}</div>`;
+    }).join("") || none("Nothing said yet")}</div>`);
+  },
+};
+
+function boxes(type) { return [...$("board").children].filter((b) => !type || b.dataset.type === type); }
+function redraw(...types) {
+  for (const box of boxes()) if (!types.length || types.includes(box.dataset.type)) BOXES[box.dataset.type]?.(box, box.section);
+}
+function showBanner() {
   const ringing = data.alerts.filter((a) => a.state === "ringing");
-  live.ringing = ringing.length > 0;
   $("banner").textContent = ringing.map((a) =>
     a.kind === "timer" ? (a.label && a.label !== "timer" ? `${a.label} timer is done` : "Timer's done")
     : a.kind === "alarm" ? (a.label && a.label !== "alarm" ? a.label : "Alarm")
     : a.kind === "event" ? `Coming up: ${a.label}` : a.label || "Reminder").join(" · ");
-  const rows = data.alerts.filter((a) => a.state !== "ringing").slice(0, 5).map((a) => {
-    const kind = { timer: "timer", alarm: "alarm", reminder: "reminder", event: "soon" }[a.kind] || a.kind;
-    const name = a.label && !["timer", "alarm"].includes(a.label) ? esc(a.label) : "";
-    const when = a.kind === "timer" ? `<span class="timer-left">${left(a.due - now)}</span>` : at(a.due);
-    return `<div class="item"><span class="what"><small>${kind}</small>${name}</span><span class="when">${when}</span></div>`;
-  });
-  $("timers").innerHTML = rows.join("") || `<div class="none">Nothing set</div>`;
-  $("b-timers").classList.toggle("empty", !rows.length);
 }
 
-function showEvents() {
-  const now = Date.now() / 1000 - skew, today = new Date();
-  const rows = data.events.filter((e) => e.all_day ? e.at + 86400 > now : e.at > now - 1800).slice(0, 6).map((e) => {
-    const tomorrow = new Date(e.at * 1000).getDate() !== today.getDate();
-    const when = (tomorrow ? "Tomorrow " : "") + (e.all_day ? "all day" : at(e.at));
-    const soon = !e.all_day && e.at - now < 3600;
-    return `<div class="item${soon ? " soon" : ""}"><span class="what">${esc(e.title)}</span><span class="when">${esc(when)}</span></div>`;
+function place(box, p) { box.style.gridArea = `${p.y + 1} / ${p.x + 1} / span ${p.h} / span ${p.w}`; }
+function tint(color) { return !color ? "" : ((live.screen || {}).palette || {})[color] || (/^#[0-9a-f]{6}$/i.test(color) ? color : ""); }
+
+// Lay out a screen: boxes that stay slide to their new place and size, new ones pop in, and the ones
+// that go pop out. A box is the same box from one screen to the next if it shows the same thing.
+function showScreen(view) {
+  const layout = JSON.stringify(view);
+  if (layout === live.layout) return false;
+  const animate = Boolean(live.layout) && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  live.layout = layout;
+  const board = $("board"), face = $("face-box");
+  const before = new Map([face, ...board.children].map((box) => [box.dataset.key, box.getBoundingClientRect()]));
+  const old = new Map([...board.children].map((box) => [box.dataset.key, box]));
+  const seen = new Set();
+  const made = view.sections.map((section) => {
+    let key = `${section.type}:${section.title || section.list || ""}`;
+    while (seen.has(key)) key += "+";
+    seen.add(key);
+    let box = old.get(key);
+    old.delete(key);
+    if (!box) { box = document.createElement("section"); box.className = "box"; box.dataset.type = section.type; box.dataset.key = key; }
+    place(box, section);
+    const color = tint(section.color);
+    box.classList.toggle("tinted", Boolean(color));
+    if (color) box.style.setProperty("--tint", color); else box.style.removeProperty("--tint");
+    box.section = section;
+    BOXES[section.type]?.(box, section);
+    return box;
   });
-  $("events").innerHTML = rows.join("") || `<div class="none">Nothing today or tomorrow</div>`;
-  $("b-events").classList.toggle("empty", !rows.length);
+  for (const [key, box] of old) {  // the boxes that are going
+    const from = before.get(key);
+    if (!animate || !from) { box.remove(); continue; }
+    Object.assign(box.style, { left: `${from.left}px`, top: `${from.top}px`, width: `${from.width}px`, height: `${from.height}px`, gridArea: "" });
+    box.classList.add("leaving");
+    document.body.append(box);
+    setTimeout(() => box.remove(), 400);
+  }
+  board.replaceChildren(...made);
+  const f = view.face_shown || view.face;
+  live.align = view.face.align || "middle";
+  place(face, { x: 0, y: 0, ...f });
+  document.body.classList.toggle("face-compact", f.w < 5 || f.h < 4);
+  document.body.classList.toggle("no-captions", f.w < 5 || f.h < 6);
+  document.body.classList.toggle("dim", Boolean(view.dim));
+  if (animate) {
+    for (const box of [face, ...made]) {
+      const from = before.get(box.dataset.key), to = box.getBoundingClientRect();
+      if (!from) box.animate([{ opacity: 0, transform: "scale(.82)" }, { opacity: 1, transform: "none" }], { duration: 450, easing: "cubic-bezier(.2, 1.3, .4, 1)" });
+      else if (Math.abs(from.left - to.left) + Math.abs(from.top - to.top) + Math.abs(from.width - to.width) + Math.abs(from.height - to.height) > 1) {
+        const move = `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${from.width / to.width}, ${from.height / to.height})`;
+        box.animate([{ transformOrigin: "0 0", transform: move }, { transformOrigin: "0 0", transform: "none" }], { duration: 550, easing: "cubic-bezier(.2, .8, .2, 1)" });
+      }
+    }
+  }
+  fitCanvas();
+  return true;
 }
 
-function showWeather() {
-  const w = live.weather = data.weather || {};   // live.weather.wear dresses the face (wearing())
-  if (w.temp === undefined) { $("weather").innerHTML = `<div class="none">No forecast yet</div>`; return; }
-  $("weather").innerHTML = `<div class="now"><div class="temp">${w.temp}°</div><div><div class="sky">${esc(w.sky)}</div>
-      <div class="feels">feels like ${w.feels}°</div></div></div>` +
-    (w.days || []).slice(0, 2).map((d) => `<div class="day"><span class="name-of-day">${esc(d.name.slice(0, 3))}</span>
-      <span class="words">${esc(d.sky)}</span><span>${d.high}°/${d.low}°</span><span class="rain">${d.rain}% rain</span></div>`).join("");
+// Every kind of box there could be, down the right edge, so everyone knows what they can ask for. Faint
+// dots most of the time; with names for a little while after the screen changes or when asked.
+const RAIL_AWAKE_S = 15;
+function showRail(kinds) {
+  $("rail").innerHTML = (kinds || []).map((k) => `<div class="pick${k.on ? " on" : ""}"><span class="dot"></span><span class="label">${esc(k.label)}</span></div>`).join("");
+}
+function wakeRail() {
+  $("rail").classList.add("awake");
+  clearTimeout(live.railTimer);
+  live.railTimer = setTimeout(() => $("rail").classList.remove("awake"), RAIL_AWAKE_S * 1000);
 }
 
 async function refresh() {
   try {
     const r = await (await fetch("/api/tv", { cache: "no-store" })).json();
-    if (r.now) { data = r; skew = Date.now() / 1000 - r.now; }
+    if (r.now) { data = { ...data, ...r }; skew = Date.now() / 1000 - r.now; }
     else data.weather = r.weather || data.weather;
+    live.weather = data.weather;   // live.weather.wear dresses the face (wearing())
     if (r.state) live.state = r.state;
-    showTimers(); showEvents(); showWeather(); showState();
+    if (r.screen) {
+      live.screen = r.screen;
+      showRail(r.screen.kinds);
+      if (showScreen(r.screen.view) && live.shownOnce) wakeRail();
+      live.shownOnce = true;
+    }
+    showBanner(); redraw(); showState();
   } catch { /* the stream reconnects */ }
+}
+async function refreshVitals() {
+  if (!boxes("health").length) return;
+  try { data.vitals = await (await fetch("/api/tv/vitals", { cache: "no-store" })).json(); redraw("health"); } catch { /* next time */ }
 }
 
 // --- What's happening ----------------------------------------------------------------------------
+function remember(line) {
+  said.push({ ...line, at: serverNow() });
+  if (said.length > KEEP_LINES) said.shift();
+  redraw("conversation");
+}
 function handle(kind, d) {
   live.lastEvent = performance.now();
   if (kind === "state") {
@@ -718,13 +846,18 @@ function handle(kind, d) {
   } else if (kind === "level") {
     live.voiceTarget = d.level; live.voiceAt = performance.now();
     $("level").style.transform = `scaleX(${clamp(d.level * 1.4, 0, 1)})`;
-  } else if (kind === "caption") {
+  } else if (kind === "caption") {   // a line said to Pip, or his reply
     live.activeAt = performance.now();
     showCaption(d.who, d.text, d.speaker);
+    remember(d);
     if (d.who === "you" && heardSixSeven(d.text)) sixSeven();
     else if (d.who === "you" && /\b(thanks|thank you|good job|nice one|love you)\b/i.test(d.text)) react("pleased", 3);
+  } else if (kind === "line") {      // room talk: only sent while a conversation box shows it (D-111)
+    remember(d);
   } else if (kind === "refresh") {
     refresh();
+  } else if (kind === "options") {
+    wakeRail();
   }
 }
 
@@ -742,7 +875,7 @@ function connect() {
     setConnected(true);
     refresh();
   };
-  for (const kind of ["state", "level", "caption", "refresh", "ping"])
+  for (const kind of ["state", "level", "caption", "line", "refresh", "options", "ping"])
     live.stream.addEventListener(kind, (m) => handle(kind, JSON.parse(m.data)));
   live.stream.onerror = () => lost();
 }
@@ -767,13 +900,13 @@ function creep() {  // screen care: the whole screen drifts a little, so nothing
   $("screen").style.transform = `translate(${(Math.sin(t / 3.7) * .9).toFixed(2)}rem, ${(Math.sin(t / 2.3) * .7).toFixed(2)}rem)`;
 }
 
-showClock(); showState(); showTimers(); showEvents(); showWeather(); creep();
+showState(); creep();
 fitCanvas();
 addEventListener("resize", fitCanvas);
 new ResizeObserver(() => fitCanvas()).observe(canvas);
-setInterval(showClock, 1000);
-setInterval(showTimers, 1000);
-setInterval(showEvents, 60000);
+setInterval(() => redraw("clock", "timers"), 1000);
+setInterval(() => redraw("calendar", "conversation"), 60000);
+setInterval(refreshVitals, VITALS_S * 1000);
 setInterval(refresh, 15 * 60000);   // the weather, and anything missed
 setInterval(creep, 30000);
 setInterval(() => {  // a stream can hang without reporting an error; keep-alives come every 15 s

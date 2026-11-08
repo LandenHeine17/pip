@@ -109,7 +109,7 @@ def test_the_dashboard_serves_module_pages_and_passes_requests_privately():
 
     bus = Bus()
     client = TestClient(build_app(bus, State(), {}))
-    assert [m["label"] for m in client.get("/api/modules").json()] == ["Calendar", "Google", "To-dos"]
+    assert [m["label"] for m in client.get("/api/modules").json()] == ["Calendar", "Google", "Screen", "To-dos"]
     page = client.get("/m/calendar/")
     assert page.status_code == 200 and "text/html" in page.headers["content-type"]
     assert client.get("/m/calendar/../module.py").status_code == 404           # nothing outside static/
