@@ -457,10 +457,12 @@ class Calendar(Module):
         return out
 
     def upcoming(self, days: int = 14) -> list[dict]:
+        """The dashboard's "next two weeks" list: only calendars chosen for it (D-109)."""
         today = datetime.fromtimestamp(self.ctx.clock()).date()
+        listed = {c["id"] for c in self.store.calendars() if c["in_list"]}
         return [{"id": o["id"], "title": "Private" if o["private"] else o["title"], "at": o["at"], "all_day": o["all_day"],
                  "repeat": o["repeat"], "private": o["private"], "color": o["color"]}
-                for o in self.occurrences(today, today + timedelta(days=days - 1))]
+                for o in self.occurrences(today, today + timedelta(days=days - 1)) if o["calendar_id"] in listed]
 
     def calendars_view(self, ignored: bool = False) -> list[dict]:
         accounts, names = self._accounts(), self._people()
@@ -535,11 +537,60 @@ class Calendar(Module):
             return {"ok": True}
         if action in ("new_calendar", "edit_calendar", "delete_calendar", "ignore"):
             return await self._calendar_settings(action, args)
-        if action == "all_calendars":   # the Google page's settings list: every calendar, ignored ones too
+        if action == "all_calendars":   # every calendar, ignored ones too
             return {"calendars": self.calendars_view(ignored=True)}
+        if action in ("account_settings", "set_calendar", "set_pref"):
+            return self._account_settings(action, args)
         if action == "sync":
             return {"ok": True, "accounts": await self.sync.run_once()}
         return {"error": f"unknown action {action}"}
+
+    HEADS_UP = ("off", "own", "all", "5", "10", "15", "30", "60", "120", "1440")
+
+    def _account_settings(self, action: str, args: dict) -> dict:
+        """An account's settings page (D-109): its calendars (use/ignore, calendar page, two-week list, heads-ups),
+        no heads-ups at night, and which calendar is the household's."""
+        s = self.store
+        if action == "set_calendar":
+            cal = s.calendar(str(args.get("id")))
+            if not cal:
+                raise ValueError("That calendar is gone")
+            field, value = str(args.get("field")), args.get("value")
+            if field == "ignored":
+                s.set_ignored(cal["id"], bool(value))
+                self._wake.set()
+            elif field in ("ticked", "in_list"):
+                s.upsert_calendar(cal["id"], **{field: int(bool(value))})
+            elif field == "heads_up":
+                if str(value) not in self.HEADS_UP:
+                    raise ValueError("Unknown heads-up choice")
+                s.upsert_calendar(cal["id"], heads_up=str(value))
+            else:
+                raise ValueError("Unknown setting")
+            if field in ("ticked", "heads_up"):
+                s.remake_alerts({cal["id"]})
+            account = cal["account_id"]
+        else:
+            account = str(args.get("account") or "")
+            if action == "set_pref":
+                key, value = str(args.get("key")), args.get("value")
+                if key == "night":
+                    value = "1" if value in (True, 1, "1", "true") else "0"
+                elif key == "household":
+                    value = str(value or "")
+                    c = s.calendar(value) if value else None
+                    if value and (not c or c["account_id"] != account or not c["writable"]):
+                        raise ValueError("Pick one of this account's calendars that Pip can add to")
+                s.set_pref(account, key, value)
+                if key == "night":
+                    s.remake_alerts({c["id"] for c in s.calendars(ignored=True) if c["account_id"] == account})
+        mine = [c for c in self.calendars_view(ignored=True) if c["account_id"] == account]
+        raw = {c["id"]: c for c in s.calendars(ignored=True)}
+        for c in mine:
+            c.update(in_list=bool(raw[c["id"]]["in_list"]), heads_up=raw[c["id"]]["heads_up"])
+        return {"ok": True, "calendars": mine, "night": s.pref(account, "night") == "1",
+                "household": s.pref(account, "household"), "household_now": self.sync.household(),
+                "heads_ups": len([a for a in (self.ctx.schedule.active(("event",)) if self.ctx.schedule else [])])}
 
     async def _calendar_settings(self, action: str, args: dict) -> dict:
         """The dashboard's calendar settings (same as asking Pip; the page asks "are you sure" before deleting)."""

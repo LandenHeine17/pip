@@ -62,14 +62,15 @@ def from_google(item: dict, default_reminder: float | None) -> dict:
     end, _ = _ts(item.get("end") or item["start"])
     rem = item.get("reminders") or {}
     if rem.get("useDefault", True):
-        reminder = default_reminder
+        reminder, own = default_reminder, False   # just the calendar's automatic reminder
     else:
         mins = [o["minutes"] for o in rem.get("overrides", []) if o.get("method") == "popup"]
-        reminder = float(min(mins)) if mins else None
+        reminder, own = (float(min(mins)) if mins else None), bool(mins)   # set on this event by hand
     return {"title": (item.get("summary") or "(no title)")[:200], "start": start, "end": max(end, start + 60),
             "all_day": int(all_day), "repeat": "", "location": (item.get("location") or "")[:200],
             "notes": (item.get("description") or "")[:2000],
             "private": int(item.get("visibility") in ("private", "confidential")), "reminder": reminder,
+            "reminder_own": int(own),
             "google_id": item["id"], "etag": item.get("etag", "")}
 
 
@@ -143,10 +144,16 @@ class CalendarSync:
         return None
 
     def household(self) -> str:
-        """Where events go when Pip doesn't know whose they are (setting household_calendar)."""
+        """Where events go when Pip doesn't know whose they are: the calendar chosen on an account's settings page
+        (D-109), else the household_calendar setting's account, else the first admin's main calendar."""
         if self.google is None:
             return "pip"
-        for a in self.google.household_accounts(self.settings.get("household_calendar", "")):
+        accounts = self.google.household_accounts(self.settings.get("household_calendar", ""))
+        for a in accounts:
+            chosen = self.store.calendar(self.store.pref(a["id"], "household"))
+            if chosen and chosen["account_id"] == a["id"] and chosen["writable"] and not chosen["ignored"]:
+                return chosen["id"]
+        for a in accounts:
             if cid := self.primary(a["id"]):
                 return cid
         return "pip"

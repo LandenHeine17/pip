@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Google settings</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th{text-align:left;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:6px 8px}
+td{padding:8px;border-top:1px solid var(--line);vertical-align:middle}
+td.c{text-align:center}
+tr.off td:not(:first-child):not(:nth-child(2)){opacity:.35}
+tr.off .cname{text-decoration:line-through;opacity:.6}
+.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:8px;vertical-align:middle}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 0}
+.row .what{min-width:15em;font-weight:600}
+@media (max-width:640px){th.hide,td.hide{display:none}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+    <div><h1 id="title">Google settings</h1><div class="sub" id="sub"><a href="/m/google/">← all Google accounts</a></div></div></div>
+</header>
+
+<section>
+  <div class="head"><h2>This account</h2></div>
+  <div class="row"><span class="what">Pip may mention their events and to-dos</span>
+    <select id="sharing" onchange="setSharing(this.value)"><option value="everyone">to everyone</option><option value="me">only to them</option></select></div>
+  <div class="row"><span class="what">Household calendar</span>
+    <select id="household" onchange="setPref('household', this.value)"></select>
+    <span class="sub">Events go here when Pip doesn't know whose they are.</span></div>
+  <label class="row"><span class="what">No heads-ups at night</span>
+    <input type="checkbox" id="night" onchange="setPref('night', this.checked)"> <span class="sub">Nothing between 11 PM and 7 AM (alarms still ring).</span></label>
+  <div class="sub" id="manage"></div>
+  <div style="margin-top:10px"><button class="ghost" onclick="disconnect()">Disconnect this account</button></div>
+</section>
+
+<section>
+  <div class="head"><h2>Calendars</h2><span class="sub" id="headsups"></span></div>
+  <table><thead><tr><th>Calendar</th><th>Use</th><th class="c">On the calendar page</th><th class="c hide">In the two-week list</th><th>Heads-ups</th></tr></thead>
+    <tbody id="cals"></tbody></table>
+  <div class="sub" style="margin-top:10px"><b>Ignore</b>: Pip doesn't fetch it, it's not on the calendar page, and he never hears about it.
+    <b>Heads-ups</b>: "Only ones you set" means events where you added a reminder yourself in Google, not the calendar's
+    automatic one, so classes and the like stay quiet. <b>Two-week list</b>: the list on Pip's main dashboard.</div>
+</section>
+
+<section>
+  <div class="head"><h2>To-do lists</h2></div>
+  <div id="lists"></div>
+  <div class="sub" style="margin-top:8px">Ignored lists aren't fetched, shown on the To-dos page, or told to Pip.</div>
+</section>
+</main>
+
+<script src="/pip.js"></script>
+<script>
+const account = new URLSearchParams(location.search).get("id");
+const HEADS = [["off","Off"],["own","Only ones you set"],["all","Every event (calendar's reminder)"],["5","5 min before every event"],
+  ["10","10 min before"],["15","15 min before"],["30","30 min before"],["60","1 hour before"],["120","2 hours before"],["1440","1 day before"]];
+let acc = null, cal = {calendars: []}, lists = [];
+async function load(){
+  const g = await pip.act(pip.get("status"));
+  acc = g && g.accounts.find(a => a.id === account);
+  if (!acc) { document.querySelector("main").innerHTML = `<section><div class="empty">That account isn't connected. <a href="/m/google/">Back</a></div></section>`; return; }
+  try { cal = await pip.get("account_settings", {account}, "calendar"); } catch (e) { cal = {calendars: []}; }
+  try { lists = (await pip.get("account_lists", {account}, "todos")).lists; } catch (e) { lists = []; }
+  render();
+}
+function render(){
+  $("title").textContent = `Google settings · ${acc.person}`;
+  $("sub").innerHTML = `${esc(acc.email)} · <a href="/m/google/">all Google accounts</a>`;
+  $("sharing").value = acc.sharing;
+  $("night").checked = !!cal.night;
+  const writable = cal.calendars.filter(c => c.writable && !c.ignored);
+  $("household").innerHTML = `<option value="">${cal.household ? "Not this account" : "Automatic"}</option>` +
+    writable.map(c => `<option value="${esc(c.id)}" ${c.id===cal.household?"selected":""}>${esc(c.primary?"Main calendar":c.name)}</option>`).join("");
+  $("manage").textContent = acc.can_manage ? "" : "To let Pip make, rename or delete calendars: on the Google page press Connect Google again for this person and tick Select all.";
+  $("headsups").textContent = cal.heads_ups != null ? `${cal.heads_ups} heads-up${cal.heads_ups===1?"":"s"} waiting (all calendars)` : "";
+  $("cals").innerHTML = cal.calendars.map(c => `<tr class="${c.ignored?"off":""}">
+    <td><span class="sw" style="background:${esc(c.color)}"></span><span class="cname">${esc(c.primary?"Main calendar":c.name)}</span>${c.writable?"":` <span class="sub">(read-only)</span>`}</td>
+    <td><select onchange="setCal('${esc(c.id)}','ignored', this.value==='ignore')"><option value="use">Use</option><option value="ignore" ${c.ignored?"selected":""}>Ignore</option></select></td>
+    <td class="c"><input type="checkbox" ${c.ticked?"checked":""} ${c.ignored?"disabled":""} onchange="setCal('${esc(c.id)}','ticked', this.checked)"></td>
+    <td class="c hide"><input type="checkbox" ${c.in_list?"checked":""} ${c.ignored?"disabled":""} onchange="setCal('${esc(c.id)}','in_list', this.checked)"></td>
+    <td><select ${c.ignored?"disabled":""} onchange="setCal('${esc(c.id)}','heads_up', this.value)">${HEADS.map(([v,l]) => `<option value="${v}" ${v===c.heads_up?"selected":""}>${l}</option>`).join("")}</select></td></tr>`).join("")
+    || `<tr><td colspan="5" class="sub">No calendars yet (they arrive with the next sync).</td></tr>`;
+  $("lists").innerHTML = lists.map(l => `<div class="row"><select onchange="setList('${esc(l.id)}', this.value==='ignore')"><option value="use">Use</option><option value="ignore" ${l.ignored?"selected":""}>Ignore</option></select>
+    <span style="${l.ignored?"text-decoration:line-through;opacity:.6":""}">${esc(l.name)}</span></div>`).join("") || `<div class="empty">No to-do lists yet.</div>`;
+}
+async function setCal(id, field, value){ const r = await pip.act(pip.post("set_calendar", {id, field, value}, "calendar")); if (r) { cal = r; render(); } }
+async function setPref(key, value){ const r = await pip.act(pip.post("set_pref", {account, key, value}, "calendar")); if (r) { cal = r; render(); } }
+async function setList(id, ignored){ const r = await pip.act(pip.post("set_list", {id, ignored}, "todos")); if (r) { lists = r.lists; render(); } }
+async function setSharing(value){ const r = await pip.act(pip.post("sharing", {id: account, value})); if (r) load(); }
+async function disconnect(){ if (confirm(`Disconnect ${acc.email}? Pip forgets its calendar and to-dos here (nothing is deleted in Google).`)) {
+  const r = await pip.act(pip.post("disconnect", {id: account})); if (r) location.href = "/m/google/"; } }
+load();
+</script>
+</body>
+</html>

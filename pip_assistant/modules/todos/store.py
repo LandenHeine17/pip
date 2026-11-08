@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS todos_lists (
     google_id   TEXT NOT NULL DEFAULT '',
     name        TEXT NOT NULL,
     is_default  INTEGER NOT NULL DEFAULT 0, -- the account's first list ("My Tasks")
-    pulled      REAL NOT NULL DEFAULT 0     -- when Google was last asked for changes
+    pulled      REAL NOT NULL DEFAULT 0,    -- when Google was last asked for changes
+    ignored     INTEGER NOT NULL DEFAULT 0  -- set on the account's settings page: not synced, shown or told to Pip (D-109)
 );
 CREATE TABLE IF NOT EXISTS todos_items (
     id          TEXT PRIMARY KEY,
@@ -39,6 +40,8 @@ class TodoStore:
     def __init__(self, db: sqlite3.Connection, clock=time.time):
         self.db, self.clock = db, clock
         self.db.executescript(SCHEMA)
+        if "ignored" not in {r[1] for r in self.db.execute("PRAGMA table_info(todos_lists)")}:
+            self.db.execute("ALTER TABLE todos_lists ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0")
         self.db.execute("INSERT OR IGNORE INTO todos_lists (id, name, is_default) VALUES ('pip', 'Household', 1)")
         self.db.commit()
         self.on_change = []
@@ -50,8 +53,18 @@ class TodoStore:
             fn()
 
     # ---------------------------------------------------------------- lists
-    def lists(self) -> list[dict]:
-        return [dict(r) for r in self.db.execute("SELECT * FROM todos_lists ORDER BY account_id != '', name")]
+    def lists(self, ignored: bool = False) -> list[dict]:
+        """The lists Pip uses (ignored ones only if asked: the account's settings page)."""
+        return [dict(r) for r in self.db.execute("SELECT * FROM todos_lists ORDER BY account_id != '', name")
+                if ignored or not r["ignored"]]
+
+    def set_ignored(self, lid: str, ignored: bool) -> None:
+        """Ignored: its to-dos are forgotten here and it isn't fetched; un-ignored: fetched again from scratch."""
+        self.upsert_list(lid, ignored=int(ignored), pulled=0)
+        if ignored:
+            self.db.execute("DELETE FROM todos_items WHERE list_id = ?", (lid,))
+            self.db.commit()
+        self._changed()
 
     def get_list(self, lid: str) -> dict | None:
         r = self.db.execute("SELECT * FROM todos_lists WHERE id = ?", (lid,)).fetchone()
@@ -81,7 +94,9 @@ class TodoStore:
         return dict(r) if r else None
 
     def items(self, include_done_since: float | None = None) -> list[dict]:
-        rows = [dict(r) for r in self.db.execute("SELECT * FROM todos_items WHERE pending != 'delete' ORDER BY done, due = '', due, created")]
+        used = {x["id"] for x in self.lists()}
+        rows = [dict(r) for r in self.db.execute("SELECT * FROM todos_items WHERE pending != 'delete' ORDER BY done, due = '', due, created")
+                if r["list_id"] in used]
         return [r for r in rows if not r["done"] or (include_done_since is not None and (r["done_at"] or 0) >= include_done_since)]
 
     def pending(self, lids: set[str]) -> list[dict]:

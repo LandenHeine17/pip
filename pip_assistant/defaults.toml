@@ -61,12 +61,14 @@ welcome_back_minutes = 20          # "Hey Landen, welcome back" after the room w
 
 [mic]
 # Switching listening off (D-91): the dashboard's Listening switch, or two claps. Both must be on.
-# Claps are heard on a separate plain USB microphone (the speakerphone's noise filter erases them), chosen on
-# the dashboard; with none chosen, claps do nothing. Not finished: tune on recordings from that mic (Session F).
-clap_peak_dbfs = -35.0             # How loud a clap must be at its peak.
-clap_jump_db = 15.0                # How suddenly it must get louder.
-clap_gap_min_ms = 100              # The two claps come at least this far apart…
-clap_gap_max_ms = 1500             # …and at most this far.
+# Claps are heard on a separate plain USB microphone (the speakerphone's noise filter erases them), chosen on the
+# dashboard (Listening & sounds). Tuned on the owner's Session F recordings from that mic (2026-11-08).
+clap_peak_dbfs = -12.0             # How loud a clap must be (its loudest 10 ms).
+clap_jump_db = 25.0                # How far above the room's sound just before it.
+clap_max_ms = 250                  # A clap is over within this; anything longer (a door, talking) isn't one.
+clap_gap_min_ms = 150              # The two claps come at least this far apart…
+clap_gap_max_ms = 1500             # …and at most this far,
+clap_settle_ms = 700               # …and then nothing more for this long (three claps or applause don't count).
 
 [conversation]
 own_commands = "offline"           # Pip's fixed-phrasing commands: "offline" = only without internet (D-94; online, Claude

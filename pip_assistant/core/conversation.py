@@ -209,6 +209,7 @@ class Conversation:
         bus.core_listen("answer.sentence", self.on_sentence)
         bus.core_listen("answer.searching", self.on_searching)
         bus.core_listen("mic.clapped", self.on_clapped)
+        bus.core_listen("mic.clapped_trial", self.on_clapped_trial)
         bus.on_connect.append(self.on_program_connected)
 
     # ---------------------------------------------------------------- helpers
@@ -370,6 +371,10 @@ class Conversation:
             await self.command("ears", "ears.tone", {"name": tone})
         await self.bus.publish(Message("event", "mic.changed", data=self.mic.snapshot()))
         self.refresh_state()
+
+    async def on_clapped_trial(self, msg: Message) -> None:
+        """Two claps heard while the clap switch isn't ticked: only shown on the feed, to try it out (D-91)."""
+        await self.note("claps_trial")
 
     async def on_clapped(self, msg: Message) -> None:
         if self.mic is not None and self.mic.clapped():
