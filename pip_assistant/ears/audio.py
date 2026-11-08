@@ -116,8 +116,9 @@ class Speaker:
     def playing(self) -> bool:
         return self.proc is not None and self.proc.returncode is None
 
-    async def play(self, audio: np.ndarray, rate: int) -> bool:
-        """Play to the end (True) or until stop() is called (False)."""
+    async def play(self, audio: np.ndarray, rate: int, on_level=None) -> bool:
+        """Play to the end (True) or until stop() is called (False). on_level(0–1) is called for each
+        50 ms piece as it's sent (the face's mouth follows it)."""
         await self.stop()
         self._stopped = False
         self.proc = await asyncio.create_subprocess_exec(
@@ -131,6 +132,9 @@ class Speaker:
                     break
                 self.proc.stdin.write(raw[i:i + chunk])
                 await self.proc.stdin.drain()
+                if on_level is not None:
+                    piece = audio[i // 2:(i + chunk) // 2].astype(np.float32)
+                    on_level(float(min(1.0, np.sqrt(np.mean(piece * piece)) / 8000)) if len(piece) else 0.0)
             if not self._stopped:
                 self.proc.stdin.close()
                 await self.proc.wait()

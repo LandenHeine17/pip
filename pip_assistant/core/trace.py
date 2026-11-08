@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS trace (
 );
 CREATE INDEX IF NOT EXISTS trace_ts ON trace (ts);
 """
-NOT_TRACED = {"heartbeat"}  # recorded as health instead, to keep the trace readable
+NOT_TRACED = {"heartbeat", "speech.level"}  # health is recorded separately; the mouth level is ~10 a second
 
 
 class Trace:
@@ -41,7 +41,7 @@ class Trace:
                 "target": msg.target, "data": msg.data}
 
     def add(self, msg: Message) -> dict | None:
-        if msg.kind in NOT_TRACED:
+        if msg.kind in NOT_TRACED or msg.type in NOT_TRACED:
             return None
         r = self.row(msg)
         self.pending.append((r["ts"], r["kind"], r["type"], r["source"], r["target"],

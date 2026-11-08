@@ -48,6 +48,7 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
                         mic=mic, modules=modules, prefs=prefs)
     conv.net = net
     bus.core_handlers["core.alerts"] = lambda m: ({"count": len(schedule.active())}, alerts_snapshot(schedule, modules))
+    bus.core_handlers["core.tv"] = lambda m: ({}, tv_snapshot(schedule, modules))   # the TV page (D-110)
     bus.core_handlers["core.alert_action"] = lambda m: alert_action(schedule, conv, m)
     bus.core_handlers["module.request"] = modules.request          # a module's dashboard page (/api/m/<name>)
     bus.core_handlers["core.modules"] = lambda m: {"modules": modules.pages()}
@@ -74,6 +75,21 @@ def alerts_snapshot(schedule: Schedule, modules: Registry) -> dict:
     later = [a for a in snap["alerts"] if a["kind"] == "event" and a["state"] != "ringing" and a["due"] > soon]
     snap["alerts"] = [a for a in snap["alerts"] if a not in later]
     return {**snap, "later_heads_ups": len(later), "events": cal.upcoming(14) if cal else []}
+
+
+def tv_snapshot(schedule: Schedule, modules: Registry) -> dict:
+    """Only what the TV page shows (D-110): timers, alarms and reminders (heads-ups due within the hour),
+    what's ringing, and today's and tomorrow's events from calendars in the two-week list, never private
+    ones. Sent privately (labels and titles are personal), never logged."""
+    snap = schedule.snapshot()
+    now = snap["now"]
+    alerts = [{"kind": a["kind"], "label": a["label"], "due": a["due"], "length": a.get("length"), "state": a["state"],
+               "repeat": a["repeat"]}
+              for a in snap["alerts"] if a["kind"] != "event" or a["state"] == "ringing" or a["due"] - now < 3600]
+    cal = modules.modules.get("calendar")
+    events = [{"title": e["title"], "at": e["at"], "all_day": e["all_day"], "color": e["color"]}
+              for e in (cal.upcoming(2) if cal else []) if not e["private"]]
+    return {"now": now, "alerts": alerts, "events": events[:12]}
 
 
 def memory_snapshot(memory: Memory, people: People) -> dict:

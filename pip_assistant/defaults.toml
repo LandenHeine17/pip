@@ -105,3 +105,4 @@ location = "Lincoln, Nebraska"     # Where Pip lives (D-63).
 [web]
 host = "127.0.0.1"                 # Address the dashboard listens on. On the Pi this is the Tailscale address.
 port = 8790                        # Port for the dashboard.
+tv_host = "127.0.0.1"              # Also listen here (same port), so the monitor's browser on the Pi works without Tailscale.

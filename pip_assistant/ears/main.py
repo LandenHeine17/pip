@@ -3,6 +3,7 @@ instantly when talked over.
 
 Events it sends:   heard.wake {word, score} · heard.started {reason} · heard.utterance {reason, seconds, had_speech} (+ private audio)
                    speech.started · speech.interrupted · speech.finished {interrupted}
+                   speech.level {level 0–1} (~10 a second while he talks, for the face's mouth; not traced)
                    ears.status {state}  (listening / speaking / muted_or_quiet / mic_off)
                    mic.clapped   (two claps: pip-core decides what that switches, D-91) · mic.clapped_trial (heard, but
                    the clap switch isn't ticked yet: only shown on the dashboard)
@@ -182,12 +183,19 @@ class Ears:
             self.speaking = True
             if first and kind == "speech":
                 await self.bus.emit("speech.started", {})
-            finished = await self.speaker.play(audio, self.voice.rate)
+            finished = await self.speaker.play(audio, self.voice.rate,
+                                               on_level=self._mouth if kind == "speech" else None)
             if not finished or self.queue.empty():
                 self.speaking = False
                 await self.bus.emit("speech.finished", {"interrupted": not finished})
                 if not finished:
                     self._clear_queue()
+
+    def _mouth(self, level: float) -> None:
+        """How loud Pip's voice is right now, ~10 times a second, for the face's mouth (never traced)."""
+        self._level_n = getattr(self, "_level_n", 0) + 1
+        if self._level_n % 2 == 0:
+            asyncio.ensure_future(self.bus.emit("speech.level", {"level": round(level, 2)}))
 
     def _clear_queue(self) -> None:
         while not self.queue.empty():
