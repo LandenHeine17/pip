@@ -1,0 +1,30 @@
+# Shows Pip's face on the monitor plugged into the Pi, from boot, with no desktop (step 7, D-110).
+# A system service (not a user one like pip-core), because it has to take over the screen's console.
+# Installed by deploy/install-tv.sh, which fills in the @...@ values. Replaces Ziggletron's ziggletron-tv.
+[Unit]
+Description=Pip's face on the monitor
+After=systemd-user-sessions.service network.target systemd-logind.service getty@tty1.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=simple
+User=@USER@
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+UtmpIdentifier=tty1
+UtmpMode=user
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+Environment=PIP_TV_URL=http://127.0.0.1:@PORT@/tv
+ExecStart=/usr/bin/cage -d -s -- @REPO@/deploy/tv/tv-kiosk.sh
+Restart=always
+RestartSec=5
+# A fresh browser once a day, so months of running can't slowly use up the memory.
+RuntimeMaxSec=1d
+
+[Install]
+WantedBy=multi-user.target

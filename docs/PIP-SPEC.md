@@ -215,8 +215,8 @@ Sounds without a human voice in them (a click, a cough, a hiss) are dropped befo
 
 ### Screen and dashboard
 - **What Pip hears and does** (D-108): the Conversation box shows everything heard (grey = not for Pip, green = to Pip, "mentioned Pip"), his replies, and small bars for what happened (chimed, waiting for you to finish, stayed quiet, interrupted, mic off/on and for how long, timers ringing, offline). Live only, never saved. The **coloured circle** at the top shows his state: grey idle, green listening, purple thinking, blue speaking, orange interrupted, red ringing, dark mic off. The face (step 7) will grow out of it.
-- The animated face on the monitor, with weather clothing and reactions (six-seven stays) (D-35, D-62).
-- TV widgets show live data. Layout changes are checked, previewed and undoable.
+- **The face on the monitor** (D-110, built 2026-11-08): Ziggletron's face, with Pip's colours (grey idle, green listening, purple thinking, blue speaking, orange interrupted, red ringing, dark mic off), weather clothing (Santa hat in the holidays, umbrella in rain, sunglasses when it's sunny and warm), reactions (six-seven, pleased when thanked) and a mouth that moves with his voice. He dozes after 10 quiet minutes. Next to it: the clock, the weather, timers and alarms with countdowns, and today's and tomorrow's events (never private ones). Captions show what was said to Pip and his reply for a minute; room talk never goes on the screen. A ringing alarm shows a banner. The screen drifts slightly so nothing burns in.
+- Coming later: changing the screen by voice (layouts, bigger clock, more boxes), checked, previewed and undoable.
 - The dashboard works from your phone over Tailscale. Admin actions need a login with 2-factor; the conversation feed doesn't (D-10, D-35, D-53).
 
 ### Explaining himself

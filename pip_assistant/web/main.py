@@ -13,6 +13,7 @@ import asyncio
 import collections
 import json
 import mimetypes
+import socket
 from importlib import resources
 
 import uvicorn
@@ -24,6 +25,7 @@ from .. import __version__
 from ..common.messages import Message
 from ..common.modules import enabled as enabled_modules
 from ..common.program import make_bus, start
+from ..common.weather import Weather
 
 TRACE_KEEP = 300
 
@@ -36,15 +38,24 @@ class State:
         self.listeners: set[asyncio.Queue] = set()
         self.online = True       # D-95: the dashboard's small offline indicator
         self.pip_state = "idle"  # idle / listening / thinking / speaking / interrupted / ringing / offline / mic_off
+        self.tv_listeners: set[asyncio.Queue] = set()   # the TV page's own, narrower stream (D-110)
 
     def push(self, kind: str, data: dict) -> None:
         for q in list(self.listeners):
             if q.qsize() < 200:
                 q.put_nowait((kind, data))
 
+    def push_tv(self, kind: str, data: dict) -> None:
+        """Only what the TV shows: state, the mouth level, captions of lines to Pip, and "refresh" (D-110)."""
+        for q in list(self.tv_listeners):
+            if q.qsize() < 200:
+                q.put_nowait((kind, data))
+
 
 def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
     page = resources.files("pip_assistant.web").joinpath("static/index.html").read_text()
+    tv_page = resources.files("pip_assistant.web").joinpath("static/tv.html").read_text()
+    weather = Weather((cfg or {}).get("thinker", {}).get("location", "Lincoln, Nebraska"))
     css = resources.files("pip_assistant.web").joinpath("static/pip.css").read_text()
     js = resources.files("pip_assistant.web").joinpath("static/pip.js").read_text()
     mods = {m.name: m for m in enabled_modules(cfg or {})}
@@ -176,9 +187,9 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
     async def conversation(request):
         return JSONResponse(list(state.conversation)[::-1])
 
-    async def stream(request):
+    def sse(listeners: set):
         q: asyncio.Queue = asyncio.Queue()
-        state.listeners.add(q)
+        listeners.add(q)
 
         async def events():
             try:
@@ -188,13 +199,38 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
                         kind, data = await asyncio.wait_for(q.get(), timeout=15)
                         yield f"event: {kind}\ndata: {json.dumps(data, default=str)}\n\n"
                     except asyncio.TimeoutError:
-                        yield ": keep-alive\n\n"
+                        yield "event: ping\ndata: {}\n\n"   # a real event, so pages can tell a hung stream
             finally:
-                state.listeners.discard(q)
+                listeners.discard(q)
 
         return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-store"})
 
+    async def stream(request):
+        return sse(state.listeners)
+
+    # ---------------------------------------------------------------- the TV page (D-110): the face and its boxes
+    async def tv(request):
+        return HTMLResponse(tv_page, headers={"Cache-Control": "no-store"})
+
+    async def tv_data(request):
+        """What the TV's boxes show: timers, next events, weather; plus Pip's state."""
+        out = {"state": state.pip_state, "online": state.online, "weather": {}}
+        try:
+            r = await bus.request("core", "core.tv", timeout=3)
+            out.update(r.private or {})
+        except Exception:
+            out["error"] = "pip-core not reachable"
+        try:
+            out["weather"] = await weather.screen()
+        except Exception:
+            pass
+        return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+    async def tv_stream(request):
+        return sse(state.tv_listeners)
+
     return Starlette(routes=[Route("/", index), Route("/pip.css", stylesheet), Route("/pip.js", script), Route("/api/modules", module_list),
+                             Route("/tv", tv), Route("/api/tv", tv_data), Route("/api/tv/stream", tv_stream),
                              Route("/m/{name}/", module_file), Route("/m/{name}/{path:path}", module_file),
                              Route("/api/m/{name}", module_api, methods=["GET", "POST"]),
                              Route("/api/health", health), Route("/api/trace", trace), Route("/api/conversation", conversation),
@@ -205,9 +241,9 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
                              Route("/api/prefs", prefs, methods=["GET", "POST"]), Route("/api/stream", stream)])
 
 
-async def main() -> None:
-    bus, cfg = make_bus("web")
-    state = State()
+def listen(bus, state: State) -> None:
+    """What pip-web hears from pip-core, and where it goes: the dashboard's stream, and the TV page's
+    narrower one (D-110: state, mouth level, captions of lines to and from Pip only, "refresh")."""
 
     async def on_health(msg: Message):
         state.health = msg.data.get("programs", {})
@@ -223,12 +259,18 @@ async def main() -> None:
             line["speaker"] = msg.private["speaker"]
         state.conversation.append(line)
         state.push("conversation", line)
+        if line.get("who") == "pip" or line.get("how") == "direct":   # captions: only lines to and from Pip
+            state.push_tv("caption", {"who": "pip" if line.get("who") == "pip" else "you",
+                                      "speaker": line.get("speaker", ""), "text": line["text"]})
 
     def feed_event(ts: float, kind: str, **data) -> None:
         """An event bar on the conversation feed (D-108): what happened, no words."""
         line = {"ts": ts, "who": "event", "kind": kind, **data}
         state.conversation.append(line)
         state.push("conversation", line)
+        if line.get("who") == "pip" or line.get("how") == "direct":   # captions: only lines to and from Pip
+            state.push_tv("caption", {"who": "pip" if line.get("who") == "pip" else "you",
+                                      "speaker": line.get("speaker", ""), "text": line["text"]})
 
     async def on_event(msg: Message):
         feed_event(msg.ts, **msg.data)
@@ -237,6 +279,7 @@ async def main() -> None:
 
     async def on_alert(msg: Message):
         state.push("alerts", {"type": msg.type})
+        state.push_tv("refresh", {})
         what = msg.type.split(".", 1)[1]
         if what in ("ringing", "stopped", "snoozed"):
             feed_event(msg.ts, "alert", what=what, alert=msg.data.get("kind", ""), minutes=msg.data.get("minutes"))
@@ -244,6 +287,12 @@ async def main() -> None:
     async def on_state(msg: Message):
         state.pip_state = msg.data.get("state", "idle")
         state.push("state", {"state": state.pip_state})
+        state.push_tv("state", {"state": state.pip_state})
+
+    async def on_level(msg: Message):
+        state.push_tv("level", {"level": msg.data.get("level", 0)})
+
+    bus.subscribe("speech.level", on_level)
 
     bus.subscribe("alert.*", on_alert)
     bus.subscribe("pip.state", on_state)
@@ -269,18 +318,33 @@ async def main() -> None:
     async def on_module(msg: Message):
         _, name, kind = (msg.type.split(".", 2) + ["", ""])[:3]
         state.push("module", {"module": name, "type": kind})   # module pages reload what changed
+        if name == "calendar":
+            state.push_tv("refresh", {})
 
     bus.subscribe("module.*", on_module)
     bus.subscribe("conversation.line", on_line)
     bus.subscribe("health.snapshot", on_health)
     bus.subscribe("trace.entry", on_trace)
+
+
+async def main() -> None:
+    bus, cfg = make_bus("web")
+    state = State()
+    listen(bus, state)
     app = build_app(bus, state, cfg)
-    server = uvicorn.Server(uvicorn.Config(app, host=cfg["web"]["host"], port=cfg["web"]["port"],
-                                           log_level="warning", proxy_headers=False,
+    w = cfg["web"]
+    server = uvicorn.Server(uvicorn.Config(app, log_level="warning", proxy_headers=False,
                                            timeout_graceful_shutdown=3))  # live pages would otherwise hold a stop for 90 s
+    hosts = list(dict.fromkeys([w["host"], w.get("tv_host") or w["host"]]))   # Tailscale, and localhost for the monitor
+    sockets = []
+    for host in hosts:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((host, w["port"]))
+        sockets.append(s)
     bus_task = asyncio.create_task(bus.run())
     try:
-        await server.serve()  # handles SIGTERM itself
+        await server.serve(sockets=sockets)  # handles SIGTERM itself
     finally:
         bus_task.cancel()
 

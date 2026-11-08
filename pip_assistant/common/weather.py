@@ -1,6 +1,9 @@
 """Current weather and forecast from Open-Meteo (free, no key), so weather questions need no slow
 web search, and the screen and Pip's voice use the same source (Ziggletron bug P-08).
-Only the place name and coordinates leave the Pi."""
+Only the place name and coordinates leave the Pi.
+
+Used by pip-thinker (what Claude is told) and pip-web (the weather box and the face's clothing on
+the TV page). `dress()` says what the face wears, as Ziggletron's did."""
 import time
 
 import httpx
@@ -17,7 +20,13 @@ class Weather:
         self.place, self.refresh_s = place, refresh_s
         self.coords = None
         self.summary = ""
+        self.data: dict = {}   # the same forecast, for the screen: now, wear, days
         self.fetched = 0.0
+
+    async def screen(self) -> dict:
+        """For the TV page: {"temp", "feels", "sky", "wear", "days": [{"name", "sky", "high", "low", "rain"}]}."""
+        await self.text()
+        return self.data
 
     async def text(self) -> str:
         if time.time() - self.fetched > self.refresh_s or not self.summary:
@@ -41,7 +50,7 @@ class Weather:
             lat, lon = self.coords
             w = (await http.get("https://api.open-meteo.com/v1/forecast", params={
                 "latitude": lat, "longitude": lon, "temperature_unit": "fahrenheit", "wind_speed_unit": "mph",
-                "current": "temperature_2m,apparent_temperature,weather_code,wind_speed_10m",
+                "current": "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day",
                 "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
                 "forecast_days": 3, "timezone": "auto"})).json()
         c, d = w["current"], w["daily"]
@@ -52,4 +61,30 @@ class Weather:
             parts.append(f"{day.capitalize()}: {CODES.get(d['weather_code'][i], 'unknown')}, high {round(d['temperature_2m_max'][i])}°F, "
                          f"low {round(d['temperature_2m_min'][i])}°F, {d['precipitation_probability_max'][i]}% chance of rain or snow.")
         self.summary = " ".join(parts)
+        self.data = {"temp": round(c["temperature_2m"]), "feels": round(c["apparent_temperature"]),
+                     "sky": CODES.get(c["weather_code"], ""),
+                     "wear": dress(c["weather_code"], c["apparent_temperature"], bool(c.get("is_day", 1))),
+                     "days": [{"name": ["Today", "Tomorrow", "Next day"][i], "sky": CODES.get(d["weather_code"][i], ""),
+                               "high": round(d["temperature_2m_max"][i]), "low": round(d["temperature_2m_min"][i]),
+                               "rain": d["precipitation_probability_max"][i]} for i in range(3)]}
         self.fetched = time.time()
+
+
+COLD_F, WARM_F = 40, 65   # feels this cold or colder: a warm hat · sunny and this warm or more: sunglasses
+
+
+def dress(code, feels, day: bool = True) -> str:
+    """What the face on the TV wears for this weather (as Ziggletron's did): "storm", "umbrella", "snow"
+    (a warm hat in falling snow), "beanie", "sunglasses" or "" for nothing. The TV page swaps the warm hat
+    for a Santa hat in the holidays."""
+    if code in (95, 96, 99):
+        return "storm"
+    if code in (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82):
+        return "umbrella"
+    if code in (71, 73, 75, 77, 85, 86):
+        return "snow"
+    if feels is not None and feels <= COLD_F:
+        return "beanie"
+    if code in (0, 1) and day and feels is not None and feels >= WARM_F:
+        return "sunglasses"
+    return ""

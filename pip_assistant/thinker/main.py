@@ -13,7 +13,7 @@ import time
 from ..common.messages import Message
 from ..common.program import make_bus, serve, start
 from .claude import ClaudeCLI
-from .weather import Weather
+from ..common.weather import Weather
 
 log = logging.getLogger("pip-thinker")
 
