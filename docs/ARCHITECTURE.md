@@ -46,7 +46,7 @@ flowchart TB
 
 | Program | What it does | Why it's separate | Memory cap *(est.)* |
 |---|---|---|---|
-| **pip-ears** | Listens all the time: echo-cancelled audio from the speakerphone, speech detection, both wake words ("Pippletron", "Hey Pip"), the instant words ("stop", "wait"), mute detection, recognising who's speaking. Also plays everything Pip says (Piper voice) and alarm sounds, and turns Pip down when someone talks over him | Must react in milliseconds and never wait for the internet or the AI | 600 MB |
+| **pip-ears** | Listens all the time: echo-cancelled audio from the speakerphone, speech detection, both wake words ("Pippletron", "Hey Pip"), talking over Pip (stops him instantly), mute detection; and a second plain USB microphone used only for the two-clap switch (D-91). Also plays everything Pip says (Piper voice) and alarm sounds, and turns Pip down when someone talks over him | Must react in milliseconds and never wait for the internet or the AI | 600 MB |
 | **pip-core** | The conductor. Decides what to do with each thing heard; runs conversations, timers, reminders and alarms; holds memory, people and settings; runs actions; keeps the log of everything that happens; watches the other programs' health; recognises voices (TitaNet, step 5) | Everything goes through one place, so it's easy to follow and log | 700 MB (was 400; voice model + offline Whisper, D-87) |
 | **pip-thinker** | Talks to Claude through the Claude Code CLI (one fresh session per request, fixing Ziggletron's collision bug P-01). Runs the offline Qwen fallback when Claude is unavailable (loaded only when needed). Tracks Pro-plan usage | Slow and memory-hungry; must never hold up the conductor | 2.0 GB (Qwen needs ~1.3 GB while loaded) |
 | **pip-web** | The dashboard (phone/PC over Tailscale with HTTPS) and the TV page for the face. Handles logins and roles, and sends each screen only what it's allowed to see | Keeps network-facing code away from the core and from secrets | 300 MB |
@@ -107,7 +107,7 @@ sequenceDiagram
 
 ## 5. Why "stop" and alarms always work
 
-- **"Stop", "wait", "go on"** are recognised **inside pip-ears**, which stops its own playback immediately (target ≤ 100 ms) and only then tells the core. No internet, no AI, no waiting.
+- **Talking over Pip stops him inside pip-ears**, immediately (about a quarter of a second of speech), before anything is understood: no internet, no AI, no waiting. Then what you said is understood: "stop", "shut up", "never mind" get silence and he goes back to idle (D-105); anything else is answered. While an alarm rings, "stop" and "snooze" work instantly on the Pi (D-94).
 - **Alarms** live in the core's scheduler, which never does slow work itself: thinking happens in pip-thinker, and network calls have short timeouts. When an alarm is due, the core tells pip-ears to ring, and pip-ears plays it even if the core then gets stuck. A missed heartbeat makes the watchdog restart the stuck program (PIP-NEW-079).
 - **Timers and alarms survive restarts and power cuts**: they're saved in the database the moment they're created.
 
@@ -116,7 +116,7 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     S["Someone speaks"] --> L{"Listening?<br/>(dashboard switch AND clap switch;<br/>speakerphone not muted)"}
-    L -- "no" --> DROP["Nothing is heard or sent<br/>(clapped off: only the clap detector runs, on the Pi)"]
+    L -- "no" --> DROP["Nothing is heard or sent<br/>(clapped off: only the clap microphone<br/>is listened to, on the Pi)"]
     L -- "yes" --> V{"A human voice?<br/>(checked on the Pi)"}
     V -- "no (noise)" --> DROP2["Dropped on the Pi"]
     V -- "yes" --> UP["Send to Groq → room transcript (RAM only)<br/>→ answer, Claude decides, or maybe join in"]

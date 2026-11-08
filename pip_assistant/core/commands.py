@@ -74,6 +74,13 @@ def label_from(t: str) -> str:
     return " ".join(words[-3:])
 
 
+def timer_name(label: str) -> str:
+    """A timer's name as Claude gave it, without words that aren't a name: '10 minute timer' → '' (so Pip
+    doesn't say "10 minute timer timer's on"), 'Pasta timer' → 'pasta'."""
+    words = [w.strip(".,'") for w in when.numbers(label.lower()).split()]
+    return " ".join(w for w in words if w and w not in LABEL_JUNK and not w.replace(".", "").isdigit())[:60]
+
+
 def at_phrase(at: datetime, now: datetime, soon: bool = True) -> str:
     """'at 6 PM', 'at 9 AM tomorrow', 'on Tuesday at 3 PM', 'in 20 minutes' (when it's soon)."""
     secs = (at - now).total_seconds()

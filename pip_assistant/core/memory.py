@@ -114,7 +114,8 @@ class Memory:
     def add(self, text: str, category: str = "household", about: list[str] | None = None, owner: str = "",
             private: bool = False, sensitive: bool = False, pending_because: str = "", source: str = "",
             confirmed: bool = True) -> tuple[dict, str]:
-        """Save one memory. Returns (row, outcome) with outcome 'saved', 'pending' or 'duplicate'.
+        """Save one memory. Returns (row, outcome) with outcome 'saved', 'pending', 'duplicate' (already
+        remembered) or 'waiting' (already in the inbox).
         Raises Refused for credentials and empty text."""
         text = re.sub(r"\s+", " ", (text or "")).strip()[:300]
         if len(text) < 3:
@@ -122,7 +123,7 @@ class Memory:
         if CREDENTIAL.search(text):
             raise Refused("credential")
         if (dup := self.duplicate_of(text)) is not None:
-            return dup, "duplicate"
+            return dup, "waiting" if dup["status"] == "pending" else "duplicate"
         category = category if category in CATEGORIES else "household"
         if sensitive and not pending_because:
             pending_because = "sensitive"
@@ -190,9 +191,12 @@ class Memory:
                 if r["visibility"] == "household" or (speaker_level == "sure" and r["owner"] == speaker_id)]
         rows.sort(key=lambda r: (r["category"] != "rule", -r["updated"]))
         lines = [f"{self.short(r['id'])} {r['text']}" + (" (private)" if r["visibility"] == "private" else "") for r in rows[:limit]]
-        if not lines:
-            return "You don't remember anything yet."
-        return "What you remember: " + "; ".join(lines) + "."
+        out = ("What you remember: " + "; ".join(lines) + ".") if lines else "You don't remember anything yet."
+        if speaker_level == "sure" and speaker_id:   # the speaker may approve what's waiting about them (D-107)
+            waiting = [f"{self.short(r['id'])} {r['text']}" for r in self.items("pending") if speaker_id in r["about"]]
+            if waiting:
+                out += " Waiting in the inbox, about the speaker: " + "; ".join(waiting[:10]) + "."
+        return out
 
     def counts(self) -> dict:
         return dict(self.db.execute("SELECT status, COUNT(*) FROM memories GROUP BY status").fetchall())

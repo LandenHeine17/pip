@@ -160,6 +160,19 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
             return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
         return JSONResponse(r.data)
 
+    async def prefs(request):
+        """GET: the dashboard preferences (chime, clap microphone) and the microphones there are.
+        POST {"key", "value"}: change one (core/prefs.py)."""
+        data = {}
+        if request.method == "POST":
+            body = await request.json()
+            data = {"key": str(body.get("key", "")), "value": body.get("value")}
+        try:
+            r = await bus.request("core", "core.prefs", data, timeout=10)
+        except Exception as e:
+            return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
+        return JSONResponse(r.data)
+
     async def conversation(request):
         return JSONResponse(list(state.conversation)[::-1])
 
@@ -188,7 +201,8 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
                              Route("/api/alerts", alerts), Route("/api/alerts/action", alert_action, methods=["POST"]),
                              Route("/api/people", people), Route("/api/people/action", people_action, methods=["POST"]),
                              Route("/api/memory", memory), Route("/api/memory/action", memory_action, methods=["POST"]),
-                             Route("/api/mic", mic, methods=["GET", "POST"]), Route("/api/stream", stream)])
+                             Route("/api/mic", mic, methods=["GET", "POST"]),
+                             Route("/api/prefs", prefs, methods=["GET", "POST"]), Route("/api/stream", stream)])
 
 
 async def main() -> None:

@@ -61,8 +61,8 @@ welcome_back_minutes = 20          # "Hey Landen, welcome back" after the room w
 
 [mic]
 # Switching listening off (D-91): the dashboard's Listening switch, or two claps. Both must be on.
-claps = false                      # Two claps switch listening off and on. OFF until it's tuned on your recordings
-                                   # (recording page, Session E): in its simple form, talking sets it off.
+# Claps are heard on a separate plain USB microphone (the speakerphone's noise filter erases them), chosen on
+# the dashboard; with none chosen, claps do nothing. Not finished: tune on recordings from that mic (Session F).
 clap_peak_dbfs = -35.0             # How loud a clap must be at its peak.
 clap_jump_db = 15.0                # How suddenly it must get louder.
 clap_gap_min_ms = 100              # The two claps come at least this far apart…
@@ -74,6 +74,12 @@ own_commands = "offline"           # Pip's fixed-phrasing commands: "offline" = 
 follow_up_seconds = 8.0            # After Pip answers, talk again within this time without saying his name.
 wait_after_name_seconds = 5.0      # Said only his name? Pip listens quietly this long for the rest (no "Yes?" talking over you).
 unfinished_wait_seconds = 2.0      # Stopped mid-sentence ("what's the...")? Pip waits this long for the rest before answering.
+# Knowing when you're done talking (D-106). After you pause (0.7 s, [listen]), Pip waits this much longer before he
+# chimes and answers; if you start talking again, he keeps waiting and takes it all as one.
+turn_wait_short_seconds = 0.6      # …after a question or a short request.
+turn_wait_statement_seconds = 1.2  # …after something longer that ends like a statement.
+turn_wait_long_seconds = 1.5       # …after two or more sentences (you might be telling a story).
+turn_wait_after_interrupt_seconds = 1.0   # Added for a minute after someone talked over him: he takes the hint.
 max_sentences = 2                  # Pip stops after this many sentences unless you asked for detail or a story (D-79).
 
 [alarms]

@@ -46,3 +46,4 @@ override-dependencies = ["tflite-runtime; sys_platform == 'never'"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests", "pip_assistant/modules"]
+markers = ["real_turn_waits: use Pip's real end-of-turn waits (D-106) instead of the shortened test ones"]

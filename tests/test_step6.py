@@ -82,15 +82,17 @@ class FakeSTT:
         return self.text
 
 
-async def setup(tmp_path, stt_text="", replies=None, social=None, people=None, schedule=None, modules=None):
+async def setup(tmp_path, stt_text="", replies=None, social=None, people=None, schedule=None, modules=None, prefs=None,
+                memory=None, conversation=None):
     """replies: what the fake Claude says for each kind of request (direct / mentioned / join); a list gives
     one reply per request in turn, and "ACTION …" replies are actions."""
     sock = tmp_path / "core.sock"
     bus = Bus(sock, Trace(tmp_path / "pip.db"), Health(["ears", "thinker"], restart=False))
     mic = MicSwitch(tmp_path / "pip.db")
-    cfg = {"conversation": {"follow_up_seconds": 0.3},
+    cfg = {"conversation": {"follow_up_seconds": 0.3, **(conversation or {})},
            "social": {"pause_seconds": 0.1, "welcome_back_minutes": 0, "quiet_hours": "", **(social or {})}}
-    conv = Conversation(bus, cfg, FakeSTT(stt_text), people=people, mic=mic, schedule=schedule, modules=modules)
+    conv = Conversation(bus, cfg, FakeSTT(stt_text), people=people, mic=mic, schedule=schedule, modules=modules,
+                        prefs=prefs, memory=memory)
     await bus.start()
     ears, thinker = BusClient("ears", socket_path=sock), BusClient("thinker", socket_path=sock)
     got, asks = [], []
@@ -99,8 +101,14 @@ async def setup(tmp_path, stt_text="", replies=None, social=None, people=None, s
     async def record(msg):
         got.append((msg.type, msg.private.get("text"), msg.data))
 
-    for t in ("ears.chime", "ears.say", "ears.listen", "ears.mic", "ears.tone"):
+    for t in ("ears.chime", "ears.say", "ears.listen", "ears.mic", "ears.tone", "ears.stop", "ears.clap_mic"):
         ears.on(t, record)
+
+    async def mics(msg):
+        return {"mics": [{"name": "alsa_input.usb-Speaker_Phone", "label": "USB Speaker Phone"},
+                         {"name": "alsa_input.usb-cheap-mic", "label": "Cheap USB mic"}],
+                "speakerphone": "alsa_input.usb-Speaker_Phone"}
+    ears.on("ears.mics", mics)
 
     async def ask(msg):
         kind = msg.data.get("kind")
