@@ -32,10 +32,10 @@ class State:
     def __init__(self):
         self.health: dict = {}
         self.trace = collections.deque(maxlen=TRACE_KEEP)
-        self.conversation = collections.deque(maxlen=50)  # live only, in memory; never stored (D-53)
+        self.conversation = collections.deque(maxlen=120)  # live only, in memory; never stored (D-53, D-108)
         self.listeners: set[asyncio.Queue] = set()
         self.online = True       # D-95: the dashboard's small offline indicator
-        self.pip_state = "idle"  # idle / listening / thinking / speaking / ringing / offline / mic_off (D-86, D-91)
+        self.pip_state = "idle"  # idle / listening / thinking / speaking / interrupted / ringing / offline / mic_off
 
     def push(self, kind: str, data: dict) -> None:
         for q in list(self.listeners):
@@ -224,8 +224,22 @@ async def main() -> None:
         state.conversation.append(line)
         state.push("conversation", line)
 
+    def feed_event(ts: float, kind: str, **data) -> None:
+        """An event bar on the conversation feed (D-108): what happened, no words."""
+        line = {"ts": ts, "who": "event", "kind": kind, **data}
+        state.conversation.append(line)
+        state.push("conversation", line)
+
+    async def on_event(msg: Message):
+        feed_event(msg.ts, **msg.data)
+
+    bus.subscribe("conversation.event", on_event)
+
     async def on_alert(msg: Message):
         state.push("alerts", {"type": msg.type})
+        what = msg.type.split(".", 1)[1]
+        if what in ("ringing", "stopped", "snoozed"):
+            feed_event(msg.ts, "alert", what=what, alert=msg.data.get("kind", ""), minutes=msg.data.get("minutes"))
 
     async def on_state(msg: Message):
         state.pip_state = msg.data.get("state", "idle")
@@ -245,8 +259,10 @@ async def main() -> None:
     bus.subscribe("mic.changed", on_mic)
 
     async def on_net(msg: Message):
-        state.online = bool(msg.data.get("online", True))
+        was, state.online = state.online, bool(msg.data.get("online", True))
         state.push("net", {"online": state.online})
+        if was != state.online:
+            feed_event(msg.ts, "online" if state.online else "offline")
 
     bus.subscribe("net.changed", on_net)
 

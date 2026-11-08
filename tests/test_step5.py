@@ -124,7 +124,8 @@ def test_remember_forget_and_correct(ctx, mem):
 
 @pytest.mark.parametrize("action,why", [
     ('{"do": "remember", "text": "Sam hates mushrooms", "category": "preference", "about": ["Sam"]}', "about someone else"),
-    ('{"do": "remember", "text": "Alex has a doctor appointment Friday", "category": "personal", "about": ["Alex"], "sensitive": true}', "sensitive"),
+    # (Alex's own sensitive facts are saved straight away since the owner changed D-88; someone else's wait)
+    ('{"do": "remember", "text": "Sam has a doctor appointment Friday", "category": "personal", "about": ["Sam"], "sensitive": true}', "sensitive"),
 ])
 def test_some_memories_go_to_the_inbox(ctx, mem, action, why):
     cmds, c, *_ = ctx

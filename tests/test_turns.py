@@ -115,8 +115,8 @@ def test_the_person_a_memory_is_about_can_approve_it(tmp_path):
     said, _ = actions.apply(Cmds, raw, ctx(sure(landen)))
     assert "memory inbox" in said
     [row] = mem.items("pending")
-    # Saying it again: it's waiting, not "already known"
-    assert actions.apply(Cmds, raw, ctx(sure(caleb)))[0] == "That's waiting in the memory inbox."
+    # Someone else saying it again: it's waiting, not "already known"
+    assert actions.apply(Cmds, raw, ctx(sure(landen)))[0] == "That's waiting in the memory inbox."
     # Claude sees it only when it's Caleb speaking, and only Caleb may approve it
     assert "allergic" in mem.for_claude(caleb["id"], "sure") and "allergic" not in mem.for_claude(landen["id"], "sure")
     ref = mem.short(row["id"])
@@ -131,13 +131,16 @@ def test_the_person_a_memory_is_about_can_approve_it(tmp_path):
 async def test_the_clap_microphone_is_chosen_on_the_dashboard(tmp_path):
     prefs = Prefs(tmp_path / "pip.db")
     bus, conv, ears, got, asks, tasks = await setup(tmp_path, prefs=prefs)
-    assert ("ears.clap_mic", None, {"device": ""}) in got                  # none yet: told when ears connects
+    assert ("ears.clap_mic", None, {"device": "", "on": False}) in got     # none yet: told when ears connects
     p = await conv.prefs_snapshot()
     assert [m["label"] for m in p["mics"]] == ["USB Speaker Phone", "Cheap USB mic"] and p["clap_mic"] == ""
     assert "error" in await conv.set_pref("clap_mic", "alsa_input.usb-Speaker_Phone")   # can't hear claps
     await conv.set_pref("clap_mic", "alsa_input.usb-cheap-mic")
     await asyncio.sleep(0.05)
-    assert ("ears.clap_mic", None, {"device": "alsa_input.usb-cheap-mic"}) in got
+    assert ("ears.clap_mic", None, {"device": "alsa_input.usb-cheap-mic", "on": False}) in got   # chosen, claps still off
+    await conv.set_pref("claps", True)
+    await asyncio.sleep(0.05)
+    assert ("ears.clap_mic", None, {"device": "alsa_input.usb-cheap-mic", "on": True}) in got
     assert Prefs(tmp_path / "pip.db").get("clap_mic") == "alsa_input.usb-cheap-mic"
     await finish(bus, tasks)
 
@@ -177,12 +180,102 @@ async def test_ears_hears_claps_only_on_the_clap_microphone(monkeypatch):
     e = ears_main.Ears.__new__(ears_main.Ears)
     e.bus, e.claps, e.clap_mic, e.clap_task, e.quiet_after = Bus(), Claps(), "", None, 0.0
     e.mic_mode, e.speaking, e.ring_task = "claps_only", False, None
-    await e.on_clap_mic(type("M", (), {"data": {"device": "alsa_input.usb-cheap-mic"}})())
+    await e.on_clap_mic(type("M", (), {"data": {"device": "alsa_input.usb-cheap-mic", "on": False}})())
+    await asyncio.sleep(0.05)
+    assert opened == [] and e.clap_task is None                     # claps switched off: the mic isn't even opened
+    await e.on_clap_mic(type("M", (), {"data": {"device": "alsa_input.usb-cheap-mic", "on": True}})())
     await asyncio.sleep(0.05)
     assert opened == ["alsa_input.usb-cheap-mic"] and emitted == ["mic.clapped"]
     e.speaking = True                                  # Pip talking: his own sound reaches that mic too
     Claps.fed = 0
-    await e.on_clap_mic(type("M", (), {"data": {"device": "other"}})())
+    await e.on_clap_mic(type("M", (), {"data": {"device": "other", "on": True}})())
     await asyncio.sleep(0.05)
     assert Claps.fed == 0
     e.clap_task.cancel()
+
+
+def test_what_the_owner_saw_one_memory_not_two(tmp_path):
+    """Test 8: Landen's wording "Landen says Caleb is…" (no 'about'), then Caleb saying it himself."""
+    people = People(tmp_path / "pip.db", embedder=FakeEmbedder())
+    landen, caleb = people.add_person("Landen", "admin"), people.add_person("Caleb")
+    mem = Memory(tmp_path / "pip.db")
+
+    class Cmds:
+        class s:
+            find = staticmethod(lambda ref: None)
+        now = staticmethod(__import__("datetime").datetime.now)
+    sure = lambda p: Match(p["id"], p["name"], "sure", 0.9)
+    ctx = lambda sp: {"memory": mem, "people": people, "speaker": sp}
+    actions.apply(Cmds, 'ACTION {"do": "remember", "text": "Landen says Caleb is allergic to peanuts", '
+                        '"category": "household", "sensitive": true}', ctx(sure(landen)))
+    assert len(mem.items("pending")) == 1
+    assert "allergic" in mem.for_claude(caleb["id"], "sure", speaker_name="Caleb")      # Caleb is asked about it
+    said, _ = actions.apply(Cmds, 'ACTION {"do": "remember", "text": "Caleb is allergic to peanuts", "category": "personal", '
+                                  '"about": ["Caleb"], "sensitive": true}', ctx(sure(caleb)))
+    assert said == "Saved: Caleb is allergic to peanuts."
+    assert mem.items("pending") == [] and [r["text"] for r in mem.items("active")] == ["Caleb is allergic to peanuts"]
+
+
+def test_your_own_sensitive_fact_is_saved_straight_away(tmp_path):
+    """D-88 changed by the owner: about yourself, Pip sure it's you → saved; about someone else → inbox."""
+    people = People(tmp_path / "pip.db", embedder=FakeEmbedder())
+    landen, caleb = people.add_person("Landen", "admin"), people.add_person("Caleb")
+    mem = Memory(tmp_path / "pip.db")
+
+    class Cmds:
+        class s:
+            find = staticmethod(lambda ref: None)
+        now = staticmethod(__import__("datetime").datetime.now)
+    ctx = lambda sp: {"memory": mem, "people": people, "speaker": sp}
+    own = 'ACTION {"do": "remember", "text": "Landen has asthma", "category": "personal", "about": ["Landen"], "sensitive": true}'
+    assert actions.apply(Cmds, own, ctx(Match(landen["id"], "Landen", "sure", 0.9)))[0] == "Saved: Landen has asthma."
+    other = 'ACTION {"do": "remember", "text": "Caleb has asthma", "category": "personal", "about": ["Caleb"], "sensitive": true}'
+    assert "memory inbox" in actions.apply(Cmds, other, ctx(Match(landen["id"], "Landen", "sure", 0.9)))[0]
+    unsure = 'ACTION {"do": "remember", "text": "Landen hates hospitals", "category": "personal", "about": ["Landen"], "sensitive": true}'
+    assert "memory inbox" in actions.apply(Cmds, unsure, ctx(Match(landen["id"], "Landen", "probably", 0.6)))[0]
+
+
+# ---------------------------------------------------------------- D-108: the conversation feed and the state colours
+async def test_the_feed_shows_everything_heard_and_what_happened(tmp_path):
+    import json
+    from pip_assistant.common.client import BusClient
+    prefs = Prefs(tmp_path / "pip.db")
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, "did you see the game", social={"join_in": False},
+                                                    prefs=prefs, replies={"direct": ""})
+    web = BusClient("web", socket_path=tmp_path / "core.sock")
+    feed = []
+
+    async def on_feed(msg):
+        feed.append((msg.type, msg.data, msg.private))
+    web.subscribe("conversation.*", on_feed)
+    tasks.append(asyncio.create_task(web.run()))
+    await asyncio.wait_for(web.connected.wait(), 3)
+    await asyncio.sleep(0.1)
+    await ears.emit("heard.utterance", *room())                 # not for Pip: grey
+    await asyncio.sleep(0.2)
+    conv.stt.text = "Pip, shut up."
+    await ears.emit("heard.utterance", *room())                 # for Pip: green, chime, then he stays quiet
+    await asyncio.sleep(0.4)
+    lines = [(d["how"], p["text"]) for t, d, p in feed if t == "conversation.line"]
+    assert lines == [("room", "did you see the game"), ("direct", "Pip, shut up.")]
+    events = [d["kind"] for t, d, p in feed if t == "conversation.event"]
+    assert events == ["chime", "passed"]
+    await conv.set_mic(False)
+    conv.mic_off_since -= 12                                    # as if 12 s went by
+    await conv.set_mic(True)
+    await asyncio.sleep(0.1)
+    ev = [d for t, d, p in feed if t == "conversation.event"][-2:]
+    assert ev[0] == {"kind": "mic_off", "how": "dashboard"} and ev[1]["kind"] == "mic_on" and ev[1]["off_for"] == 12
+    trace = json.dumps(bus.trace.recent())
+    assert "the game" not in trace and "shut up" not in trace   # the words are shown, never logged
+    await finish(bus, tasks)
+
+
+async def test_being_talked_over_shows_as_interrupted(tmp_path):
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path)
+    await ears.emit("speech.interrupted", {"level_dbfs": -20})
+    await asyncio.sleep(0.1)
+    assert conv.state == "interrupted"
+    await asyncio.sleep(1.6)
+    assert conv.state == "idle"
+    await finish(bus, tasks)

@@ -178,7 +178,7 @@ def _check_memory(a: dict, ctx: dict) -> tuple:
         if a["do"] == "approve_memory":
             # Only the person it's about, recognised for sure, may approve it by voice (D-107)
             me = speaker.person_id if speaker and speaker.level == "sure" and not speaker.guest else None
-            if row["status"] != "pending" or not me or me not in row["about"]:
+            if row["status"] != "pending" or not me or not mem.is_about(row, me, speaker.name):
                 raise Invalid("only the person it's about may approve it")
             return ("approve_memory", row)
         if a["do"] == "forget":
@@ -198,8 +198,9 @@ def _check_memory(a: dict, ctx: dict) -> tuple:
             about.append(p["id"])
     category = str(a.get("category") or "household")
     personal = category in ("preference", "personal")      # household facts and rules can come from anyone
+    own = bool(me) and personal and about == [me]          # only about the speaker, and Pip is sure it's them
     why = ""
-    if a.get("sensitive"):
+    if a.get("sensitive") and not own:                      # your own sensitive facts are saved straight away (D-88)
         why = "sensitive"
     elif personal and any(pid != me for pid in about):
         why = "about someone else"
@@ -210,8 +211,9 @@ def _check_memory(a: dict, ctx: dict) -> tuple:
     if not personal:
         about = []
     who = speaker.name if me else "someone"
+    subject = me if me and (me in about or speaker.name.lower() in text.lower()) else None   # may confirm a waiting one
     return ("remember", text, category, about, me or "", bool(a.get("private")) and bool(me),
-            bool(a.get("sensitive")), why, f"{who}, by voice")
+            bool(a.get("sensitive")), why, f"{who}, by voice", own, subject, speaker.name if me else "")
 
 
 def apply(cmds, raw: str, ctx: dict | None = None) -> tuple[str, int]:
@@ -252,9 +254,14 @@ def _carry_out(cmds, plan: list[tuple], ctx: dict | None) -> list:
         kind = step[0]
         if kind == "remember":
             from .memory import Refused
-            _, text, cat, about, owner, private, sensitive, why, source = step
+            _, text, cat, about, owner, private, sensitive, why, source, own, subject, name = step
             try:
-                row, outcome = mem.add(text, cat, about, owner, private, sensitive, why, source)
+                # The person it's about saying it: that confirms one waiting in the inbox, not a second copy (D-107)
+                row = mem.confirm_pending(text, subject, name) if subject else None
+                if row is not None:
+                    said.append(f"Saved: {row['text'].rstrip('.!')}.")
+                    continue
+                row, outcome = mem.add(text, cat, about, owner, private, sensitive, why, source, own=own)
             except Refused as e:
                 said.append("I can't keep passwords, card or phone numbers in my memory." if str(e) == "credential"
                             else "I didn't catch what to remember.")

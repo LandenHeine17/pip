@@ -7,7 +7,7 @@ Events it sends:   heard.wake {word, score} · heard.started {reason} · heard.u
                    mic.clapped   (two claps: pip-core decides what that switches, D-91)
 Commands it takes: ears.say (private.text) · ears.chime · ears.tone {name: "thinking" / "mic_on" / "mic_off"} · ears.stop
                    ears.listen {seconds} (follow-up window) · ears.mic {mode: on / claps_only / off}
-                   ears.clap_mic {device} (which microphone listens for claps; "" = none) · ears.mics (request: list them)
+                   ears.clap_mic {device, on} (which microphone listens for claps, "" = none; on = claps switch at all) · ears.mics (request: list them)
                    ears.ring {tone, max_seconds} · ears.ring_stop   (alarms: loop a ringtone until told to stop)
 
 Claps are heard on a **separate, plain microphone** (D-91): the speakerphone's own noise filter erases
@@ -81,7 +81,7 @@ class Ears:
                 await self.bus.emit("mic.clapped", {})
 
     async def on_clap_mic(self, msg: Message):
-        device = str(msg.data.get("device") or "")
+        device = str(msg.data.get("device") or "") if msg.data.get("on", True) else ""   # claps off: don't listen
         if device == self.clap_mic and (self.clap_task or not device):
             return {"ok": True}
         if self.clap_task:

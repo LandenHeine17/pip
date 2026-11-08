@@ -113,9 +113,10 @@ class Memory:
     # ---------------------------------------------------------------- changing memories
     def add(self, text: str, category: str = "household", about: list[str] | None = None, owner: str = "",
             private: bool = False, sensitive: bool = False, pending_because: str = "", source: str = "",
-            confirmed: bool = True) -> tuple[dict, str]:
+            confirmed: bool = True, own: bool = False) -> tuple[dict, str]:
         """Save one memory. Returns (row, outcome) with outcome 'saved', 'pending', 'duplicate' (already
-        remembered) or 'waiting' (already in the inbox).
+        remembered) or 'waiting' (already in the inbox). own: the person it's about said it themselves (Pip
+        sure it's them), so even a sensitive fact is saved straight away (D-88).
         Raises Refused for credentials and empty text."""
         text = re.sub(r"\s+", " ", (text or "")).strip()[:300]
         if len(text) < 3:
@@ -125,7 +126,7 @@ class Memory:
         if (dup := self.duplicate_of(text)) is not None:
             return dup, "waiting" if dup["status"] == "pending" else "duplicate"
         category = category if category in CATEGORIES else "household"
-        if sensitive and not pending_because:
+        if sensitive and not pending_because and not own:
             pending_because = "sensitive"
         status = "pending" if pending_because else "active"
         now = self.clock()
@@ -140,6 +141,23 @@ class Memory:
         if not row:
             raise RuntimeError("memory was not saved")
         return row, "pending" if status == "pending" else "saved"
+
+    def is_about(self, row: dict, person_id: str, name: str = "") -> bool:
+        """Is this memory about that person? (Listed in "about", or, for older wordings like "Landen says
+        Caleb is…" that didn't list anyone, their name is in it.)"""
+        return person_id in row["about"] or bool(name and re.search(rf"\b{re.escape(name)}\b", row["text"], re.I))
+
+    def confirm_pending(self, text: str, person_id: str, name: str = "") -> dict | None:
+        """The person a waiting memory is about says the same thing: approve that one (with their wording)."""
+        t = text.lower().strip(" .")
+        for r in self.items("pending"):
+            if not self.is_about(r, person_id, name):
+                continue
+            old = r["text"].lower().strip(" .")
+            if t in old or old in t or difflib.SequenceMatcher(None, t, old).ratio() >= 0.75:
+                self.update(r["id"], text=text)
+                return self.approve(r["id"])
+        return None
 
     def update(self, mid: str, **fields) -> dict:
         allowed = {k: v for k, v in fields.items() if k in ("text", "category", "visibility", "status", "about", "owner")}
@@ -184,7 +202,8 @@ class Memory:
         self.db.commit()
 
     # ---------------------------------------------------------------- what Claude sees
-    def for_claude(self, speaker_id: str | None = None, speaker_level: str = "unknown", limit: int = 200) -> str:
+    def for_claude(self, speaker_id: str | None = None, speaker_level: str = "unknown", limit: int = 200,
+                   speaker_name: str = "") -> str:
         """Active memories Pip may use right now: household ones, plus the speaker's private ones if
         they're recognised "sure" (memory policy §4.2). Rules for Pip come first."""
         rows = [r for r in self.items("active")
@@ -193,7 +212,8 @@ class Memory:
         lines = [f"{self.short(r['id'])} {r['text']}" + (" (private)" if r["visibility"] == "private" else "") for r in rows[:limit]]
         out = ("What you remember: " + "; ".join(lines) + ".") if lines else "You don't remember anything yet."
         if speaker_level == "sure" and speaker_id:   # the speaker may approve what's waiting about them (D-107)
-            waiting = [f"{self.short(r['id'])} {r['text']}" for r in self.items("pending") if speaker_id in r["about"]]
+            waiting = [f"{self.short(r['id'])} {r['text']}" for r in self.items("pending")
+                       if self.is_about(r, speaker_id, speaker_name)]
             if waiting:
                 out += " Waiting in the inbox, about the speaker: " + "; ".join(waiting[:10]) + "."
         return out

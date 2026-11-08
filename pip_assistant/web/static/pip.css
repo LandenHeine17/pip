@@ -73,6 +73,26 @@ form{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 .line.you{background:var(--soft);margin-left:auto;border-bottom-right-radius:6px}
 .line.pip{background:var(--accentbg);border-bottom-left-radius:6px}
 .line .meta{font-size:.74rem;color:var(--muted);margin-bottom:2px}
+/* The conversation feed (D-108): everything heard, like Ziggletron's: grey = not for Pip, green = for Pip */
+.line.room{background:var(--soft);margin-left:auto;border-bottom-right-radius:6px;opacity:.8}
+.line.forpip{background:var(--goodbg);margin-left:auto;border-bottom-right-radius:6px}
+.line .how{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-left:6px}
+.evbar{align-self:center;font-size:.74rem;color:var(--muted);display:flex;align-items:center;gap:8px;width:100%}
+.evbar::before,.evbar::after{content:"";flex:1;height:1px;background:var(--line)}
+.evbar b{font-weight:650}
+/* Pip's state, in colour (D-108): what the face will show */
+.face{display:inline-flex;align-items:center;gap:10px;padding:6px 14px 6px 6px;border-radius:999px;background:var(--card);box-shadow:var(--shadow);font-weight:650}
+.orb{width:30px;height:30px;border-radius:50%;background:#9aa0a6;transition:background .25s}
+.face.st-listening .orb{background:var(--good);animation:breathe 1.6s ease-in-out infinite}
+.face.st-thinking .orb{background:#8b5cf6;animation:breathe .8s ease-in-out infinite}
+.face.st-speaking .orb{background:#3b82f6;animation:talk .35s ease-in-out infinite alternate}
+.face.st-interrupted .orb{background:#f59e0b;animation:flash .3s ease-in-out 3}
+.face.st-ringing .orb{background:var(--bad);animation:talk .2s ease-in-out infinite alternate}
+.face.st-mic_off .orb{background:#4b5563}
+.face.st-offline .orb{background:#64748b}
+@keyframes breathe{0%,100%{transform:scale(.85)}50%{transform:scale(1)}}
+@keyframes talk{from{transform:scale(.8)}to{transform:scale(1.05)}}
+@keyframes flash{0%,100%{opacity:1}50%{opacity:.3}}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
 .card{border-radius:14px;padding:12px 14px;background:var(--soft)}
 .card .name{font-weight:650;display:flex;justify-content:space-between;align-items:center}
