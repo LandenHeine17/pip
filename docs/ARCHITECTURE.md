@@ -129,7 +129,7 @@ What else leaves the Pi:
 | To | What | When |
 |---|---|---|
 | Groq | Audio of everything said in the room while Pip is listening, plus the household's first names as spelling hints | As it happens |
-| Claude | The room transcript (last 40 lines), memories, what's set, the calendar's next two weeks and open to-dos (only what the speaker may hear; never private events), the allowed actions | Each answer, mention or join-in check (at most every ~40 s) |
+| Claude | The room transcript (last 40 lines), memories, what's set, the calendar's today and tomorrow plus counts for the week (the rest only when Claude looks it up, D-102) and open to-dos (only what the speaker may hear; never private events or ignored calendars), the allowed actions. Join-in checks get only the rest of today | Each answer, mention or join-in check (at most every ~40 s) |
 | Open-Meteo | "Lincoln, Nebraska" | Weather updates |
 | Google | For each person who connected their account (D-97): their calendar events and to-dos, both ways (D-98, D-100). Private events are kept on the Pi too but never told to Claude | Every ~2 min, and straight after a change |
 | GitHub | **Code only.** Never personal data (checked on every commit) | When changes are pushed |
@@ -190,11 +190,14 @@ flowchart LR
     L --> TH["pip-thinker: adds its<br/>[claude] instructions"]
     L --> WEB["pip-web: its page at /m/name/,<br/>a button on the dashboard"]
     CORE --> A["Claude's ACTIONs it declares"]
-    CORE --> S["its part of what Claude reads"]
+    CORE --> S["its part of what Claude reads<br/>(short; shorter for join-in checks)"]
+    CORE --> LK["look-ups Claude asks for<br/>(ACTION look → asked again)"]
     CORE --> J["background jobs (e.g. sync)"]
 ```
 
 What a module gets (its **context**), and nothing more: its settings (`[modules.<name>]` in `~/pip-data/settings.toml` overrides the defaults; `enabled = false` switches it off); **its own tables** in `pip.db`, named `<name>_…` (writing anything else is refused); **its own section of `secrets.toml`**; an internet client limited to the hosts in its permissions; the timers schedule (for heads-ups), the people list, whether Pip is online, and the modules it `needs`. Its requests from the dashboard and its events travel privately (never logged).
+
+**Keep what Claude reads short** (D-102): it goes with every request, including join-in checks every ~40 s. A module's summary is told whether it's for a join-in check (`call.kind == "join"`) and should send even less then. Anything bigger is a **look-up**: the module declares an action `look:<kind>`, Claude replies `ACTION {"do": "look", "kind": …}`, Pip fetches it and asks Claude again with the result (once). An action that has to wait for the internet (e.g. making a Google calendar) may be `async`. A module that adds columns to its own tables later uses `ALTER TABLE` on its own tables (allowed); test it against an old database too.
 
 A **template** module with a worked example is in `pip_assistant/modules/_template/`. Adding a simple skill means copying it and filling in the marked parts.
 

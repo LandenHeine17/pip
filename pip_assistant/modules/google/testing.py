@@ -25,6 +25,7 @@ class FakeGoogle:
         self.requests: list[tuple[str, str]] = []
         self.offline = False
         self.only_email = False                    # the person left Google's permission boxes unticked
+        self.narrow = False                        # connected before Pip could manage calendars (events only)
         self._n = 0
 
     def transport(self) -> httpx.MockTransport:
@@ -66,9 +67,10 @@ class FakeGoogle:
                     rt = "refresh-" + email
                     self.refresh[rt] = email
                     payload = __import__("base64").urlsafe_b64encode(json.dumps({"email": email}).encode()).decode().rstrip("=")
-                    scope = "openid https://www.googleapis.com/auth/userinfo.email" + (
-                        "" if self.only_email else " https://www.googleapis.com/auth/calendar.events"
-                        " https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/tasks")
+                    g = "https://www.googleapis.com/auth/"
+                    scope = "openid " + g + "userinfo.email" + (
+                        "" if self.only_email else
+                        f" {g}calendar.events {g}calendar.readonly {g}tasks" if self.narrow else f" {g}calendar {g}tasks")
                     return httpx.Response(200, json={"access_token": f"access-{email}", "expires_in": 3600, "scope": scope,
                                                      "refresh_token": rt, "id_token": f"x.{payload}.y"})
                 if form.get("grant_type") == "refresh_token":
@@ -88,8 +90,49 @@ class FakeGoogle:
             if p == "/users/me/calendarList":
                 return httpx.Response(200, json={"items": [{"id": cid, **{k: v for k, v in c.items() if k != "owner"}}
                                                            for cid, c in self.calendars.items() if c["owner"] == who]})
+            managing = (p == "/calendars" or p.startswith("/users/me/calendarList/") or p.endswith("/move")
+                        or (p.count("/") == 2 and method in ("PATCH", "DELETE")))
+            if managing and self.narrow:
+                return httpx.Response(403, json={"error": {"code": 403, "status": "PERMISSION_DENIED",
+                                                           "details": [{"reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT"}]}})
+            if p == "/calendars" and method == "POST":
+                cid = "c" + secrets.token_hex(3) + "@group.calendar.google.com"
+                self.calendars[cid] = {"summary": body["summary"], "accessRole": "owner", "owner": who, "backgroundColor": "#a4bdfc"}
+                return httpx.Response(200, json={"id": cid, "summary": body["summary"]})
+            if p.startswith("/users/me/calendarList/"):
+                cid = p.split("/")[-1]
+                c = self.calendars.get(cid)
+                if c is None:
+                    return httpx.Response(404, json={})
+                if method == "PATCH":
+                    c.update({k: v for k, v in body.items() if k in ("backgroundColor", "foregroundColor", "summaryOverride")})
+                    return httpx.Response(200, json={"id": cid, **c})
+                if method == "DELETE":
+                    del self.calendars[cid]
+                    return httpx.Response(204)
             parts = p.split("/")   # ['', 'calendars', cid, 'events', (eid)]
             cid = parts[2]
+            if len(parts) == 3:
+                c = self.calendars.get(cid)
+                if c is None:
+                    return httpx.Response(404, json={})
+                if method == "PATCH":
+                    c.update(summary=body.get("summary", c["summary"]))
+                    return httpx.Response(200, json={"id": cid, "summary": c["summary"]})
+                if method == "DELETE":
+                    if c.get("primary"):
+                        return httpx.Response(400, json={"error": {"message": "cannot delete primary"}})
+                    del self.calendars[cid]
+                    self.events.pop(cid, None)
+                    return httpx.Response(204)
+            if len(parts) == 6 and parts[5] == "move" and method == "POST":
+                e = self.events.get(cid, {}).pop(parts[4], None)
+                if e is None:
+                    return httpx.Response(404, json={})
+                self.events[cid][parts[4]] = {**e, "status": "cancelled", "updated": time.time()}   # gone from here
+                moved = {**e, "etag": self._etag(), "updated": time.time()}
+                self.events.setdefault(q["destination"], {})[e["id"]] = moved
+                return httpx.Response(200, json=moved)
             evs = self.events.setdefault(cid, {})
             if len(parts) == 4 and method == "GET":
                 items = list(evs.values())

@@ -43,7 +43,11 @@ class Calendar(Module):
             self.google_hooks()
         self.actions = {"add:event": Action(self.check_add, self.do_add),
                         "change:event": Action(self.check_change, self.do_change),
-                        "cancel:event": Action(self.check_cancel, self.do_cancel)}
+                        "cancel:event": Action(self.check_cancel, self.do_cancel),
+                        "look:calendar": Action(self.check_look, self.do_look),
+                        "add:calendar": Action(self.check_new_calendar, self.do_new_calendar),
+                        "change:calendar": Action(self.check_edit_calendar, self.do_edit_calendar),
+                        "cancel:calendar": Action(self.check_delete_calendar, self.do_delete_calendar)}
 
     def google_hooks(self) -> None:
         hooks = getattr(self.google, "on_connect", None)
@@ -53,7 +57,7 @@ class Calendar(Module):
 
     def forget_account(self, aid: str) -> None:
         """Someone disconnected Google: drop Pip's copy of their calendars (nothing is deleted in Google)."""
-        for c in self.store.calendars():
+        for c in self.store.calendars(ignored=True):
             if c["account_id"] == aid:
                 self.store.remove_calendar(c["id"])
 
@@ -69,22 +73,52 @@ class Calendar(Module):
         acc = accounts.get(cal["account_id"])
         return names.get(acc["person_id"], "") if acc else ""
 
+    def label(self, cal: dict, accounts: dict, names: dict) -> str:
+        """How a calendar is named to Claude and on the dashboard: "Landen's main", "Landen: Work", "Pip's own"."""
+        if not cal.get("account_id"):
+            return "Pip's own" if cal.get("id") == "pip" else cal.get("name", "?")
+        who = self.whose(cal, accounts, names)
+        if cal.get("is_primary"):
+            return f"{who}'s main" if who else "main"
+        return f"{who}: {cal['name']}" if who else cal["name"]
+
+    def find_calendar(self, name: str, call: Call, writable: bool = True) -> dict:
+        """A calendar from what Claude called it: a calendar's name ("Work", "Landen: Work"), a person ("Sam" =
+        their main calendar), or "household". Unknown or ambiguous → Invalid (nothing is done)."""
+        import difflib
+        want = " ".join(str(name).lower().replace("’", "'").split())
+        if want in ("household", "the household", "house"):
+            return self.store.calendar(self.sync.household())
+        if want in ("pip", "pip's", "pip's own", "pips", "local"):
+            return self.store.calendar("pip")
+        accounts, names = self._accounts(), self._people()
+        cals = [c for c in self.store.calendars() if c["writable"] or not writable]
+        keys = {}
+        for c in cals:
+            for k in {c["name"].lower(), self.label(c, accounts, names).lower()}:
+                keys.setdefault(k, []).append(c)
+        hits = keys.get(want) or [c for k in difflib.get_close_matches(want, list(keys), n=3, cutoff=0.8) for c in keys[k]]
+        if not hits and self.ctx.people and (p := self.ctx.people.by_name(want.removesuffix("'s").removesuffix(" main"))):
+            hits = [c for c in cals if c["is_primary"] and accounts.get(c["account_id"], {}).get("person_id") == p["id"]]
+            if not hits:
+                raise Invalid(f"{p['name']} hasn't connected a calendar")
+        hits = list({c["id"]: c for c in hits}.values())
+        if len(hits) > 1 and call.person_id:   # "Work": the speaker's own, if two people have one
+            mine = [c for c in hits if accounts.get(c["account_id"], {}).get("person_id") == call.person_id]
+            hits = mine or hits
+        if len(hits) != 1:
+            raise Invalid(f"no single calendar called {name}")
+        return hits[0]
+
     def target(self, name: str, call: Call) -> str:
-        """The calendar an event goes into."""
+        """The calendar an event goes into: the one named, else the speaker's main one, else the household's."""
+        if name:
+            return self.find_calendar(name, call)["id"]
         if self.google is None:
             return "pip"
-        person = None
-        if name:
-            p = self.ctx.people.by_name(name) if self.ctx.people else None
-            if not p:
-                raise Invalid(f"no person called {name}")
-            person = p["id"]
-        else:
-            person = call.person_id
+        person = call.person_id
         if person and (acc := self.google.for_person(person)) and (cid := self.sync.primary(acc["id"])):
             return cid
-        if name:
-            raise Invalid(f"{name} hasn't connected a calendar")
         return self.sync.household()
 
     def visible(self, ev: dict, call: Call, cals: dict, accounts: dict) -> bool:
@@ -95,27 +129,67 @@ class Calendar(Module):
         return not acc or acc["sharing"] == "everyone" or acc["person_id"] == call.person_id
 
     # ---------------------------------------------------------------- what Claude reads
+    def line(self, ev: dict, at: datetime, cals: dict, accounts: dict, names: dict, day: bool = False) -> str:
+        end = datetime.fromtimestamp(ev["end"])
+        t = (f"{at:%a %Y-%m-%d} " if day else "") + ("all day" if ev["all_day"] else f"{at:%H:%M}–{end:%H:%M}")
+        rep = f" ({when.say_repeat(ev['repeat'])})" if ev["repeat"] else ""
+        where = f" at {ev['location']}" if ev["location"] else ""
+        cal = "" if ev["calendar_id"] == self.sync.household() else \
+            f" [{self.label(cals.get(ev['calendar_id'], {'account_id': ''}), accounts, names)}]"
+        return f"{short(ev['id'])} {ev['title']} {t}{rep}{where}{cal}"
+
     def summary(self, call: Call) -> str:
+        """Kept short, because it goes with every request (D-102): today and tomorrow in full, a count for the
+        rest of the week, and the calendars' names. Claude looks anything else up first (ACTION look).
+        A join-in check (every ~40 s) gets only what's left of today."""
         cals = {c["id"]: c for c in self.store.calendars()}
         accounts, names = self._accounts(), self._people()
-        today = datetime.fromtimestamp(self.ctx.clock()).date()
+        now = datetime.fromtimestamp(self.ctx.clock())
+        today = now.date()
         evs = [e for e in self.store.all_events() if self.visible(e, call, cals, accounts)]
-        items, seen = [], set()
-        for d, at, ev in self.store.between(today, today + timedelta(days=13), evs):
-            if ev["id"] in seen:
-                continue
-            seen.add(ev["id"])
-            end = datetime.fromtimestamp(ev["end"])
-            t = f"{at:%a %Y-%m-%d}" + (" all day" if ev["all_day"] else f" {at:%H:%M}–{end:%H:%M}")
-            rep = f" ({when.say_repeat(ev['repeat'])})" if ev["repeat"] else ""
-            who = self.whose(cals.get(ev["calendar_id"], {"account_id": ""}), accounts, names)
-            items.append(f"{short(ev['id'])} {ev['title']} {t}{rep}" + (f" at {ev['location']}" if ev["location"] else "")
-                         + (f" ({who}'s calendar)" if who else ""))
-        out = ("Calendar, next two weeks: " + "; ".join(items) + ".") if items else "Nothing on the calendar in the next two weeks."
-        connected = sorted({names.get(a["person_id"], "?") for a in accounts.values() if a["status"] == "ok"})
-        if connected:
-            out += f" Connected Google calendars: {', '.join(connected)}."
+        on = {d: self.store.events_on(d, evs) for d in (today + timedelta(days=i) for i in range(7))}
+        later_today = [(at, e) for at, e in on[today] if e["all_day"] or e["end"] > now.timestamp()]
+
+        def day(items):
+            return "; ".join(self.line(e, at, cals, accounts, names) for at, e in items) or "nothing"
+        if call.kind == "join":
+            return f"Calendar, rest of today: {day(later_today)}." if later_today else ""
+        tomorrow = today + timedelta(days=1)
+        out = f"Calendar today: {day(later_today)}. Tomorrow ({tomorrow:%a %Y-%m-%d}): {day(on[tomorrow])}."
+        rest = [f"{d:%a} {len(on[d])}" for d in sorted(on)[2:] if on[d]]
+        out += (" Later this week (events per day): " + ", ".join(rest) + "." if rest else " Nothing else this week.")
+        out += " For any other day, or the details of those, look it up first (ACTION look)."
+        labels = []
+        for c in cals.values():
+            tags = [t for t, on_ in (("household", c["id"] == self.sync.household()), ("read-only", not c["writable"]),
+                                     ("hidden", not c["ticked"]), ("shared with them", c["account_id"] and c["writable"] and not c["owner"])) if on_]
+            labels.append(self.label(c, accounts, names) + (f" ({', '.join(tags)})" if tags else ""))
+        out += " Calendars: " + "; ".join(labels) + "."
         return out
+
+    # ---------------------------------------------------------------- looking further ahead (ACTION look)
+    def check_look(self, a: dict, call: Call) -> dict:
+        try:
+            first = date.fromisoformat(str(a.get("from") or a.get("date"))[:10])
+            last = date.fromisoformat(str(a.get("to") or a.get("from") or a.get("date"))[:10])
+        except ValueError:
+            raise Invalid("bad dates")
+        if last < first or (last - first).days > 30:
+            raise Invalid("look at most a month at a time")
+        if abs((first - call.now.date()).days) > 400:
+            raise Invalid("too far away")
+        cal = self.find_calendar(str(a["calendar"]), call, writable=False) if a.get("calendar") else None
+        return {"first": first, "last": last, "cal": cal}
+
+    def do_look(self, p: dict, call: Call) -> str:
+        cals = {c["id"]: c for c in self.store.calendars()}
+        accounts, names = self._accounts(), self._people()
+        evs = [e for e in self.store.all_events() if self.visible(e, call, cals, accounts)
+               and (p["cal"] is None or e["calendar_id"] == p["cal"]["id"])]
+        items = [self.line(e, at, cals, accounts, names, day=True) for _, at, e in self.store.between(p["first"], p["last"], evs)]
+        span = f"{p['first']:%a %Y-%m-%d}" + (f" to {p['last']:%a %Y-%m-%d}" if p["last"] != p["first"] else "")
+        which = f" ({self.label(p['cal'], accounts, names)})" if p["cal"] else ""
+        return f"Calendar{which}, {span}: " + ("; ".join(items) if items else "nothing") + "."
 
     def find(self, ref: str) -> str | None:
         ref = ref.strip().lstrip("#").lower()
@@ -190,11 +264,17 @@ class Calendar(Module):
                 p[k] = str(a[k])[:200]
         if "private" in a:
             p["private"] = bool(a["private"])
+        if a.get("calendar"):
+            to = self.find_calendar(str(a["calendar"]), call)
+            if to["id"] != ev["calendar_id"]:
+                p["to"] = to
         if len(p) == 1:
             raise Invalid("change without anything to change")
         return p
 
-    def do_change(self, p: dict, call: Call) -> str:
+    def do_change(self, p: dict, call: Call):
+        if "to" in p:
+            return self._move_then_change(p, call)
         ev = p.pop("ev")
         start = p.pop("start", None)
         all_day = bool(ev["all_day"]) and start is not None and start.time() == datetime.min.time() if start else None
@@ -202,6 +282,140 @@ class Calendar(Module):
         if new["private"]:
             return "Done."
         return f"Moved {new['title']} to {self.say_when(new)}." if start else f"Updated {new['title']}."
+
+    async def _move_then_change(self, p: dict, call: Call) -> str:
+        to = p.pop("to")
+        try:
+            moved = await self.sync.move_event(p["ev"], to)
+        except Exception as e:
+            return self._google_trouble(e)
+        p["ev"] = moved
+        said = f"Moved {moved['title']} to {self.label(to, self._accounts(), self._people())}."
+        if len(p) > 1:
+            self.do_change(p, call)
+        return "Done." if moved["private"] else said
+
+    def _google_trouble(self, e: Exception) -> str:
+        from pip_assistant.modules.google.module import NeedsPermission
+        if isinstance(e, NeedsPermission):
+            return ("I need one more Google permission for that: reconnect Google on the Google page (press Connect Google again) and tick Select all. "
+                    "Nothing was changed.")
+        log.info("calendar change failed: %s", type(e).__name__)
+        return "I couldn't reach Google just now, so nothing was changed."
+
+    # ---------------------------------------------------------------- whole calendars (D-103)
+    COLORS = {"red": "#d50000", "orange": "#f4511e", "yellow": "#f6bf26", "green": "#0b8043", "teal": "#039be5",
+              "blue": "#3f51b5", "purple": "#8e24aa", "pink": "#e67c73", "grey": "#616161", "gray": "#616161",
+              "brown": "#795548", "black": "#333333"}
+
+    def _color(self, value) -> str | None:
+        if not value:
+            return None
+        v = str(value).strip().lower()
+        if v in self.COLORS:
+            return self.COLORS[v]
+        import re
+        if re.fullmatch(r"#[0-9a-f]{6}", v):
+            return v
+        raise Invalid("unknown colour")
+
+    def _name(self, value) -> str:
+        name = " ".join(str(value or "").split())[:60]
+        if not name:
+            raise Invalid("calendar without a name")
+        return name
+
+    def check_new_calendar(self, a: dict, call: Call) -> dict:
+        name, color = self._name(a.get("name") or a.get("title")), self._color(a.get("color"))
+        acc = None
+        if self.google is not None:
+            who = str(a.get("whose") or "")
+            pid = (self.ctx.people.by_name(who) or {}).get("id") if who and self.ctx.people else call.person_id
+            acc = self.google.for_person(pid) if pid else None
+            if acc is None:
+                home = self.store.calendar(self.sync.household()) or {}
+                acc = self._accounts().get(home.get("account_id", ""))
+        if any(c["name"].lower() == name.lower() and c["account_id"] == (acc or {}).get("id", "") for c in self.store.calendars()):
+            raise Invalid("there's already a calendar with that name")
+        return {"name": name, "color": color, "acc": acc}
+
+    async def do_new_calendar(self, p: dict, call: Call) -> str:
+        if p["acc"] is None:   # nobody has connected Google: one of Pip's own
+            cid = "pip:" + __import__("secrets").token_hex(4)
+            self.store.upsert_calendar(cid, name=p["name"], color=p["color"] or "#6c5ce7", ticked=1, writable=1, owner=1)
+        else:
+            try:
+                cid = await self.sync.create_calendar(p["acc"], p["name"], p["color"])
+            except Exception as e:
+                return self._google_trouble(e)
+        await self.ctx.publish("changed")
+        cal = self.store.calendar(cid)
+        return f"Made a new calendar: {self.label(cal, self._accounts(), self._people())}."
+
+    def check_edit_calendar(self, a: dict, call: Call) -> dict:
+        cal = self.find_calendar(str(a.get("calendar") or a.get("id") or ""), call, writable=False)
+        p = {"cal": cal}
+        if a.get("name"):
+            if not cal["owner"] or cal["is_primary"] and cal["account_id"]:
+                raise Invalid("can't rename that calendar")
+            p["name"] = self._name(a["name"])
+        if a.get("color"):
+            p["color"] = self._color(a["color"])
+        for k in ("shown", "ignored"):
+            if k in a:
+                p[k] = bool(a[k])
+        if len(p) == 1:
+            raise Invalid("nothing to change")
+        return p
+
+    async def do_edit_calendar(self, p: dict, call: Call) -> str:
+        cal = p["cal"]
+        accounts, names = self._accounts(), self._people()
+        before = self.label(cal, accounts, names)
+        try:
+            if cal["account_id"] and ("name" in p or "color" in p):
+                acc = self.sync.account(cal)
+                if "name" in p:
+                    await self.sync.rename_calendar(acc, cal, p["name"])
+                if "color" in p:
+                    await self.sync.recolor(acc, cal, p["color"])
+            elif fields := {k: p[k] for k in ("name", "color") if k in p}:
+                self.store.upsert_calendar(cal["id"], **fields)
+        except Exception as e:
+            return self._google_trouble(e)
+        if "shown" in p:
+            self.store.upsert_calendar(cal["id"], ticked=int(p["shown"]))
+            self.store.refresh_alerts()
+        if p.get("ignored"):
+            self.store.set_ignored(cal["id"], True)
+        await self.ctx.publish("changed")
+        if p.get("ignored"):
+            return f"I'll ignore {before} from now on. You can bring it back on the Google page."
+        if "name" in p:
+            return f"Renamed {before} to {p['name']}."
+        if "shown" in p and len(p) == 2:
+            return f"{'Showing' if p['shown'] else 'Hiding'} {before}."
+        return f"Updated {before}."
+
+    def check_delete_calendar(self, a: dict, call: Call) -> dict:
+        cal = self.find_calendar(str(a.get("calendar") or a.get("id") or ""), call, writable=False)
+        if cal["id"] == "pip" or (cal["is_primary"] and cal["account_id"]):
+            raise Invalid("can't delete a main calendar")
+        if a.get("confirmed") is not True:
+            raise Invalid("deleting a calendar needs a spoken yes first")
+        return cal
+
+    async def do_delete_calendar(self, cal: dict, call: Call) -> str:
+        name = self.label(cal, self._accounts(), self._people())
+        try:
+            if cal["account_id"]:
+                await self.sync.delete_calendar(self.sync.account(cal), cal)
+            else:
+                self.store.remove_calendar(cal["id"])
+        except Exception as e:
+            return self._google_trouble(e)
+        await self.ctx.publish("changed")
+        return f"Deleted {name}." if cal["owner"] else f"Took {name} off the list."
 
     def check_cancel(self, a: dict, call: Call) -> dict:
         return self._by_ref(a.get("id"))
@@ -217,9 +431,13 @@ class Calendar(Module):
         return when.say_day(at.date(), now.date()) + ("" if ev["all_day"] else f" at {when.say_clock(at)}")
 
     def on_whose(self, ev: dict) -> str:
-        cal = self.store.calendar(ev["calendar_id"]) or {"account_id": ""}
+        cal = self.store.calendar(ev["calendar_id"]) or {"account_id": "", "is_primary": 0, "name": ""}
+        if ev["calendar_id"] == self.sync.household():
+            return ""
         who = self.whose(cal, self._accounts(), self._people())
-        return f", on {who}'s calendar" if who and ev["calendar_id"] != self.sync.household() else ""
+        if cal["is_primary"]:
+            return f", on {who}'s calendar" if who else ""
+        return f", on {who}'s {cal['name']} calendar" if who else f", on the {cal['name']} calendar"
 
     # ---------------------------------------------------------------- the dashboard page
     def occurrences(self, first: date, last: date, include_private: bool = True) -> list[dict]:
@@ -244,11 +462,13 @@ class Calendar(Module):
                  "repeat": o["repeat"], "private": o["private"], "color": o["color"]}
                 for o in self.occurrences(today, today + timedelta(days=days - 1))]
 
-    def calendars_view(self) -> list[dict]:
+    def calendars_view(self, ignored: bool = False) -> list[dict]:
         accounts, names = self._accounts(), self._people()
         return [{"id": c["id"], "name": c["name"], "color": c["color"], "ticked": bool(c["ticked"]), "writable": bool(c["writable"]),
-                 "whose": self.whose(c, accounts, names), "household": c["id"] == self.sync.household()}
-                for c in self.store.calendars()]
+                 "whose": self.whose(c, accounts, names), "household": c["id"] == self.sync.household(),
+                 "label": self.label(c, accounts, names), "owner": bool(c["owner"]), "primary": bool(c["is_primary"]) or c["id"] == "pip",
+                 "account_id": c["account_id"], "ignored": bool(c["ignored"])}
+                for c in self.store.calendars(ignored=ignored)]
 
     def _form(self, a: dict) -> dict:
         title = str(a.get("title") or "").strip()
@@ -313,9 +533,49 @@ class Calendar(Module):
                 s.sync_alerts(dict(ev))
             self._wake.set()
             return {"ok": True}
+        if action in ("new_calendar", "edit_calendar", "delete_calendar", "ignore"):
+            return await self._calendar_settings(action, args)
+        if action == "all_calendars":   # the Google page's settings list: every calendar, ignored ones too
+            return {"calendars": self.calendars_view(ignored=True)}
         if action == "sync":
             return {"ok": True, "accounts": await self.sync.run_once()}
         return {"error": f"unknown action {action}"}
+
+    async def _calendar_settings(self, action: str, args: dict) -> dict:
+        """The dashboard's calendar settings (same as asking Pip; the page asks "are you sure" before deleting)."""
+        call = Call(now=datetime.fromtimestamp(self.ctx.clock()))
+        if action == "new_calendar":
+            p = {"name": self._name(args.get("name")), "color": self._color(args.get("color")), "acc": None}
+            if self.google is not None and args.get("account"):
+                p["acc"] = self.google.account(str(args["account"]))
+            elif self.google is not None:
+                p["acc"] = self.check_new_calendar({"name": p["name"]}, call)["acc"]
+            said = await self.do_new_calendar(p, call)
+        else:
+            cal = self.store.calendar(str(args.get("id")))
+            if not cal:
+                raise ValueError("That calendar is gone")
+            if action == "ignore":
+                if cal["id"] == "pip":
+                    raise ValueError("Pip's own calendar can't be ignored")
+                self.store.set_ignored(cal["id"], bool(args.get("value")))
+                self._wake.set()
+                await self.ctx.publish("changed")
+                return {"ok": True, "calendars": self.calendars_view(ignored=True)}
+            if action == "delete_calendar":
+                if cal["id"] == "pip" or (cal["is_primary"] and cal["account_id"]):
+                    raise ValueError("A main calendar can't be deleted")
+                said = await self.do_delete_calendar(cal, call)
+            else:
+                p = {"cal": cal}
+                if args.get("name") and args["name"] != cal["name"]:
+                    p["name"] = self._name(args["name"])
+                if args.get("color") and args["color"] != cal["color"]:
+                    p["color"] = self._color(args["color"])
+                said = await self.do_edit_calendar(p, call) if len(p) > 1 else "Nothing changed."
+        if said.startswith(("I need", "I couldn't")):
+            raise ValueError(said)
+        return {"ok": True, "said": said}
 
     # ---------------------------------------------------------------- background
     def tasks(self) -> list:

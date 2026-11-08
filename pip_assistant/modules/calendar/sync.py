@@ -97,8 +97,14 @@ class CalendarSync:
     async def _req(self, acc: dict, method: str, path: str, **kw):
         return await self.google.request(acc["id"], method, API + path, **kw)
 
+    def account(self, cal: dict) -> dict:
+        acc = self.google.account(cal["account_id"]) if self.google and cal["account_id"] else None
+        if not acc:
+            raise LookupError("not a Google calendar")
+        return acc
+
     async def sync_account(self, acc: dict) -> None:
-        first = not any(c["account_id"] == acc["id"] for c in self.store.calendars())
+        first = not any(c["account_id"] == acc["id"] for c in self.store.calendars(ignored=True))
         await self.calendars(acc)
         if first and self.settings.get("upload_on_connect", True) and self.household() == self.primary(acc["id"]):
             self.adopt_local(self.primary(acc["id"]))
@@ -121,11 +127,12 @@ class CalendarSync:
             fields = {"account_id": acc["id"], "google_id": item["id"], "name": item.get("summaryOverride") or item.get("summary", "?"),
                       "color": item.get("backgroundColor", "#4285f4"),
                       "writable": int(item.get("accessRole") in ("owner", "writer")),
+                      "owner": int(item.get("accessRole") == "owner"),
                       "is_primary": int(bool(item.get("primary"))), "reminder": float(min(rems)) if rems else None}
             if not self.store.calendar(cid):
                 fields["ticked"] = int(item.get("selected", True))
             self.store.upsert_calendar(cid, **fields)
-        for c in self.store.calendars():
+        for c in self.store.calendars(ignored=True):
             if c["account_id"] == acc["id"] and c["id"] not in seen:
                 self.store.remove_calendar(c["id"])
 
@@ -191,6 +198,54 @@ class CalendarSync:
         else:
             r.raise_for_status()
             self.store.save_synced(ev["id"], calendar_id=cal["id"], **from_google(r.json(), cal["reminder"]))
+
+    # ---------------------------------------------------------------- whole calendars (D-103; needs the wider permission)
+    async def create_calendar(self, acc: dict, name: str, color: str | None) -> str:
+        r = await self._req(acc, "POST", "/calendars", manage=True, json={"summary": name})
+        r.raise_for_status()
+        gid = r.json()["id"]
+        cid = calendar_id(acc["id"], gid)
+        self.store.upsert_calendar(cid, account_id=acc["id"], google_id=gid, name=name, color=color or "#a4bdfc",
+                                   writable=1, owner=1, is_primary=0, ticked=1)
+        if color:
+            await self.recolor(acc, self.store.calendar(cid), color)
+        return cid
+
+    async def rename_calendar(self, acc: dict, cal: dict, name: str) -> None:
+        r = await self._req(acc, "PATCH", f"/calendars/{quote(cal['google_id'], safe='')}", manage=True, json={"summary": name})
+        r.raise_for_status()
+        self.store.upsert_calendar(cal["id"], name=name)
+
+    async def recolor(self, acc: dict, cal: dict, color: str) -> None:
+        r = await self._req(acc, "PATCH", f"/users/me/calendarList/{quote(cal['google_id'], safe='')}", manage=True,
+                            params={"colorRgbFormat": "true"}, json={"backgroundColor": color, "foregroundColor": "#000000"})
+        r.raise_for_status()
+        self.store.upsert_calendar(cal["id"], color=color)
+
+    async def delete_calendar(self, acc: dict, cal: dict) -> None:
+        """Their own calendar is deleted in Google; one shared with them is only taken off their list."""
+        gid = quote(cal["google_id"], safe="")
+        path = f"/calendars/{gid}" if cal["owner"] else f"/users/me/calendarList/{gid}"
+        r = await self._req(acc, "DELETE", path, manage=True)
+        if r.status_code not in (200, 204, 404, 410):
+            r.raise_for_status()
+        self.store.remove_calendar(cal["id"])
+
+    async def move_event(self, ev: dict, to: dict) -> dict:
+        """Move an event to another calendar. Within one Google account Google moves it (keeping everything);
+        otherwise it's made in the new calendar and deleted from the old one (sent with the next sync)."""
+        frm = self.store.calendar(ev["calendar_id"])
+        if (ev["google_id"] and not ev["pending"] and frm and frm["account_id"] and frm["account_id"] == to["account_id"]):
+            acc = self.account(frm)
+            r = await self._req(acc, "POST", f"/calendars/{quote(frm['google_id'], safe='')}/events/"
+                                f"{quote(ev['google_id'], safe='')}/move", manage=True, params={"destination": to["google_id"]})
+            if r.status_code == 200:
+                return self.store.save_synced(ev["id"], calendar_id=to["id"], **from_google(r.json(), to["reminder"]))
+            if r.status_code == 403 and "ACCESS_TOKEN_SCOPE_INSUFFICIENT" in r.text:
+                from pip_assistant.modules.google.module import NeedsPermission
+                raise NeedsPermission(acc["id"])
+            # e.g. one day of a repeating event (Google can't move those): copy it over instead
+        return self.store.copy_to(ev, to["id"])
 
     # ---------------------------------------------------------------- fetching Google's changes
     async def pull(self, acc: dict, cal: dict) -> None:

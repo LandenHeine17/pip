@@ -82,14 +82,15 @@ class FakeSTT:
         return self.text
 
 
-async def setup(tmp_path, stt_text="", replies=None, social=None, people=None):
-    """replies: what the fake Claude says for each kind of request (direct / mentioned / join)."""
+async def setup(tmp_path, stt_text="", replies=None, social=None, people=None, schedule=None, modules=None):
+    """replies: what the fake Claude says for each kind of request (direct / mentioned / join); a list gives
+    one reply per request in turn, and "ACTION …" replies are actions."""
     sock = tmp_path / "core.sock"
     bus = Bus(sock, Trace(tmp_path / "pip.db"), Health(["ears", "thinker"], restart=False))
     mic = MicSwitch(tmp_path / "pip.db")
     cfg = {"conversation": {"follow_up_seconds": 0.3},
            "social": {"pause_seconds": 0.1, "welcome_back_minutes": 0, "quiet_hours": "", **(social or {})}}
-    conv = Conversation(bus, cfg, FakeSTT(stt_text), people=people, mic=mic)
+    conv = Conversation(bus, cfg, FakeSTT(stt_text), people=people, mic=mic, schedule=schedule, modules=modules)
     await bus.start()
     ears, thinker = BusClient("ears", socket_path=sock), BusClient("thinker", socket_path=sock)
     got, asks = [], []
@@ -105,6 +106,10 @@ async def setup(tmp_path, stt_text="", replies=None, social=None, people=None):
         kind = msg.data.get("kind")
         asks.append((kind, msg.private))
         text = replies[kind]
+        if isinstance(text, list):
+            text = text.pop(0)
+        if text.startswith("ACTION"):
+            return msg.reply({"action": True}, private={"text": "", "action": text}, source="thinker")
         if text:
             await thinker.emit("answer.sentence", {"answer_id": msg.data["answer_id"]}, private={"text": text})
         return msg.reply({"passed": not text}, private={"text": text}, source="thinker")
@@ -365,3 +370,32 @@ async def test_offline_indicator(tmp_path):
     await net.set(True)
     assert net.online and sorted(r["data"]["online"] for r in bus.trace.recent() if r["type"] == "net.changed") == [False, True]
     bus.trace.flush()
+
+
+async def test_claude_looks_the_calendar_up_then_answers(tmp_path):
+    """D-102: only today and tomorrow go with each message; for next Friday Claude asks Pip to look, once."""
+    from datetime import datetime, timedelta
+    from pip_assistant.core.schedule import Schedule
+    from modhelp import registry
+    sched = Schedule(tmp_path / "pip.db")
+    reg = registry(tmp_path, schedule=sched)
+    day = (datetime.now() + timedelta(days=9)).replace(hour=15, minute=0, second=0, microsecond=0)
+    reg.get("calendar").add_event("dentist", day)
+    look = 'ACTION {"do": "look", "kind": "calendar", "from": "%s"}' % day.date().isoformat()
+    bus, conv, ears, got, asks, tasks = await setup(
+        tmp_path, "Pip, what have I got that day?", social={"join_in": False}, schedule=sched, modules=reg,
+        replies={"direct": [look, "The dentist at 3."]})
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.6)
+    assert len(asks) == 2 and "dentist" not in asks[0][1]["schedule"] and not asks[0][1]["looked_up"]
+    assert "dentist" in asks[1][1]["looked_up"] and says(got) == ["The dentist at 3."]
+    await finish(bus, tasks)
+    # Asking to look again on the second round doesn't go round in circles
+    (tmp_path / "again").mkdir()
+    bus, conv, ears, got, asks, tasks = await setup(
+        tmp_path / "again", "Pip, and the day after?", social={"join_in": False}, schedule=sched, modules=reg,
+        replies={"direct": [look, look]})
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.6)
+    assert len(asks) == 2 and says(got) == ["Sorry, I couldn't find that."]
+    await finish(bus, tasks)

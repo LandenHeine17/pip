@@ -792,9 +792,10 @@ class Conversation:
         return True
 
     # ---------------------------------------------------------------- answering
-    async def answer(self, text: str, reason: str, kind: str = "direct", mood: str = "") -> None:
+    async def answer(self, text: str, reason: str, kind: str = "direct", mood: str = "", looked_up: str = "") -> None:
         """Ask Claude. kind: "direct" (said to Pip), "mentioned" (his name came up: he may PASS) or "join"
-        (nobody spoke to him: he may join in with "SAY: …" or PASS). Claude sees the room transcript."""
+        (nobody spoke to him: he may join in with "SAY: …" or PASS). Claude sees the room transcript.
+        `looked_up`: what Claude asked Pip to look up first (ACTION look), for the second round."""
         aid = new_id()
         self.answer_id, self.answer_kind, self.join_spoke = aid, kind, False
         self.join_count = self.transcript.count
@@ -802,14 +803,14 @@ class Conversation:
         self.long_ok = bool(WANTS_DETAIL.search(text or ""))
         self.filler_said = None
         self.refresh_state()  # thinking (direct answers only)
-        filler = asyncio.create_task(self._thinking_tone(aid)) if kind == "direct" else None
+        filler = asyncio.create_task(self._thinking_tone(aid)) if kind == "direct" and not looked_up else None
         t0 = time.perf_counter()
         try:
             sp = self.speaker if kind != "join" else None
             schedule = self.schedule.summary() if self.schedule else ""
             if self.modules is not None:   # each module's part: the calendar, to-dos, … (only what this speaker may hear)
                 from .modules import Call
-                schedule = " ".join(x for x in (schedule, self.modules.summary(Call(speaker=sp))) if x)
+                schedule = " ".join(x for x in (schedule, self.modules.summary(Call(speaker=sp, kind=kind))) if x)
             people = self.people.summary(sp) if self.people is not None else ""
             if kind == "join":
                 people = people.split(". ", 1)[-1]   # nobody spoke to him: just who lives here
@@ -817,7 +818,8 @@ class Conversation:
                 if self.memory is not None else ""
             reply = await self.bus_request("thinker", "thinker.ask", {"answer_id": aid, "reason": reason, "kind": kind},
                                            {"text": text or "", "transcript": self.transcript.render(), "mood": mood,
-                                            "schedule": schedule, "people": people, "memories": memories}, timeout=60)
+                                            "schedule": schedule, "people": people, "memories": memories,
+                                            "looked_up": looked_up}, timeout=60)
         except Exception as e:
             reply = Message("reply", "thinker.ask", data={"error": f"{type(e).__name__}"})
         if filler:
@@ -838,7 +840,8 @@ class Conversation:
         if reply.private.get("action") and self.commands:
             if kind == "join":
                 return  # joining in never acts on anything (nothing overheard is acted on)
-            return await self.claude_action(reply.private["action"], t0)
+            return await self.claude_action(reply.private["action"], t0,
+                                            again=None if looked_up else (text, reason, kind, mood))
         answer = reply.private.get("text", "")
         if not answer:  # PASS: he decided it wasn't for him / nothing to add
             await self.bus.publish(Message("event", "answer.passed", data={"kind": kind}))
@@ -867,15 +870,20 @@ class Conversation:
                 asyncio.ensure_future(self.bus.publish(Message("event", "answer.dropped", data={"why": why})))
             self.refresh_state()
 
-    async def claude_action(self, raw: str, t0: float) -> None:
+    async def claude_action(self, raw: str, t0: float, again: tuple | None = None) -> None:
         """Claude turned a request into actions; Pip checks them, does them and confirms (D-84, D-94).
         Ringing alarms and voice learning are handled here (they need the alarm and the audio);
-        the rest by core/actions.py. Anything invalid means nothing at all is done."""
+        the rest by core/actions.py. Anything invalid means nothing at all is done.
+        A look-up ("look", D-102) isn't a change: Pip fetches it and asks Claude again, once (`again`)."""
         from . import actions
         from .peoplecmds import StartLearning
         said, done, learning = [], 0, None
         try:
             items = actions.parse(raw)
+            looks = [a for a in items if a.get("do") == "look"]
+            if looks:
+                return await self.look_up(looks, again, t0)
+
             here = [a for a in items if a.get("do") in actions.HERE]
             rest = [a for a in items if a.get("do") not in actions.HERE]
             plan = actions.check_here(here)
@@ -899,7 +907,7 @@ class Conversation:
                         said.append(r)
                 done += 1
             if rest:
-                s, n = actions.apply(self.commands, json.dumps(rest), self._action_ctx())
+                s, n = await actions.apply_async(self.commands, json.dumps(rest), self._action_ctx())
                 said.append(s)
                 done += n
         except Exception as e:
@@ -917,6 +925,30 @@ class Conversation:
             self.said(learning.say)
             await self.show("pip", learning.say, local=True)
             await self.start_enrolment(learning.person_id, first=self.last_pcm, greeting=learning.say)
+
+    async def look_up(self, looks: list[dict], again: tuple | None, t0: float) -> None:
+        """Claude asked to see more first (the calendar for next Friday, …): fetch it and ask again."""
+        from . import actions
+        found = []
+        if again is not None:
+            ctx = self._action_ctx()
+            for a in looks[:3]:
+                try:
+                    _, act, plan, call = actions._module(f"look:{a.get('kind')}", a, ctx, ctx["call"].now)
+                    found.append(act.do(plan, call))
+                except Exception as e:
+                    if not isinstance(e, (actions.Invalid, ValueError, TypeError, KeyError)):
+                        log.exception("look-up failed")
+        await self.bus.publish(Message("event", "action.looked", data={"count": len(found), "again": again is not None}))
+        if not found:   # a second look-up, or nothing to look at: don't go round in circles
+            text = "Sorry, I couldn't find that."
+            self.said(text)
+            self.speech_done.clear()
+            await self.say(text, "command")
+            await self.show("pip", text, total_s=round(time.perf_counter() - t0, 2), local=True)
+            return
+        text, reason, kind, mood = again
+        await self.answer(text, reason, kind=kind, mood=mood, looked_up=" ".join(found))
 
     def _action_ctx(self) -> dict:
         from .modules import Call

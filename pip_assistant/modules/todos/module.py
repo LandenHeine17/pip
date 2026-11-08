@@ -78,6 +78,8 @@ class Todos(Module):
 
     # ---------------------------------------------------------------- what Claude reads
     def summary(self, call: Call) -> str:
+        if call.kind == "join":   # join-in checks run every ~40 s: keep them small (D-102)
+            return ""
         lists = {x["id"]: x for x in self.store.lists()}
         accounts, names = self._accounts(), self._names()
         items = [t for t in self.store.items() if self.visible(t, call, lists, accounts)][:40]

@@ -16,6 +16,9 @@ nothing is changed and Pip says so.
     change  id ('#a1b2c3' from the summary Claude sees), and at | shift_seconds | seconds (timers)
     cancel  id                 (an id belonging to a module's item goes to that module: "change:event")
     other   any verb a plugged-in module declares ("add_task" → modules/todos), see core/modules.py
+    look    kind (+ the module's fields): a look-up, not a change. Pip fetches it and asks Claude again
+            with the result, once ("what's on next Friday?" → the calendar for that day). Handled in
+            core/conversation.py.
 
 Ringing alarms and voices (handled in core/conversation.py, which has the alarm and the audio):
     stop_alarm     turn off what's ringing
@@ -29,12 +32,15 @@ Memory (step 5):
 Sensitive memories, memories about someone other than the speaker, and private ones from a voice Pip
 doesn't recognise wait in the memory inbox instead of being saved straight away.
 """
+import inspect
 import json
+import logging
 import re
 from datetime import datetime, timedelta
 
 REPEATS = re.compile(r"^(|daily|weekdays|weekends|weekly|weekly:[0-6])$")
 FAILED = "Sorry, that didn't work. Nothing was changed."
+log = logging.getLogger(__name__)
 
 
 class Invalid(ValueError):
@@ -117,6 +123,10 @@ def check(cmds, items: list[dict], ctx: dict | None = None) -> list[tuple]:
                 plan.append((kind, at, label, rep))
             else:
                 plan.append(_module(f"add:{kind}", a, ctx, now))   # e.g. calendar events (modules/calendar)
+        elif do == "look":
+            plan.append(_module(f"look:{a.get('kind')}", a, ctx, now))   # normally handled by Conversation.look_up
+        elif do in ("change", "cancel") and not a.get("id") and a.get("kind") not in (None, "", "timer", "alarm", "reminder"):
+            plan.append(_module(f"{do}:{a['kind']}", a, ctx, now))   # e.g. a whole calendar, by name
         elif do in ("change", "cancel"):
             found = cmds.s.find(str(a.get("id") or ""))
             if not found:
@@ -197,11 +207,37 @@ def _check_memory(a: dict, ctx: dict) -> tuple:
 
 
 def apply(cmds, raw: str, ctx: dict | None = None) -> tuple[str, int]:
-    """Check and carry out Claude's actions. Returns (what Pip says, how many were done)."""
+    """Check and carry out Claude's actions. Returns (what Pip says, how many were done).
+    For actions that must wait (a module talking to Google) use apply_async."""
     try:
         plan = check(cmds, parse(raw), ctx)
     except (Invalid, ValueError, TypeError, KeyError):
         return FAILED, 0
+    said = _carry_out(cmds, plan, ctx)
+    for i, s in enumerate(said):
+        if inspect.isawaitable(s):
+            s.close()
+            said[i] = FAILED
+    return " ".join(said), len(plan)
+
+
+async def apply_async(cmds, raw: str, ctx: dict | None = None) -> tuple[str, int]:
+    try:
+        plan = check(cmds, parse(raw), ctx)
+    except (Invalid, ValueError, TypeError, KeyError):
+        return FAILED, 0
+    said = _carry_out(cmds, plan, ctx)
+    for i, s in enumerate(said):
+        if inspect.isawaitable(s):
+            try:
+                said[i] = await s
+            except Exception:
+                log.exception("action failed")
+                said[i] = FAILED
+    return " ".join(said), len(plan)
+
+
+def _carry_out(cmds, plan: list[tuple], ctx: dict | None) -> list:
     said = []
     mem = (ctx or {}).get("memory")
     for step in plan:
@@ -241,4 +277,4 @@ def apply(cmds, raw: str, ctx: dict | None = None) -> tuple[str, int]:
         elif kind == "change":
             _, table, row, at, shift, length = step
             said.append(cmds.apply_change(table, row, at=at, shift=shift, length=length))
-    return " ".join(said), len(plan)
+    return said

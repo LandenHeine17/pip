@@ -26,10 +26,18 @@ from pip_assistant.core.modules import Module
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 REVOKE_URL = "https://oauth2.googleapis.com/revoke"
-SCOPES = ["openid", "email", "https://www.googleapis.com/auth/calendar.events",
-          "https://www.googleapis.com/auth/calendar.readonly", "https://www.googleapis.com/auth/tasks"]
-NEEDED = set(SCOPES[2:])  # Google lets people untick these on its "what Pip can access" screen
-MISSING = "Google only let Pip see your email. Disconnect, press Connect again, and tick Select all on Google's \"what Pip can access\" screen."
+G = "https://www.googleapis.com/auth/"
+CALENDAR = G + "calendar"   # all of Google Calendar: events, and making / renaming / deleting calendars (D-103)
+SCOPES = ["openid", "email", CALENDAR, G + "tasks"]
+
+
+def enough(granted: set[str]) -> bool:
+    """Can the calendar and to-dos sync? (Google lets people untick each permission on its "what Pip can
+    access" screen. Accounts connected before D-103 have the narrower calendar.events + calendar.readonly.)"""
+    return G + "tasks" in granted and (CALENDAR in granted or {G + "calendar.events", G + "calendar.readonly"} <= granted)
+
+
+MISSING = "Google only let Pip see your email. Press Connect Google again (no need to disconnect) and tick Select all on Google's \"what Pip can access\" screen."
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS google_accounts (
@@ -40,13 +48,18 @@ CREATE TABLE IF NOT EXISTS google_accounts (
     sharing    TEXT NOT NULL DEFAULT 'everyone',-- everyone / me: may Pip talk about it to anyone, or only to them
     created    REAL NOT NULL,
     last_sync  REAL,
-    error      TEXT NOT NULL DEFAULT ''
+    error      TEXT NOT NULL DEFAULT '',
+    scopes     TEXT NOT NULL DEFAULT ''        -- what Google let Pip do (space-separated); '' = not known
 );
 """
 
 
 class NeedsReconnect(RuntimeError):
     """Google refused the account's token (revoked or expired): the person must connect again."""
+
+
+class NeedsPermission(RuntimeError):
+    """The account works, but wasn't given this permission (e.g. managing calendars): connect again, Select all."""
 
 
 class GoogleAccounts:
@@ -56,6 +69,8 @@ class GoogleAccounts:
         self.ctx = ctx
         self.db = ctx.db()
         self.db.executescript(SCHEMA)
+        if "scopes" not in {r[1] for r in self.db.execute("PRAGMA table_info(google_accounts)")}:
+            self.db.execute("ALTER TABLE google_accounts ADD COLUMN scopes TEXT NOT NULL DEFAULT ''")
         self.db.commit()
         self._tokens: dict[str, tuple[str, float]] = {}   # account id → (access token, expires at)
         self._pending: dict[str, dict] = {}               # sign-ins in progress: state → {verifier, person_id, at}
@@ -152,13 +167,14 @@ class GoogleAccounts:
         email = _email(tok.get("id_token", ""))
         old = [a for a in self.accounts(pend["person_id"]) if a["email"] == email and email]
         aid = old[0]["id"] if old else new_id()
-        missing = bool(tok.get("scope")) and not NEEDED <= set(tok["scope"].split())
+        granted = str(tok.get("scope") or "")
+        missing = bool(granted) and not enough(set(granted.split()))
         status, error = ("missing", MISSING) if missing else ("ok", "")
         if old:
-            self.set(aid, status=status, error=error)
+            self.set(aid, status=status, error=error, scopes=granted)
         else:
-            self.db.execute("INSERT INTO google_accounts (id, person_id, email, created, status, error) VALUES (?,?,?,?,?,?)",
-                            (aid, pend["person_id"], email, self.ctx.clock(), status, error))
+            self.db.execute("INSERT INTO google_accounts (id, person_id, email, created, status, error, scopes) "
+                            "VALUES (?,?,?,?,?,?,?)", (aid, pend["person_id"], email, self.ctx.clock(), status, error, granted))
             self.db.commit()
         data = self.ctx.secrets.all()
         data.setdefault("accounts", {})[aid] = {"refresh_token": tok["refresh_token"]}
@@ -209,8 +225,14 @@ class GoogleAccounts:
         self._tokens[aid] = (tok["access_token"], self.ctx.clock() + float(tok.get("expires_in", 3600)) - 60)
         return tok["access_token"]
 
-    async def request(self, aid: str, method: str, url: str, **kw):
-        """Call a Google API as this account. Returns the httpx response (any status)."""
+    def has_scope(self, aid: str, scope: str) -> bool:
+        a = self.account(aid)
+        return bool(a) and scope in a.get("scopes", "").split()
+
+    async def request(self, aid: str, method: str, url: str, manage: bool = False, **kw):
+        """Call a Google API as this account. Returns the httpx response (any status).
+        manage=True: an extra like making a calendar; if that permission is missing only that call fails
+        (NeedsPermission), the account keeps syncing."""
         token = await self._access_token(aid)
         headers = {**kw.pop("headers", {}), "Authorization": f"Bearer {token}"}
         async with self.ctx.http() as http:
@@ -222,6 +244,8 @@ class GoogleAccounts:
             async with self.ctx.http() as http:
                 r = await http.request(method, url, headers=headers, **kw)
         if r.status_code == 403 and "ACCESS_TOKEN_SCOPE_INSUFFICIENT" in r.text:
+            if manage:
+                raise NeedsPermission(aid)
             self.set(aid, status="missing", error=MISSING)
             raise NeedsReconnect(aid)
         return r
@@ -229,7 +253,8 @@ class GoogleAccounts:
     def snapshot(self) -> dict:
         names = {p["id"]: p["name"] for p in (self.ctx.people.all() if self.ctx.people else [])}
         return {"configured": self.configured(), "redirect_uri": self.redirect_uri,
-                "accounts": [{**a, "person": names.get(a["person_id"], "?")} for a in self.accounts()],
+                "accounts": [{**a, "person": names.get(a["person_id"], "?"), "can_manage": CALENDAR in a["scopes"].split()}
+                             for a in self.accounts()],
                 "people": [{"id": k, "name": v} for k, v in names.items()]}
 
 

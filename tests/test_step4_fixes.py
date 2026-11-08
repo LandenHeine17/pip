@@ -124,7 +124,7 @@ async def test_actions_add_change_cancel(cmds):
     [e] = c.cal.all_events()
     ref = s.short(e["id"])
     from pip_assistant.core.modules import Call
-    assert ref in c.reg.summary(Call())
+    assert ref in actions.apply(c, 'ACTION {"do": "look", "kind": "calendar", "from": "2026-11-06"}', {'modules': c.reg})[0]
     said, _ = actions.apply(c, f'ACTION {{"do": "change", "id": "{ref}", "at": "2026-11-07T10:00"}}', {'modules': c.reg})
     assert said == "Moved dentist to Saturday at 10 AM."
     said, _ = actions.apply(c, f'ACTION [{{"do": "cancel", "id": "{ref}"}}, '
