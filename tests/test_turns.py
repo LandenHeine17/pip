@@ -281,3 +281,18 @@ async def test_being_talked_over_shows_as_interrupted(tmp_path):
     await asyncio.sleep(1.6)
     assert conv.state == "idle"
     await finish(bus, tasks)
+
+
+async def test_a_clap_switch_off_is_cleared_when_claps_cant_switch_him_back(tmp_path):
+    """Clapped off, then the clap switch is unticked: he'd be stuck deaf, so listening comes back on."""
+    prefs = Prefs(tmp_path / "pip.db")
+    prefs.set("clap_mic", "alsa_input.usb-cheap-mic")
+    prefs.set("claps", True)
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, prefs=prefs)
+    await ears.emit("mic.clapped", {})
+    await asyncio.sleep(0.1)
+    assert not conv.mic.listening
+    await conv.set_pref("claps", False)
+    await asyncio.sleep(0.05)
+    assert conv.mic.listening and ("ears.mic", None, {"mode": "on"}) in got
+    await finish(bus, tasks)
