@@ -24,6 +24,7 @@ class FakeGoogle:
         self.tasks: dict[str, dict[str, dict]] = {}
         self.requests: list[tuple[str, str]] = []
         self.offline = False
+        self.only_email = False                    # the person left Google's permission boxes unticked
         self._n = 0
 
     def transport(self) -> httpx.MockTransport:
@@ -65,7 +66,10 @@ class FakeGoogle:
                     rt = "refresh-" + email
                     self.refresh[rt] = email
                     payload = __import__("base64").urlsafe_b64encode(json.dumps({"email": email}).encode()).decode().rstrip("=")
-                    return httpx.Response(200, json={"access_token": f"access-{email}", "expires_in": 3600,
+                    scope = "openid https://www.googleapis.com/auth/userinfo.email" + (
+                        "" if self.only_email else " https://www.googleapis.com/auth/calendar.events"
+                        " https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/tasks")
+                    return httpx.Response(200, json={"access_token": f"access-{email}", "expires_in": 3600, "scope": scope,
                                                      "refresh_token": rt, "id_token": f"x.{payload}.y"})
                 if form.get("grant_type") == "refresh_token":
                     email = self.refresh.get(form.get("refresh_token", ""))
@@ -76,6 +80,9 @@ class FakeGoogle:
                 self.revoked.append(form.get("token", ""))
                 return httpx.Response(200, json={})
         who = self._who(request)
+        if self.only_email:
+            return httpx.Response(403, json={"error": {"code": 403, "status": "PERMISSION_DENIED",
+                                                       "details": [{"reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT"}]}})
         if request.url.host == "www.googleapis.com" and path.startswith("/calendar/v3"):
             p = path.removeprefix("/calendar/v3")
             if p == "/users/me/calendarList":

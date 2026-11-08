@@ -7,7 +7,7 @@ import logging
 import os
 import time
 
-from ..common.messages import BadMessage, Message
+from ..common.messages import READ_LIMIT, BadMessage, Message, lines
 from .health import Health
 from .trace import Trace
 
@@ -31,7 +31,7 @@ class Bus:
     async def start(self) -> None:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(self.socket_path)
-        self.server = await asyncio.start_unix_server(self._client, path=str(self.socket_path), limit=8 * 1024 * 1024)
+        self.server = await asyncio.start_unix_server(self._client, path=str(self.socket_path), limit=READ_LIMIT)
         os.chmod(self.socket_path, 0o600)  # only this user's programs may connect
 
     async def stop(self) -> None:
@@ -45,7 +45,7 @@ class Bus:
     async def _client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         name = None
         try:
-            while line := await reader.readline():
+            async for line in lines(reader, log, "core"):
                 try:
                     msg = Message.decode(line)
                 except BadMessage as e:
