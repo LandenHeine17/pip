@@ -70,7 +70,9 @@ Memory: each message says who's speaking (if Pip recognises the voice), who live
 remember something lasting, reply with ONLY:
 ACTION {{"do": "remember", "text": "Landen likes his coffee black", "category": "preference", "about": ["Landen"], \
 "sensitive": false, "private": false}}
-Write the text in the third person with names (the speaker's name for "I"/"my"). If it's about "I"/"my" and \
+Write the fact itself in the third person with names (the speaker's name for "I"/"my"): "Caleb is allergic \
+to peanuts", never "Landen says Caleb is allergic to peanuts". A fact about a person is category personal with \
+"about": [that person]. If it's about "I"/"my" and \
 you don't know who's speaking, don't remember it: ask who they are instead. "about" lists only the people a \
 preference or personal fact is about; household facts and rules have "about": []. Categories: preference, household, rule (how Pip should behave), \
 personal (facts about a person), device. sensitive = health, money, relationships, religion or politics, \

@@ -69,7 +69,7 @@ flowchart LR
     J -- yes --> C["Claude: join in (SAY) or PASS"]
     J -- no --> N["Just listens"]
 ```
-- **Privacy is the mic switch** (D-90, D-91): a **Listening** switch on the dashboard. **Two claps** will do the same (a falling tone, and he stops listening; clap twice again for a rising tone), heard on a **second, cheap USB microphone** chosen on the dashboard (Listening & sounds), because the speakerphone's noise filter erases claps: **not finished, tuned once Session F is recorded on that mic**. The two are separate: if the dashboard switched him off, claps can't turn him on. Clapped off, he ignores the speakerphone completely and only the clap mic listens; switched off on the dashboard, nothing at all. The speakerphone's mute button works too. "Leave me out" was removed. Pip's notice to new people uses your wording (D-61). You tell your roommate yourself (D-67).
+- **Privacy is the mic switch** (D-90, D-91): a **Listening** switch on the dashboard. **Two claps** will do the same (a falling tone, and he stops listening; clap twice again for a rising tone), heard on a **second, cheap USB microphone** chosen on the dashboard (Listening & sounds; claps only work once "Two claps switch listening" is ticked), because the speakerphone's noise filter erases claps: **not finished, tuned once Session F is recorded on that mic**. The two are separate: if the dashboard switched him off, claps can't turn him on. Clapped off, he ignores the speakerphone completely and only the clap mic listens; switched off on the dashboard, nothing at all. The speakerphone's mute button works too. "Leave me out" was removed. Pip's notice to new people uses your wording (D-61). You tell your roommate yourself (D-67).
 - Quiet hours 23:00–07:00: no joining in or welcome-backs; alarms still ring (D-66).
 - **Welcome back:** after the room was quiet for 20 minutes, someone he recognises gets "Hey Landen, welcome back." (once an hour).
 
@@ -89,6 +89,7 @@ flowchart LR
 | "Remember the bins go out Tuesday night" · "remember I take my coffee black" | "Saved: The bins go out Tuesday night." (exact wording, so you know what he kept) |
 | "Remember Sam is allergic to peanuts" (health, money, relationships, someone's whereabouts, children; or a preference about someone else) | "I'll remember that once it's approved in the memory inbox on the dashboard." |
 | Sam, later: "Yeah, that's right, save it" (Pip sure it's Sam) | "Saved: Sam is allergic to peanuts." (only the person it's about can approve by voice, D-107) |
+| Sam: "Remember I'm allergic to peanuts" (Pip sure it's Sam) | "Saved: Sam is allergic to peanuts." (your own sensitive facts are saved straight away, D-88) |
 | "Actually, I take it with oat milk now" · "forget what I said about coffee" | "Updated: …" · "Forgot: …" |
 | "Remember the door code is 4821" | Refused: passwords, codes, card and phone numbers aren't memories |
 | "What do you remember about me?" · "how do I take my coffee?" | Answers from what he remembers |
@@ -212,6 +213,7 @@ stateDiagram-v2
 Sounds without a human voice in them (a click, a cough, a hiss) are dropped before speech-to-text, so Pip no longer "hears" a phantom "Thank you." (D-85).
 
 ### Screen and dashboard
+- **What Pip hears and does** (D-108): the Conversation box shows everything heard (grey = not for Pip, green = to Pip, "mentioned Pip"), his replies, and small bars for what happened (chimed, waiting for you to finish, stayed quiet, interrupted, mic off/on and for how long, timers ringing, offline). Live only, never saved. The **coloured circle** at the top shows his state: grey idle, green listening, purple thinking, blue speaking, orange interrupted, red ringing, dark mic off. The face (step 7) will grow out of it.
 - The animated face on the monitor, with weather clothing and reactions (six-seven stays) (D-35, D-62).
 - TV widgets show live data. Layout changes are checked, previewed and undoable.
 - The dashboard works from your phone over Tailscale. Admin actions need a login with 2-factor; the conversation feed doesn't (D-10, D-35, D-53).

@@ -12,7 +12,7 @@
   <div class="brand"><div class="logo">P</div>
     <div><h1>Pip</h1><div class="sub">Step 6 · listens to the room like Ziggletron and joins in; timers, calendar, memory, voices</div></div></div>
   <div class="status"><span id="modlinks" style="display:flex;gap:6px"></span><button id="mic" class="micbtn" onclick="toggleMic()" title="Switch listening off or on.">Listening…</button>
-    <span class="state" id="state"><span class="dot"></span><span id="statetext">…</span></span>
+    <span class="face" id="state" title="Pip's state: grey idle · green listening · purple thinking · blue speaking · orange interrupted · red ringing · dark mic off"><span class="orb"></span><span id="statetext">…</span></span>
     <span class="netoff" id="netoff" hidden title="Pip can't reach the internet: only timers, alarms and other basics work until it's back">offline</span>
     <span class="sub" id="conn">Connecting…</span></div>
 </header>
@@ -34,7 +34,7 @@
 </div>
 
 <section>
-  <div class="head"><h2>Conversation</h2><span class="sub">live · in memory only, never saved</span></div>
+  <div class="head"><h2>Conversation</h2><span class="sub"><label style="display:inline-flex;gap:5px;align-items:center"><input type="checkbox" id="showroom" checked onchange="renderConv()"> everything heard</label> · live, never saved</span></div>
   <div id="conv"><div class="empty">Say "Pippletron" or "Hey Pip" and ask something.</div></div>
 </section>
 </div>
@@ -71,9 +71,11 @@
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">Clap microphone
     <select id="clapmic" onchange="setPref('clap_mic', this.value)"><option value="">…</option></select>
     <span class="sub" id="clapnote"></span></div>
+  <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="claps" onchange="setPref('claps', this.checked)">
+    Two claps switch listening <span class="sub">(leave this off while recording Session F)</span></label>
   <div class="sub" style="margin-top:6px">Two claps switch listening off and on. The speakerphone's own noise filter removes claps,
-    so they're heard on a second, plain USB microphone (any cheap one that isn't "noise-cancelling"). Not finished yet:
-    it's tuned once you've recorded Session F on that microphone.</div>
+    so they're heard on a second, plain USB microphone (any cheap one that isn't "noise-cancelling"). Choosing the
+    microphone doesn't switch claps on: tick the box for that. Not finished yet: it's tuned once you've recorded Session F on that microphone.</div>
 </section>
 </div>
 
@@ -103,7 +105,7 @@ const WHAT = {core:"The conductor: routes messages, keeps the trace, watches hea
   web:"This dashboard and the TV page"};
 const ORDER = ["core","ears","thinker","web"];
 const STATE = {ok:["ok","Running"], stuck:["stuck","Stuck"], missing:["missing","Not running"]};
-const PIPSTATE = {idle:"Idle", listening:"Listening", thinking:"Thinking", speaking:"Speaking", ringing:"Ringing", offline:"Offline", mic_off:"Not listening"};
+const PIPSTATE = {idle:"Idle", listening:"Listening", thinking:"Thinking", speaking:"Speaking", interrupted:"Interrupted", ringing:"Ringing", offline:"Offline", mic_off:"Not listening"};
 let micState = null;
 function renderMic(m){ if(!m || m.dashboard === undefined) return; micState = m; const b = $("mic");
   b.className = "micbtn" + (m.listening ? "" : " off");
@@ -113,7 +115,7 @@ async function toggleMic(){ const on = !(micState && micState.listening);
 // Listening & sounds (core/prefs.py): the chime, and which microphone hears the two-clap switch (D-91, D-105)
 async function loadPrefs(){ try{ renderPrefs(await (await fetch("/api/prefs",{cache:"no-store"})).json()); }catch(e){} }
 function renderPrefs(p){ if(!p || p.error) return;
-  $("chime").checked = !!p.chime;
+  $("chime").checked = !!p.chime; $("claps").checked = !!p.claps; $("claps").disabled = !p.clap_mic;
   const others = (p.mics||[]).filter(m => m.name !== p.speakerphone);
   $("clapmic").innerHTML = `<option value="">None: claps do nothing</option>` + others.map(m =>
     `<option value="${esc(m.name)}" ${m.name===p.clap_mic?"selected":""}>${esc(m.label)}</option>`).join("")
@@ -124,7 +126,7 @@ async function setPref(key, value){
   try{ const r = await (await fetch("/api/prefs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key,value})})).json();
     if(r.error) alert(r.error); renderPrefs(r); }catch(e){ alert("Couldn't reach Pip"); } }
 async function loadMic(){ try{ renderMic(await (await fetch("/api/mic",{cache:"no-store"})).json()); }catch(e){} }
-function setState(s){ $("state").className = "state st-"+s; $("statetext").textContent = PIPSTATE[s] || s; }
+function setState(s){ $("state").className = "face st-"+s; $("statetext").textContent = PIPSTATE[s] || s; }
 function dur(s){ if(s==null) return "–"; s=Math.round(s); return s<60?`${s}s`:s<3600?`${Math.floor(s/60)}m`:`${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`; }
 function renderHealth(p){
   const names = [...ORDER.filter(n => p[n]), ...Object.keys(p).filter(n => !ORDER.includes(n))];
@@ -148,10 +150,31 @@ function row(e, fresh){
 let rows = [];
 function renderTrace(){ $("trace").innerHTML = rows.length ? rows.map((e,i) => row(e, i===0 && e._fresh)).join("") : `<tr><td colspan="5" class="sub">Nothing yet.</td></tr>`; }
 let conv = [];
+// The conversation feed (D-108): everything heard (grey = not for Pip, green = for Pip), Pip's lines, and event bars
+const EVENTS = {
+  chime: () => "Pip chimed: he heard his name",
+  waiting: e => `Waiting for you to finish (${e.seconds}s)`,
+  passed: e => e.about === "mentioned" ? "Pip heard his name and stayed out of it" : "Pip decided not to answer",
+  interrupted: () => "Pip was interrupted",
+  joined: () => "Pip joined in",
+  mic_off: e => `Mic off${e.how==="claps"?" (two claps)":e.how==="dashboard"?" (dashboard)":""}`,
+  mic_on: e => `Mic back on${e.how==="claps"?" (two claps)":e.how==="dashboard"?" (dashboard)":""} · was off for ${dur(e.off_for)}`,
+  alert: e => `${({timer:"Timer",alarm:"Alarm",reminder:"Reminder",event:"Calendar heads-up"})[e.alert]||"Alarm"} ${e.what==="ringing"?"ringing":e.what==="snoozed"?`snoozed${e.minutes?` ${e.minutes} min`:""}`:"stopped"}`,
+  offline: () => "Pip went offline (only the basics work)",
+  online: () => "Pip is back online",
+};
+function convLine(l){
+  const t = new Date(l.ts*1000).toLocaleTimeString([], {hour:"numeric", minute:"2-digit", second:"2-digit"});
+  if (l.who === "event") return `<div class="evbar"><span>${esc((EVENTS[l.kind]||(() => l.kind))(l))} · ${t}</span></div>`;
+  if (l.who === "pip") return `<div class="line pip"><div class="meta">Pip · ${t}${l.first_s!=null?` · first words after ${l.first_s}s`:""}${l.local?" · Pip's own command":""}</div>${esc(l.text)}</div>`;
+  const forPip = l.who === "you" || l.how === "direct";
+  const how = l.how === "mentioned" ? `<span class="how">mentioned Pip</span>` : forPip ? `<span class="how" style="color:var(--good)">to Pip</span>` : "";
+  return `<div class="line ${forPip?"forpip":"room"}"><div class="meta">${esc(l.speaker||"Someone")} · ${t}${l.stt_s!=null?` · heard in ${l.stt_s}s`:""}${l.offline?" · offline":""}${how}</div>${esc(l.text)}</div>`;
+}
 function renderConv(){
-  $("conv").innerHTML = conv.length ? conv.slice(0,30).map(l => `<div class="line ${l.who==="pip"?"pip":"you"}">
-    <div class="meta">${l.who==="pip"?"Pip":esc(l.speaker||"You")} · ${new Date(l.ts*1000).toLocaleTimeString()}${l.stt_s!=null?` · heard in ${l.stt_s}s`:""}${l.first_s!=null?` · first words after ${l.first_s}s`:""}${l.local?" · Pip's own command":""}${l.offline?" · offline":""}</div>
-    ${esc(l.text)}</div>`).join("") : `<div class="empty">Say "Pippletron" or "Hey Pip" and ask something.</div>`;
+  const all = $("showroom").checked;
+  const shown = conv.filter(l => all || l.who === "pip" || l.who === "you" || l.how === "direct").slice(0, 60);
+  $("conv").innerHTML = shown.length ? shown.map(convLine).join("") : `<div class="empty">Say "Pippletron" or "Hey Pip" and ask something.</div>`;
 }
 async function loadConv(){ try{ conv = await (await fetch("/api/conversation",{cache:"no-store"})).json(); renderConv(); }catch(e){} }
 async function loadHealth(){

@@ -24,7 +24,7 @@
   },
   "F": {
    "title": "Session F · Claps on the clap microphone (about 5 minutes)",
-   "where": "Records from the second microphone you chose on Pip's dashboard (Listening & sounds), not the speakerphone. Same as Session E: press record, make the sound, wait about 2 seconds, press Stop. Sit or stand where you usually are unless it says otherwise.",
+   "where": "Records from the second microphone you chose on Pip's dashboard (Listening & sounds), not the speakerphone. Leave 'Two claps switch listening' unticked while you record, so clapping doesn't switch Pip off. Same as Session E: press record, make the sound, wait about 2 seconds, press Stop. Sit or stand where you usually are unless it says otherwise.",
    "device": "clap_mic"
   }
  },

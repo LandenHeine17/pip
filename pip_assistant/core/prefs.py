@@ -2,8 +2,9 @@
 
     chime        play the chime when he hears his name or a wake word (D-105). Default on.
     clap_mic     which microphone listens for the two-clap switch (D-91): a PipeWire device name, or ""
-                 for none (then the clap switch is off). The speakerphone can't be used: its own noise
-                 filter erases claps.
+                 for none. The speakerphone can't be used: its own noise filter erases claps.
+    claps        whether two claps switch listening at all (default off, until the detector is tuned on
+                 recordings from that microphone: Session F is recorded with this off).
 
 Settings that are set once and rarely changed live in ~/pip-data/settings.toml instead (defaults.toml).
 """
@@ -11,7 +12,7 @@ import sqlite3
 from pathlib import Path
 
 SCHEMA = "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"   # shared with core/mic.py
-DEFAULTS = {"chime": True, "clap_mic": ""}
+DEFAULTS = {"chime": True, "clap_mic": "", "claps": False}
 
 
 class Prefs:

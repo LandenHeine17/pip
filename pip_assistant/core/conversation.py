@@ -31,8 +31,10 @@ right now" (PIP-NEW-044, D-83). They're also the fallback if Claude fails to ans
 While an alarm rings, the obvious "stop", "okay", "snooze" or Pip's name silence it instantly; anything
 else said to Pip goes to Claude, which can stop or snooze it.
 
-Pip's state (idle / listening / thinking / speaking / ringing / offline / mic_off) is published as `pip.state`
-whenever it changes: the dashboard shows it, and the face (step 7) will react to it (D-86).
+Pip's state (idle / listening / thinking / speaking / interrupted / ringing / offline / mic_off) is published as `pip.state`;
+the dashboard's conversation feed gets every line heard (`conversation.line`, words private) and small event bars
+(`conversation.event`: chime, waiting, passed, interrupted, joined, mic_off/mic_on; no words) (D-108).
+The state is published whenever it changes: the dashboard shows it, and the face (step 7) will react to it (D-86).
 """
 import asyncio
 import base64
@@ -185,6 +187,8 @@ class Conversation:
         self.turn_after_cut = c.get("turn_wait_after_interrupt_seconds", t["after_interrupt"])
         self.max_utterance = (cfg or {}).get("listen", {}).get("max_utterance_seconds", 12.0)
         self.last_cut = -1e9         # when someone last talked over Pip
+        self.cut_until = 0.0         # state "interrupted" until then
+        self.mic_off_since = None    # for "mic was off for 12 s" on the feed
         self.max_sentences = c.get("max_sentences", 2)
         self.expect_until = 0.0     # Pip was just called: the next speech is for him, name or not
         self.pending = ""           # what they've said so far, held until they've finished their turn (D-106)
@@ -221,6 +225,8 @@ class Conversation:
             state = "speaking"
         elif self.mic is not None and not self.mic.listening:
             state = "mic_off"
+        elif now < self.cut_until:
+            state = "interrupted"   # someone just talked over him
         elif now < self.say_pending_until or \
                 (self.answer_id and self.answer_kind == "direct" and self.filler_said in (None, "searching")):
             state = "thinking"  # until his first words
@@ -233,7 +239,7 @@ class Conversation:
         if self._state_timer:
             self._state_timer.cancel()
             self._state_timer = None
-        nxt = [t for t in (self.listen_until, self.offline_until, self.say_pending_until) if t > now]
+        nxt = [t for t in (self.listen_until, self.offline_until, self.say_pending_until, self.cut_until) if t > now]
         if nxt and _loop_running():
             self._state_timer = asyncio.get_running_loop().call_later(min(nxt) - now + 0.05, self.refresh_state)
         if state != self.state:
@@ -258,6 +264,16 @@ class Conversation:
             private["speaker"] = self.speaker.label
         await self.bus.publish(Message("event", "conversation.line", source="core",
                                        data={"who": who, **data}, private=private))
+
+    async def feed(self, text: str, how: str, speaker=None, **data) -> None:
+        """Everything heard goes on the dashboard's conversation feed (D-108, like Ziggletron's): grey when it
+        wasn't for Pip, green when it was. Private: shown live, never logged or saved."""
+        await self.bus.publish(Message("event", "conversation.line", source="core", data={"who": "room", "how": how, **data},
+                                       private={"text": text, "speaker": self.label(speaker)}))
+
+    async def note(self, kind: str, **data) -> None:
+        """A small event bar on the conversation feed ("chimed", "mic off for 12 s", "stayed quiet"…). No words."""
+        await self.bus.publish(Message("event", "conversation.event", source="core", data={"kind": kind, **data}))
 
     def label(self, speaker=None) -> str:
         sp = speaker if speaker is not None else self.speaker
@@ -332,10 +348,16 @@ class Conversation:
         return True
 
     # ---------------------------------------------------------------- listening on/off (D-91)
-    async def apply_mic(self, tone: str | None = None) -> None:
+    async def apply_mic(self, tone: str | None = None, how: str = "") -> None:
         """Tell pip-ears what to listen for, and everyone (dashboard, face) whether Pip is listening."""
         if self.mic is None:
             return
+        if not self.mic.listening and self.mic_off_since is None:
+            self.mic_off_since = time.monotonic()
+            await self.note("mic_off", how=how)
+        elif self.mic.listening and self.mic_off_since is not None:
+            await self.note("mic_on", how=how, off_for=round(time.monotonic() - self.mic_off_since))
+            self.mic_off_since = None
         if not self.mic.listening:  # anything half-done from what was heard is dropped
             self.cancel_answer("listening switched off")
             self.joining.cancel_wait()
@@ -351,7 +373,7 @@ class Conversation:
 
     async def on_clapped(self, msg: Message) -> None:
         if self.mic is not None and self.mic.clapped():
-            await self.apply_mic("mic_on" if self.mic.listening else "mic_off")
+            await self.apply_mic("mic_on" if self.mic.listening else "mic_off", how="claps")
 
     async def set_mic(self, on: bool) -> dict:
         """The dashboard's Listening switch. Turning it on also clears a clap switch-off, so "on" means on."""
@@ -361,14 +383,13 @@ class Conversation:
         self.mic.set_dashboard(on)
         if on and not self.mic.claps:
             self.mic.clapped()
-        await self.apply_mic(None if was == self.mic.listening else "mic_on" if self.mic.listening else "mic_off")
+        await self.apply_mic(None if was == self.mic.listening else "mic_on" if self.mic.listening else "mic_off", how="dashboard")
         return self.mic.snapshot()
 
     async def on_program_connected(self, name: str) -> None:
         if name == "ears":
             await self.apply_mic()
-            if self.prefs is not None:
-                await self.command("ears", "ears.clap_mic", {"device": self.prefs.get("clap_mic")})
+            await self.tell_clap_mic()
 
     # ---------------------------------------------------------------- events
     async def on_wake(self, msg: Message) -> None:
@@ -383,6 +404,12 @@ class Conversation:
         """The chime that says "I heard my name" (can be switched off on the dashboard, D-105)."""
         if self.prefs is None or self.prefs.get("chime"):
             await self.command("ears", "ears.chime")
+            await self.note("chime")
+
+    async def tell_clap_mic(self) -> None:
+        """pip-ears listens for claps only on the chosen microphone, and only if claps are switched on (D-91)."""
+        if self.prefs is not None:
+            await self.command("ears", "ears.clap_mic", {"device": self.prefs.get("clap_mic"), "on": self.prefs.get("claps")})
 
     async def prefs_snapshot(self) -> dict:
         """The preferences, plus the microphones pip-ears can see (to choose the clap microphone)."""
@@ -404,8 +431,8 @@ class Conversation:
             self.prefs.set(key, value)
         except KeyError:
             return {"error": f"unknown preference {key}"}
-        if key == "clap_mic":
-            await self.command("ears", "ears.clap_mic", {"device": self.prefs.get("clap_mic")})
+        if key in ("clap_mic", "claps"):
+            await self.tell_clap_mic()
         await self.bus.publish(Message("event", "prefs.changed", data=self.prefs.snapshot()))
         return await self.prefs_snapshot()
 
@@ -422,6 +449,9 @@ class Conversation:
 
     async def on_interrupted(self, msg: Message) -> None:
         self.last_cut = time.monotonic()   # talked over: wait a bit longer for a while (D-106)
+        self.cut_until = self.last_cut + 1.5   # the face shows it for a moment
+        self.refresh_state()
+        await self.note("interrupted")
         self.transcript.mark_cut()
         if self.answer_id:
             await self.command("thinker", "thinker.cancel", {"answer_id": self.answer_id})
@@ -446,6 +476,7 @@ class Conversation:
             if self.transcript.count != self.join_count or not self.can_join(joining=True):
                 return self.cancel_answer("the conversation moved on")
             self.join_spoke = True
+            await self.note("joined")
         self.sentences += 1
         if self.sentences > self.max_sentences and not self.long_ok:
             if self.sentences == self.max_sentences + 1:
@@ -539,6 +570,7 @@ class Conversation:
             return
         text = self.fix_names(text)
         self.hear(text)
+        await self.feed(text, "direct", self.speaker, stt_s=stt_s, offline=offline, reason=reason)
         if reason == "wake" and NOT_PIP.search(text) and not PIP_NAMES.search(text):
             await self.bus.publish(Message("event", "wake.rejected", data={"why": "transcript names Ziggletron"}))
             return
@@ -563,6 +595,8 @@ class Conversation:
             self.listening_for(self.wait_after_name)
             return
         wait = self.turn_wait(text, float(data.pop("heard_s", 0) or 0))
+        if wait > 1.0:
+            await self.note("waiting", seconds=round(wait, 1))
         self.pending, self.pending_how = text, (reason, offline, data, chime)
         self.expect_until = time.monotonic() + wait + 1.0
         await self.command("ears", "ears.listen", {"seconds": wait + 0.5})   # more speech now = the same turn
@@ -586,7 +620,6 @@ class Conversation:
     async def respond(self, text: str, reason: str, offline: bool = False, **data) -> None:
         """Their turn is over: answer it."""
         self.expect_until = 0.0
-        await self.show("you", text, reason=reason, offline=offline, **data)
         if offline or self.own_commands == "always":
             # No Claude without the internet: Pip's own fixed-phrasing commands do the basics (D-83, D-94)
             if await self.people_command(text, offline):
@@ -829,6 +862,7 @@ class Conversation:
         self.hear(text, speaker)
         expected = time.monotonic() < self.expect_until or bool(self.pending)   # more of a held turn
         how = "direct" if expected or calls_pip(text) else "mentioned" if names_pip(text) else "room"
+        await self.feed(text, how, speaker, offline=offline)
         await self.bus.publish(Message("event", "room.heard", data={"seconds": msg.data.get("seconds"),
                                                                      "addressed": how != "room", "how": how,
                                                                      "speaker": speaker.level if speaker else None}))
@@ -887,7 +921,8 @@ class Conversation:
             people = self.people.summary(sp) if self.people is not None else ""
             if kind == "join":
                 people = people.split(". ", 1)[-1]   # nobody spoke to him: just who lives here
-            memories = self.memory.for_claude(sp.person_id if sp else None, sp.level if sp else "unknown") \
+            memories = self.memory.for_claude(sp.person_id if sp else None, sp.level if sp else "unknown",
+                                              speaker_name=sp.name if sp else "") \
                 if self.memory is not None else ""
             reply = await self.bus_request("thinker", "thinker.ask", {"answer_id": aid, "reason": reason, "kind": kind},
                                            {"text": text or "", "transcript": self.transcript.render(), "mood": mood,
@@ -918,6 +953,8 @@ class Conversation:
         answer = reply.private.get("text", "")
         if not answer:  # PASS: he decided it wasn't for him / nothing to add
             await self.bus.publish(Message("event", "answer.passed", data={"kind": kind}))
+            if kind in ("direct", "mentioned"):
+                await self.note("passed", about=kind)
             if kind == "direct":   # e.g. "shut up" / "never mind": quiet, and stop listening for more (D-105)
                 await self.go_quiet()
             return
