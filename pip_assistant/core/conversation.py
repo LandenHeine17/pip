@@ -34,7 +34,9 @@ else said to Pip goes to Claude, which can stop or snooze it.
 Pip's state (idle / listening / thinking / speaking / interrupted / ringing / offline / mic_off) is published as `pip.state`;
 the dashboard's conversation feed gets every line heard (`conversation.line`, words private) and small event bars
 (`conversation.event`: chime, waiting, passed, interrupted, joined, mic_off/mic_on; no words) (D-108).
-The state is published whenever it changes: the dashboard shows it, and the face (step 7) will react to it (D-86).
+Within each state, what exactly he's doing (waiting to see if you're done, following the conversation, …) is
+published with it as `detail` and plain `words` (D-112, DETAILS below), whenever either changes: the dashboard
+and the face show both.
 """
 import asyncio
 import base64
@@ -51,6 +53,27 @@ log = logging.getLogger(__name__)
 
 PIP_NAMES = re.compile(r"\b(pip|pipp|pips|pippy|pippie|pippletron|pipple ?tron|pippa ?tron|piple ?tron|pipletron)\b", re.I)
 NOT_PIP = re.compile(r"\b(zig+le ?tron|zig+y|zig+)\b", re.I)
+
+
+# What exactly Pip is doing, within each state (D-112): shown under his face, next to the dashboard's state
+# circle, and (if switched on) as bars in the Conversation. Words about Pip only, never what anyone said.
+DETAILS = {
+    "called": "Heard my name: go on",                  # listening: a wake word or his name, waiting for the rest
+    "hearing": "Working out what you said",            # listening: turning what was said to him into words
+    "turn": "Waiting to see if you're done",           # listening: holding your words for the end of your turn
+    "follow_up": "Listening for your reply",           # listening: after answering, in case you reply
+    "learning_voice": "Learning a voice",              # listening: guided voice learning
+    "asking": "Thinking",                              # thinking: Claude is working on an answer
+    "searching": "Searching the web",                  # thinking
+    "looking_up": "Looking it up",                     # thinking: the second round after a look-up
+    "voice": "Getting the words out",                  # thinking: the answer is being turned into speech
+    "following": "Following the conversation",         # idle: people are talking, not to him
+    "mentioned": "Heard my name mentioned: is it for me?",  # idle: Claude decides whether to answer
+    "joining": "Thinking about joining in",            # idle: Claude decides whether to join in
+    "answer": "",                                      # speaking: an answer
+    "joining_in": "Joining in",                        # speaking: joining a conversation nobody asked him into
+    "welcome": "Saying hi",                            # speaking: welcome back
+}
 
 
 FILLER = re.compile(r"\b(hey|hi|ok|okay|so|yo|um+|uh+|hmm+)\b", re.I)
@@ -169,8 +192,14 @@ class Conversation:
         st = (cfg or {}).get("stt", {})
         self.voice_check = st.get("voice_check", False) if cfg else False
         self.min_voice = st.get("min_voice_seconds", 0.15)
-        self.state = "idle"
+        self.state, self.detail = "idle", ""
         self.speaking = False
+        self.say_reason = ""           # why he's talking: answer / welcome / searching / …
+        self.voice_kind = "direct"     # the answer he's speaking: direct / mentioned / join
+        self.listen_why = "called"     # what the listening window is for (see listening_for)
+        self.room_until = 0.0          # people are talking in the room (not to him): he's following along
+        self.turn_until = 0.0          # when a held turn will be answered, if nobody says more (D-106)
+        self.looking_up = False        # the second round of an answer, after a look-up
         self.listen_until = 0.0     # chime / follow-up window: Pip is listening for someone
         self.offline_until = 0.0
         self.transcribing = False   # working out what was said: part of "thinking"
@@ -218,41 +247,71 @@ class Conversation:
                                      data=data or {}, private=private or {}))
 
     # ---------------------------------------------------------------- Pip's state (for the dashboard and the face)
+    def situation(self) -> tuple[str, str, float]:
+        """(state, detail, ends_at): the state (its colour on the dashboard and the face) and, within it,
+        what exactly he's doing (D-112, the DETAILS table). ends_at: when a wait he's in runs out (0 if none)."""
+        now = time.monotonic()
+        working = self.answer_id is not None
+        if self.ringing:
+            return "ringing", "", 0.0
+        if self.speaking:
+            detail = "joining_in" if self.say_reason == "answer" and self.voice_kind == "join" else \
+                "welcome" if self.say_reason == "welcome" else "answer"
+            return "speaking", detail, 0.0
+        if self.mic is not None and not self.mic.listening:
+            return "mic_off", "", 0.0
+        if now < self.cut_until:
+            return "interrupted", "", 0.0   # someone just talked over him
+        if working and self.answer_kind == "direct" and self.filler_said in (None, "searching"):   # until his first words
+            return "thinking", "searching" if self.filler_said == "searching" else \
+                "looking_up" if self.looking_up else "asking", 0.0
+        if now < self.say_pending_until:
+            return "thinking", "voice", 0.0
+        if self.transcribing:
+            return "listening", "hearing", 0.0
+        if self.pending:   # what they've said is held until they've finished their turn (D-106)
+            return "listening", "turn", self.turn_until
+        if now < self.listen_until:
+            return "listening", self.listen_why, self.listen_until
+        if now < self.offline_until:
+            return "offline", "", 0.0
+        if working and self.answer_kind == "mentioned":
+            return "idle", "mentioned", 0.0
+        if working and self.answer_kind == "join":
+            return "idle", "joining", 0.0
+        if now < self.room_until:
+            return "idle", "following", 0.0
+        return "idle", "", 0.0
+
     def refresh_state(self) -> None:
         now = time.monotonic()
-        if self.ringing:
-            state = "ringing"
-        elif self.speaking:
-            state = "speaking"
-        elif self.mic is not None and not self.mic.listening:
-            state = "mic_off"
-        elif now < self.cut_until:
-            state = "interrupted"   # someone just talked over him
-        elif now < self.say_pending_until or \
-                (self.answer_id and self.answer_kind == "direct" and self.filler_said in (None, "searching")):
-            state = "thinking"  # until his first words
-        elif now < self.listen_until or self.pending or self.transcribing:
-            state = "listening"  # (also while he works out what you said and waits for the end of your turn, D-106)
-        elif now < self.offline_until:
-            state = "offline"
-        else:
-            state = "idle"
+        state, detail, ends_at = self.situation()
         if self._state_timer:
             self._state_timer.cancel()
             self._state_timer = None
-        nxt = [t for t in (self.listen_until, self.offline_until, self.say_pending_until, self.cut_until) if t > now]
+        nxt = [t for t in (self.listen_until, self.offline_until, self.say_pending_until, self.cut_until,
+                           self.room_until) if t > now]
         if nxt and _loop_running():
             self._state_timer = asyncio.get_running_loop().call_later(min(nxt) - now + 0.05, self.refresh_state)
-        if state != self.state:
-            self.state = state
+        if (state, detail) != (self.state, self.detail):
+            self.state, self.detail = state, detail
             if _loop_running():
-                asyncio.ensure_future(self.bus.publish(Message("event", "pip.state", source="core", data={"state": state})))
+                data = {"state": state, "detail": detail, "words": DETAILS.get(detail, ""),
+                        "ends_in": round(ends_at - now, 1) if ends_at > now else None}
+                asyncio.ensure_future(self.bus.publish(Message("event", "pip.state", source="core", data=data)))
+                if self.prefs is not None and self.prefs.get("state_bars"):   # the feed's state bars (D-112)
+                    asyncio.ensure_future(self.note("state", **data))
 
-    def listening_for(self, seconds: float) -> None:
+    def listening_for(self, seconds: float, why: str = "called") -> None:
+        """Listening for someone for a while. why: called (heard his name), follow_up (after answering),
+        hearing (they've started talking to him), learning_voice."""
         self.listen_until = max(self.listen_until, time.monotonic() + seconds)
+        self.listen_why = why
         self.refresh_state()
 
     async def say(self, text: str, reason: str) -> None:
+        if text:
+            self.say_reason = reason
         if text and not self.speaking:
             self.say_pending_until = time.monotonic() + 3.0
         if text:
@@ -451,7 +510,10 @@ class Conversation:
         self.last_started = time.monotonic()
         self.joining.someone_started()
         if msg.data.get("reason") == "follow_up":
-            self.listening_for(12.0)
+            self.listening_for(12.0, "hearing")
+        elif msg.data.get("reason") == "room":
+            self.room_until = time.monotonic() + self.max_utterance
+            self.refresh_state()
         if self.pending:   # they're still going: keep holding their turn (until that speech arrives, D-106)
             if self.pending_task:
                 self.pending_task.cancel()
@@ -495,6 +557,7 @@ class Conversation:
             return  # roommates don't give speeches (D-79)
         self.speech_done.clear()
         self.filler_said = self.filler_said or "first sentence"  # he's answering: no longer "thinking"
+        self.voice_kind = self.answer_kind   # what he's saying is an answer, or him joining in
         await self.say(text, "answer")
         self.refresh_state()
 
@@ -608,6 +671,8 @@ class Conversation:
         if wait > 1.0:
             await self.note("waiting", seconds=round(wait, 1))
         self.pending, self.pending_how = text, (reason, offline, data, chime)
+        self.turn_until = time.monotonic() + wait
+        self.refresh_state()
         self.expect_until = time.monotonic() + wait + 1.0
         await self.command("ears", "ears.listen", {"seconds": wait + 0.5})   # more speech now = the same turn
         self.pending_task = asyncio.create_task(self._answer_pending(wait=wait))
@@ -761,7 +826,7 @@ class Conversation:
             return
         await self.command("ears", "ears.chime")
         await self.command("ears", "ears.listen", {"seconds": self.ENROL_WAIT})
-        self.listening_for(self.ENROL_WAIT)
+        self.listening_for(self.ENROL_WAIT, "learning_voice")
         beeped, e = time.monotonic(), self.enrolling
         count = len(e["got"]) + e["misses"]
         await asyncio.sleep(self.ENROL_WAIT + 1.0)
@@ -877,6 +942,8 @@ class Conversation:
                                                                      "addressed": how != "room", "how": how,
                                                                      "speaker": speaker.level if speaker else None}))
         if how == "room":
+            self.room_until = time.monotonic() + 4.0   # following the conversation (D-112)
+            self.refresh_state()
             if not await self.welcome_back(speaker, quiet_for):
                 self.joining.heard()
             return
@@ -919,6 +986,7 @@ class Conversation:
         self.sentences = 0
         self.long_ok = bool(WANTS_DETAIL.search(text or ""))
         self.filler_said = None
+        self.looking_up = bool(looked_up)
         self.refresh_state()  # thinking (direct answers only)
         filler = asyncio.create_task(self._thinking_tone(aid)) if kind == "direct" and not looked_up else None
         t0 = time.perf_counter()
@@ -1090,7 +1158,7 @@ class Conversation:
             secs = self.follow_up_s * (1.5 if last["text"].rstrip().endswith("?") else 1.0)  # he asked something
             self.expect_until = time.monotonic() + secs
             await self.command("ears", "ears.listen", {"seconds": secs})
-            self.listening_for(secs)
+            self.listening_for(secs, "follow_up")
 
     async def bus_request(self, target, msg_type, data, private, timeout):
         """Ask another program from inside core and wait for its reply."""

@@ -76,6 +76,8 @@
   <div class="sub" style="margin-top:6px">Two claps switch listening off and on. The speakerphone's own noise filter removes claps,
     so they're heard on a second, plain USB microphone (any cheap one that isn't "noise-cancelling"). Choosing the
     microphone doesn't switch claps on: tick the box for that. Tuned on your Session F recordings from the JLab mic.</div>
+  <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="state_bars" onchange="setPref('state_bars', this.checked)">
+    Show what Pip is doing in the Conversation <span class="sub">(a small bar each time it changes: "Waiting to see if you're done", "Following the conversation"…; for understanding him)</span></label>
 </section>
 </div>
 
@@ -115,7 +117,7 @@ async function toggleMic(){ const on = !(micState && micState.listening);
 // Listening & sounds (core/prefs.py): the chime, and which microphone hears the two-clap switch (D-91, D-105)
 async function loadPrefs(){ try{ renderPrefs(await (await fetch("/api/prefs",{cache:"no-store"})).json()); }catch(e){} }
 function renderPrefs(p){ if(!p || p.error) return;
-  $("chime").checked = !!p.chime; $("claps").checked = !!p.claps; $("claps").disabled = !p.clap_mic;
+  $("chime").checked = !!p.chime; $("state_bars").checked = !!p.state_bars; $("claps").checked = !!p.claps; $("claps").disabled = !p.clap_mic;
   const others = (p.mics||[]).filter(m => m.name !== p.speakerphone);
   $("clapmic").innerHTML = `<option value="">None: claps do nothing</option>` + others.map(m =>
     `<option value="${esc(m.name)}" ${m.name===p.clap_mic?"selected":""}>${esc(m.label)}</option>`).join("")
@@ -126,7 +128,17 @@ async function setPref(key, value){
   try{ const r = await (await fetch("/api/prefs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key,value})})).json();
     if(r.error) alert(r.error); renderPrefs(r); }catch(e){ alert("Couldn't reach Pip"); } }
 async function loadMic(){ try{ renderMic(await (await fetch("/api/mic",{cache:"no-store"})).json()); }catch(e){} }
-function setState(s){ $("state").className = "face st-"+s; $("statetext").textContent = PIPSTATE[s] || s; }
+// Pip's state, and within it what exactly he's doing (D-112), with a countdown while he waits a known time
+let stateTick = null;
+function setState(s, d = {}){
+  $("state").className = "face st-"+s;
+  clearInterval(stateTick);
+  const ends = d.ends_in != null ? Date.now() + d.ends_in*1000 : null;
+  const show = () => { const left = ends ? Math.max(0, (ends - Date.now())/1000) : null;
+    $("statetext").textContent = (PIPSTATE[s] || s) + (d.words ? " · " + d.words : "") + (left != null ? ` · ${left.toFixed(1)}s` : ""); };
+  show();
+  if (ends) stateTick = setInterval(show, 100);
+}
 function dur(s){ if(s==null) return "–"; s=Math.round(s); return s<60?`${s}s`:s<3600?`${Math.floor(s/60)}m`:`${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`; }
 function renderHealth(p){
   const names = [...ORDER.filter(n => p[n]), ...Object.keys(p).filter(n => !ORDER.includes(n))];
@@ -153,6 +165,7 @@ let conv = [];
 // The conversation feed (D-108): everything heard (grey = not for Pip, green = for Pip), Pip's lines, and event bars
 const EVENTS = {
   chime: () => "Pip chimed: he heard his name",
+  state: e => `Pip: ${PIPSTATE[e.state] || e.state}${e.words ? " · " + e.words : ""}${e.ends_in != null ? ` (${e.ends_in}s)` : ""}`,
   waiting: e => `Waiting for you to finish (${e.seconds}s)`,
   passed: e => e.about === "mentioned" ? "Pip heard his name and stayed out of it" : "Pip decided not to answer",
   interrupted: () => "Pip was interrupted",
@@ -180,7 +193,7 @@ function renderConv(){
 async function loadConv(){ try{ conv = await (await fetch("/api/conversation",{cache:"no-store"})).json(); renderConv(); }catch(e){} }
 async function loadHealth(){
   try{
-    const h = await (await fetch("/api/health",{cache:"no-store"})).json(); renderHealth(h.programs||{}); if(h.state) setState(h.state); if(h.online !== undefined) $("netoff").hidden = h.online;
+    const h = await (await fetch("/api/health",{cache:"no-store"})).json(); renderHealth(h.programs||{}); if(h.state) setState(h.state, h.state_detail || {}); if(h.online !== undefined) $("netoff").hidden = h.online;
     $("conn").textContent = h.connected ? `v${h.version}` : "pip-core not reachable";
   }catch(e){ $("conn").textContent = "Dashboard unreachable"; }
 }
@@ -189,7 +202,7 @@ function live(){
   const es = new EventSource("/api/stream");
   es.onopen = () => { $("conn").textContent = "Live"; };
   es.addEventListener("health", ev => { renderHealth(JSON.parse(ev.data)); $("conn").textContent = "Live"; });
-  es.addEventListener("state", ev => setState(JSON.parse(ev.data).state));
+  es.addEventListener("state", ev => { const d = JSON.parse(ev.data); setState(d.state, d); });
   es.addEventListener("mic", ev => renderMic(JSON.parse(ev.data)));
   es.addEventListener("net", ev => { $("netoff").hidden = JSON.parse(ev.data).online; });
   es.addEventListener("conversation", ev => { const l = JSON.parse(ev.data); conv.unshift(l); renderConv(); if (l.who === "pip") { loadMemory(); loadPeople(); } });
