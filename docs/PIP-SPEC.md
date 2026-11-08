@@ -4,7 +4,7 @@ The short, living description of Pip 2.0. Read this first.
 
 **How the docs fit together (for building):** this page says *what* Pip does → [REQUIREMENTS.md](REQUIREMENTS.md) lists every requirement, and its **Detail** link opens the exact behaviour rules in the archived proposal ([archive/pip-v2-proposals-2026-11/](archive/pip-v2-proposals-2026-11/README.md)) → [DECISIONS.md](DECISIONS.md) (`D-nn`) **overrides** anything older, and REQUIREMENTS §0 lists the archived passages that have been overridden. What Ziggletron did (for parity) is in [archive/ziggletron-discovery/](archive/ziggletron-discovery/PRODUCT-OVERVIEW.md).
 
-*Last updated 2026-11-07 · Phase: M1a building. Steps 1–5 done and installed (hearing, answers, timers/alarms/calendar, memory, people and voices). Step 6 built, waiting for your test: Pip listens to the room like Ziggletron and joins in, understands everything in natural language, two claps or a dashboard switch turn listening off, names spelled right, a small offline indicator. Dashboard: `http://100.118.171.118:8790`.*
+*Last updated 2026-11-08 · Phase: M1a building. Steps 1–6 done, installed and tested by the owner: hearing, answers, timers/alarms, memory, people and voices, listening to the room like Ziggletron, everything in natural language, the calendar / to-dos / Google modules with per-account settings, the two-clap switch on its own mic. Next: step 7, the face on the monitor. Dashboard: `http://100.118.171.118:8790`.*
 
 ## 1. In one paragraph
 
@@ -69,7 +69,7 @@ flowchart LR
     J -- yes --> C["Claude: join in (SAY) or PASS"]
     J -- no --> N["Just listens"]
 ```
-- **Privacy is the mic switch** (D-90, D-91): a **Listening** switch on the dashboard. **Two claps** will do the same (a falling tone, and he stops listening; clap twice again for a rising tone), heard on a **second, cheap USB microphone** chosen on the dashboard (Listening & sounds; claps only work once "Two claps switch listening" is ticked), because the speakerphone's noise filter erases claps: **not finished, tuned once Session F is recorded on that mic**. The two are separate: if the dashboard switched him off, claps can't turn him on. Clapped off, he ignores the speakerphone completely and only the clap mic listens; switched off on the dashboard, nothing at all. The speakerphone's mute button works too. "Leave me out" was removed. Pip's notice to new people uses your wording (D-61). You tell your roommate yourself (D-67).
+- **Privacy is the mic switch** (D-90, D-91): a **Listening** switch on the dashboard. **Two claps** do the same (a falling tone, and he stops listening; clap twice again for a rising tone), heard on a **second USB microphone** (Ziggletron's old JLab mic) chosen on the dashboard (Listening & sounds), because the speakerphone's noise filter erases claps. Tuned on your Session F recordings and switched on by you; with "Two claps switch listening" unticked, claps only show on the conversation feed as a trial. The two are separate: if the dashboard switched him off, claps can't turn him on. Clapped off, he ignores the speakerphone completely and only the clap mic listens; switched off on the dashboard, nothing at all. The speakerphone's mute button works too. "Leave me out" was removed. Pip's notice to new people uses your wording (D-61). You tell your roommate yourself (D-67).
 - Quiet hours 23:00–07:00: no joining in or welcome-backs; alarms still ring (D-66).
 - **Welcome back:** after the room was quiet for 20 minutes, someone he recognises gets "Hey Landen, welcome back." (once an hour).
 
