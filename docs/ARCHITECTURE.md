@@ -57,7 +57,7 @@ Total in everyday use (est.): about 1.5–2.5 GB plus the browser, comfortably i
 
 ## 3. How the programs talk
 
-All messages go through **pip-core**, over local connections that never leave the Pi (Unix sockets, carrying small JSON messages). There are three kinds:
+All messages go through **pip-core**, over local connections that never leave the Pi (Unix sockets, carrying JSON messages, one per line; each end reads lines up to 8 MB, so a big reply such as a busy month of calendar can't cut a program off). There are three kinds:
 
 | Kind | Example | Direction |
 |---|---|---|

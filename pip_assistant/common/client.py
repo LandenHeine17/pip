@@ -16,7 +16,7 @@ import time
 from typing import Awaitable, Callable
 
 from . import paths
-from .messages import BadMessage, Message, new_id
+from .messages import READ_LIMIT, BadMessage, Message, lines, new_id
 
 log = logging.getLogger(__name__)
 Handler = Callable[[Message], Awaitable[Message | dict | None]]
@@ -84,7 +84,7 @@ class BusClient:
         delay = 0.5
         while True:
             try:
-                reader, writer = await asyncio.open_unix_connection(str(self.socket_path))
+                reader, writer = await asyncio.open_unix_connection(str(self.socket_path), limit=READ_LIMIT)
             except OSError:
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, 5.0)
@@ -103,6 +103,8 @@ class BusClient:
                     beat.cancel()
             except (ConnectionError, OSError) as e:
                 log.warning("%s: lost connection to pip-core (%s)", self.name, e)
+            except Exception:  # never stay cut off from pip-core: log it and reconnect
+                log.exception("%s: connection to pip-core broke", self.name)
             finally:
                 self.connected.clear()
                 self._writer = None
@@ -120,7 +122,7 @@ class BusClient:
             await asyncio.sleep(self.heartbeat_seconds)
 
     async def _read(self, reader: asyncio.StreamReader) -> None:
-        while line := await reader.readline():
+        async for line in lines(reader, log, self.name):
             try:
                 msg = Message.decode(line)
             except BadMessage as e:

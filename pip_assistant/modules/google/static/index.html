@@ -44,7 +44,8 @@ code{background:var(--soft);padding:1px 6px;border-radius:6px;font-size:.85em}
       <code id="redir"></code> that <b>won't load</b>: that's expected. Copy that whole address from the address bar and paste it here:</div>
     <form id="finish"><input name="pasted" placeholder="http://127.0.0.1:…/?state=…&code=…" style="flex:1;min-width:14em" required><button class="primary">Finish</button></form>
   </div>
-  <div class="sub" style="margin-top:8px">People are added on <a href="/">Pip's dashboard</a> (People &amp; voices). Each person connects their own account.</div>
+  <div class="sub" style="margin-top:8px">On Google's "what Pip can access" screen, tick <b>Select all</b>: the boxes start unticked.</div>
+  <div class="sub" style="margin-top:4px">People are added on <a href="/">Pip's dashboard</a> (People &amp; voices). Each person connects their own account.</div>
 </section>
 
 <section>
@@ -68,6 +69,7 @@ function render(){
     || `<option value="">Add yourself on the dashboard first</option>`;
   $("accounts").innerHTML = snap.accounts.map(a => `<div class="item"><div><b>${esc(a.person)}</b> · ${esc(a.email)}
       <div class="sub">${a.status==="ok" ? (a.last_sync ? "last synced "+new Date(a.last_sync*1000).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}) : "connected")
+        : a.status==="missing" ? `<span style="color:var(--bad)">${esc(a.error)}</span>`
         : `<span style="color:var(--bad)">needs reconnecting</span>`}${a.error && a.status==="ok" ? " · last try: "+esc(a.error) : ""}</div></div>
       <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><label class="sub">Pip may mention
         <select onchange="sharing('${a.id}', this.value)"><option value="everyone" ${a.sharing==="everyone"?"selected":""}>to everyone</option>
@@ -82,7 +84,9 @@ $("connect").onsubmit = async ev => { ev.preventDefault();
   if (r) { window.open(r.url, "_blank", "noopener"); $("paste").hidden = false; } };
 $("finish").onsubmit = async ev => { ev.preventDefault();
   const r = await pip.act(pip.post("finish", {pasted: ev.target.pasted.value}));
-  if (r) { ev.target.reset(); $("paste").hidden = true; snap = r; render(); alert(`Connected ${r.email}. Pip is fetching the calendar and to-dos now.`); } };
+  if (r) { ev.target.reset(); $("paste").hidden = true; snap = r; render();
+    const me = r.accounts.find(a => a.email === r.email);
+    alert(me && me.status === "missing" ? me.error : `Connected ${r.email}. Pip is fetching the calendar and to-dos now.`); } };
 async function sharing(id, value){ const r = await pip.act(pip.post("sharing", {id, value})); if (r) { snap = r; render(); } }
 async function disconnect(id, email){ if (confirm(`Disconnect ${email}? Pip forgets its calendar and to-dos here (nothing is deleted in Google).`)) {
   const r = await pip.act(pip.post("disconnect", {id})); if (r) { snap = r; render(); } } }

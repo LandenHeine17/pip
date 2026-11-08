@@ -75,6 +75,28 @@ async def test_a_pasted_address_from_another_sign_in_is_refused(setup):
         await mod.dashboard("finish", {"pasted": f"http://127.0.0.1:8765/?state=wrong&code={fake.sign_in_code('x@y.z')}"})
 
 
+async def test_unticked_permissions_are_shown_not_hidden(setup):
+    """Google's "what Pip can access" boxes start unticked: Pip says so instead of looking connected."""
+    mod, g, fake, people, tmp = setup
+    await mod.dashboard("save_client", {"client_id": "123-abc.apps.googleusercontent.com", "client_secret": "GOCSPX-secret-1"})
+    p = people.add_person("Landen", "admin")
+    fake.only_email = True
+    a = await connect(mod, g, fake, p["id"], "landen@example.com")
+    acc = g.accounts()[0]
+    assert acc["status"] == "missing" and "Select all" in acc["error"]
+    assert g.household_accounts() == []                 # the calendar and to-dos leave it alone
+    # An account connected before this check: the first refused request marks it the same way
+    g.set(acc["id"], status="ok", error="")
+    from pip_assistant.modules.google.module import NeedsReconnect
+    with pytest.raises(NeedsReconnect):
+        await g.request(acc["id"], "GET", "https://www.googleapis.com/calendar/v3/users/me/calendarList")
+    assert g.accounts()[0]["status"] == "missing"
+    # Connecting again with the boxes ticked fixes it
+    fake.only_email = False
+    await connect(mod, g, fake, p["id"], "landen@example.com")
+    assert g.accounts()[0]["status"] == "ok" and len(g.accounts()) == 1
+
+
 async def test_it_may_only_reach_google(setup):
     mod, g, fake, people, tmp = setup
     from pip_assistant.core.modules import HostNotAllowed

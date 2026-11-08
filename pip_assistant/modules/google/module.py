@@ -28,13 +28,15 @@ TOKEN_URL = "https://oauth2.googleapis.com/token"
 REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 SCOPES = ["openid", "email", "https://www.googleapis.com/auth/calendar.events",
           "https://www.googleapis.com/auth/calendar.readonly", "https://www.googleapis.com/auth/tasks"]
+NEEDED = set(SCOPES[2:])  # Google lets people untick these on its "what Pip can access" screen
+MISSING = "Google only let Pip see your email. Disconnect, press Connect again, and tick Select all on Google's \"what Pip can access\" screen."
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS google_accounts (
     id         TEXT PRIMARY KEY,
     person_id  TEXT NOT NULL,          -- whose account (people.id)
     email      TEXT NOT NULL DEFAULT '',
-    status     TEXT NOT NULL DEFAULT 'ok',      -- ok / reconnect
+    status     TEXT NOT NULL DEFAULT 'ok',      -- ok / reconnect / missing (permissions not ticked)
     sharing    TEXT NOT NULL DEFAULT 'everyone',-- everyone / me: may Pip talk about it to anyone, or only to them
     created    REAL NOT NULL,
     last_sync  REAL,
@@ -150,19 +152,22 @@ class GoogleAccounts:
         email = _email(tok.get("id_token", ""))
         old = [a for a in self.accounts(pend["person_id"]) if a["email"] == email and email]
         aid = old[0]["id"] if old else new_id()
+        missing = bool(tok.get("scope")) and not NEEDED <= set(tok["scope"].split())
+        status, error = ("missing", MISSING) if missing else ("ok", "")
         if old:
-            self.set(aid, status="ok", error="")
+            self.set(aid, status=status, error=error)
         else:
-            self.db.execute("INSERT INTO google_accounts (id, person_id, email, created) VALUES (?,?,?,?)",
-                            (aid, pend["person_id"], email, self.ctx.clock()))
+            self.db.execute("INSERT INTO google_accounts (id, person_id, email, created, status, error) VALUES (?,?,?,?,?,?)",
+                            (aid, pend["person_id"], email, self.ctx.clock(), status, error))
             self.db.commit()
         data = self.ctx.secrets.all()
         data.setdefault("accounts", {})[aid] = {"refresh_token": tok["refresh_token"]}
         self.ctx.secrets.save(data)
         self._tokens[aid] = (tok["access_token"], self.ctx.clock() + float(tok.get("expires_in", 3600)) - 60)
         await self.ctx.publish("connected", {"account": aid})
-        for fn in self.on_connect:
-            fn(aid)
+        if not missing:
+            for fn in self.on_connect:
+                fn(aid)
         return self.account(aid)
 
     async def disconnect(self, aid: str) -> None:
@@ -216,6 +221,9 @@ class GoogleAccounts:
             headers["Authorization"] = f"Bearer {token}"
             async with self.ctx.http() as http:
                 r = await http.request(method, url, headers=headers, **kw)
+        if r.status_code == 403 and "ACCESS_TOKEN_SCOPE_INSUFFICIENT" in r.text:
+            self.set(aid, status="missing", error=MISSING)
+            raise NeedsReconnect(aid)
         return r
 
     def snapshot(self) -> dict:

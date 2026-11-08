@@ -246,7 +246,8 @@ async def main() -> None:
     bus.subscribe("trace.entry", on_trace)
     app = build_app(bus, state, cfg)
     server = uvicorn.Server(uvicorn.Config(app, host=cfg["web"]["host"], port=cfg["web"]["port"],
-                                           log_level="warning", proxy_headers=False))
+                                           log_level="warning", proxy_headers=False,
+                                           timeout_graceful_shutdown=3))  # live pages would otherwise hold a stop for 90 s
     bus_task = asyncio.create_task(bus.run())
     try:
         await server.serve()  # handles SIGTERM itself

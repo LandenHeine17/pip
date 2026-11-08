@@ -19,10 +19,25 @@ from dataclasses import asdict, dataclass, field
 
 KINDS = {"hello", "heartbeat", "subscribe", "event", "command", "request", "reply"}
 MAX_LINE = 4 * 1024 * 1024  # 4 MB: room for a few seconds of audio in `private`
+READ_LIMIT = 2 * MAX_LINE   # what each end of the socket will read in one line (asyncio's default is only 64 KB)
 
 
 class BadMessage(ValueError):
     pass
+
+
+async def lines(reader, log, who: str):
+    """Each line from a socket until it closes. A line longer than READ_LIMIT is skipped with a
+    warning instead of breaking the connection (asyncio has already thrown that line away)."""
+    while True:
+        try:
+            line = await reader.readline()
+        except ValueError:  # LimitOverrunError: the line was too long
+            log.warning("%s: skipped a message that was too large", who)
+            continue
+        if not line:
+            return
+        yield line
 
 
 @dataclass

@@ -182,3 +182,24 @@ async def test_client_reconnects_after_core_restart(hub, tmp_path):
         await asyncio.sleep(0.02)
     assert "a" in bus2.writers
     await bus2.stop()
+
+
+async def test_big_replies_get_through_and_never_cut_a_program_off(hub):
+    """A busy Google calendar made a >64 KB reply that silently cut pip-web off from pip-core for good."""
+    from pip_assistant.common.messages import READ_LIMIT
+    bus, sock, connect, _ = hub
+    a, b = await connect("a"), await connect("b")
+
+    async def big(msg):
+        return {"events": ["x" * 300] * 1000}        # ~300 KB, like six weeks of a full calendar
+
+    b.on("b.big", big)
+    await start(a); await start(b)
+    r = await a.request("b", "b.big", timeout=5)
+    assert len(r.data["events"]) == 1000
+    # Even a line past every limit is only skipped: the program stays connected and keeps working
+    a._writer.write(b"{" + b"x" * (READ_LIMIT + 10) + b"}\n")
+    await a._writer.drain()
+    await asyncio.sleep(0.2)
+    r = await a.request("b", "b.big", timeout=5)
+    assert a.connected.is_set() and len(r.data["events"]) == 1000
