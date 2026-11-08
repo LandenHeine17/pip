@@ -414,6 +414,11 @@ class Conversation:
     async def tell_clap_mic(self) -> None:
         """pip-ears listens for claps only on the chosen microphone, and only if claps are switched on (D-91)."""
         if self.prefs is not None:
+            live = bool(self.prefs.get("claps") and self.prefs.get("clap_mic"))
+            if not live and self.mic is not None and not self.mic.claps:
+                # Switched off by claps, but claps can't switch him back on now: don't leave him deaf (D-91)
+                self.mic.clapped()
+                await self.apply_mic("mic_on" if self.mic.listening else None, how="claps")
             await self.command("ears", "ears.clap_mic", {"device": self.prefs.get("clap_mic"), "on": self.prefs.get("claps")})
 
     async def prefs_snapshot(self) -> dict:
