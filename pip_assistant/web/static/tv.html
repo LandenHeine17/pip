@@ -44,6 +44,7 @@
   .status { display: flex; align-items: center; justify-content: center; gap: 1.2rem; position: relative; min-height: 4rem; }
   .status .dot { width: 1.3rem; height: 1.3rem; border-radius: 50%; background: var(--state); transition: background .4s; }
   .status .word { font-size: 2.8rem; font-weight: 600; }
+  .status .word:empty { display: none; }
   .status .detail { font-size: 1.8rem; color: var(--muted); }
   .level { height: .4rem; width: 26rem; margin: .7rem auto 0; background: var(--track); border-radius: .2rem; overflow: hidden; position: relative; }
   .level div { height: 100%; width: 100%; background: var(--state); transform-origin: left; transform: scaleX(0); transition: transform .1s linear; }
@@ -111,7 +112,8 @@
   @container (min-width: 46rem) { #meters { grid-template-columns: repeat(4, 1fr); } }
 
   /* A small face box keeps just the face and what it's doing. */
-  body.face-compact .name, body.face-compact .status .detail, body.face-compact .glow { display: none; }
+  body.face-compact .name, body.face-compact .glow { display: none; }
+  body.face-compact .status .detail { font-size: 1.3rem; width: 100%; text-align: center; }
   body.face-compact .status { flex-wrap: wrap; gap: .6rem; min-height: 0; }
   body.face-compact .status .word { font-size: 1.8rem; }
   body.face-compact .level { width: 80%; }
@@ -217,6 +219,20 @@ const FACES = {
   offline:     { open: .8, slant: .4, smile: -.2, mouth: .7, lookY: .2 },   // no internet: just the basics
   lost:        { open: .5, slant: .9, smile: -.75, mouth: .7, lookY: .5 },
   dozing:      { open: .3, slant: .25, lookY: .35, smile: .15, mouth: .7 },
+  // What exactly he's doing within a state (D-112; the words come from pip-core's DETAILS table):
+  "listening:called":         { h: 1.15, lean: .08, smile: .45, mouth: .85, gape: .08 },          // heard his name: go on
+  "listening:hearing":        { h: 1.08, lean: .06, slant: -.12, smile: .15, mouth: .7 },           // working out what you said
+  "listening:turn":           { open: .9, smile: .3, mouth: .75, lookY: .1 },                       // patient, nodding
+  "listening:follow_up":      { h: 1.12, slant: -.08, smile: .45, mouth: .8, gape: .12, lean: .03 },// expectant
+  "listening:learning_voice": { h: 1.05, lean: .05, slant: -.25, smile: .1, mouth: .6 },
+  "thinking:searching":       { open: .85, slant: -.2, lookY: -.2, smile: 0, mouth: .5 },           // eyes scan side to side
+  "thinking:looking_up":      { open: .75, slant: -.15, lookY: .6, smile: 0, mouth: .5 },           // reading
+  "thinking:voice":           { smile: .3, mouth: .9, gape: .15 },                                  // about to talk
+  "idle:following":           { open: .92, smile: .25, mouth: .85 },                                // glancing about the room
+  "idle:mentioned":           { slant: .35, lookX: .55, lookY: -.15, smile: .05, mouth: .65 },      // "hm? is that for me?"
+  "idle:joining":             { happy: .3, lookX: -.5, smile: .55, mouth: .9 },                     // a sly half-smile
+  "speaking:joining_in":      { smile: .55, mouth: 1 },
+  "speaking:welcome":         { h: .8, happy: .7, smile: .9, mouth: 1.05 },
   // Brief reactions, on top of whatever it's doing:
   pleased:     { h: .72, happy: 1, smile: 1, mouth: 1.15 },   // thanked
   perked:      { h: 1.12, lean: .06, smile: .5 },             // it's just heard something for it
@@ -252,7 +268,7 @@ function heardSixSeven(text) { return SIXSEVEN.words.test(text || ""); }
 const canvas = $("face"), ctx = canvas.getContext("2d");
 const face = { ...REST, ...FACES.loading };
 const body = { color: [168, 168, 180], blink: 1, saccadeX: 0, saccadeY: 0, voice: 0, gape: 0 };
-const live = { state: "loading", reaction: null, reactionUntil: 0, sixSevenAt: -Infinity, connected: false,
+const live = { state: "loading", detail: "", words: "", endsAt: 0, endsFrom: 0, reaction: null, reactionUntil: 0, sixSevenAt: -Infinity, connected: false,
                lastEvent: 0, voiceAt: 0, voiceTarget: 0, activeAt: 0, weather: {}, align: "middle" };
 let particles = [];
 
@@ -262,8 +278,8 @@ function shown() {  // the state the screen is in
   if (live.state === "idle" && performance.now() - live.activeAt > DOZE_S * 1000) return "dozing";  // calmer when quiet
   return live.state;
 }
-function expression() {  // the state, or a reaction on top of it
-  const state = shown();
+function expression() {  // the state (or what exactly he's doing in it), or a reaction on top of it
+  const state = shown(), detailed = `${state}:${live.detail}`;
   if (live.reaction && performance.now() < live.reactionUntil) {
     // Six seven is too much to keep in, whatever he's doing; only an alarm or losing touch comes first.
     if (live.reaction === "sixseven" && state !== "lost" && state !== "ringing") return "sixseven";
@@ -271,7 +287,7 @@ function expression() {  // the state, or a reaction on top of it
     if (["idle", "listening", "dozing"].includes(state) || (state === "speaking" && live.reaction === "pleased"))
       return live.reaction;
   }
-  return state;
+  return live.detail && FACES[detailed] ? detailed : state;
 }
 function react(name, seconds) { live.reaction = name; live.reactionUntil = performance.now() + seconds * 1000; }
 function sixSeven() {
@@ -308,8 +324,10 @@ function draw(now) {
   ctx.lineJoin = ctx.lineCap = "round";
   const state = expression(), t = now / 1000;
 
-  // A slow float, as if breathing. It shakes when an alarm rings, and a little at six seven.
-  const floatY = Math.sin(t * .9) * u * .09, swayX = Math.sin(t * .37) * u * .06;
+  // A slow float, as if breathing; a slow nod while he waits for you to finish. It shakes when an alarm
+  // rings, and a little at six seven.
+  const floatY = Math.sin(t * .9) * u * .09 + (state === "listening:turn" ? Math.max(0, Math.sin(t * 2.2)) * u * .12 : 0);
+  const swayX = Math.sin(t * .37) * u * .06;
   const shake = shown() === "ringing" ? Math.sin(t * 46) * u * .09 : state === "sixseven" ? Math.sin(t * 38) * u * .05 : 0;
   // Where in its box the face sits: the top, middle or bottom (the face's "align" in the screen layout).
   const middle = { top: 3 * u, bottom: H - 2.8 * u }[live.align] ?? H * .5;
@@ -546,7 +564,7 @@ const GLYPHS = {
 };
 const GLYPH_S = 4.5, MAX_GLYPHS = 12;
 function drawParticles(state, t, cx, cy, u, rgb) {
-  if (state === "thinking" || state === "loading") {
+  if (state.startsWith("thinking") || state === "loading" || state === "idle:mentioned" || state === "idle:joining") {
     for (let i = 0; i < 3; i++) {
       const phase = t * 2.4 - i * .55, x = cx + (i - 1) * u * .85, y = cy - u * 2.6;
       const glow = .3 + .7 * Math.max(0, Math.sin(phase));
@@ -580,7 +598,7 @@ function step(now) {
 
   const target = { ...REST, ...FACES[state] };
   for (const key in REST) face[key] += (target[key] - face[key]) * ease(key === "happy" ? 9 : 6.5);
-  const rgb = hexRgb(COLORS[state] || COLORS.idle);
+  const rgb = hexRgb(COLORS[state] || COLORS[state.split(":")[0]] || COLORS.idle);   // a detail keeps its state's colour
   body.color = body.color.map((c, i) => c + (rgb[i] - c) * ease(4));
 
   // Blinks, sometimes twice, and small glances about.
@@ -593,9 +611,12 @@ function step(now) {
     body.blink = p >= 1 ? 1 : Math.abs(1 - 2 * p);
     if (p >= 1) blinkStart = -1;
   }
-  if (now > nextSaccade) {
-    nextSaccade = now + 1400 + Math.random() * 4400;
-    const still = resting || state === "thinking";
+  if (state === "thinking:searching") {   // scanning, as if reading results
+    body.saccadeX = Math.sin(now / 260) * .55; body.saccadeY = 0;
+  } else if (now > nextSaccade) {
+    // Following room talk he glances about more often, from one speaker to another.
+    nextSaccade = now + (state === "idle:following" ? 700 + Math.random() * 1600 : 1400 + Math.random() * 4400);
+    const still = resting || state.startsWith("thinking") || state === "listening:hearing";
     body.saccadeX = still ? 0 : Math.random() < .35 ? 0 : (Math.random() - .5) * 1.1;
     body.saccadeY = still ? 0 : Math.random() < .5 ? 0 : (Math.random() - .5) * .55;
   }
@@ -609,6 +630,7 @@ function step(now) {
   const wanted = talking ? made : target.gape;
   body.gape += (wanted - body.gape) * ease(talking ? 22 : 8);
 
+  showCountdown(now);
   draw(now);
 }
 
@@ -638,7 +660,7 @@ function showState() {
   document.body.classList.toggle("offline", state === "lost");
   document.body.classList.toggle("resting", state === "dozing");
   $("word").textContent = WORDS[state] ?? "";
-  $("detail").textContent = state === "lost" ? "trying again…" : "";
+  $("detail").textContent = state === "lost" ? "trying again…" : live.state === state ? live.words || "" : "";
 }
 
 function showCaption(who, text, speaker) {
@@ -815,7 +837,7 @@ async function refresh() {
     if (r.now) { data = { ...data, ...r }; skew = Date.now() / 1000 - r.now; }
     else data.weather = r.weather || data.weather;
     live.weather = data.weather;   // live.weather.wear dresses the face (wearing())
-    if (r.state) live.state = r.state;
+    if (r.state) { live.state = r.state; setDetail(r.state_detail || {}); }
     if (r.screen) {
       live.screen = r.screen;
       showRail(r.screen.kinds);
@@ -836,12 +858,28 @@ function remember(line) {
   if (said.length > KEEP_LINES) said.shift();
   redraw("conversation");
 }
+// What exactly he's doing (D-112): its words go under the state word, and when he's waiting a known
+// time (for you to finish, for a reply) the thin bar under them drains until the wait runs out.
+function setDetail(d) {
+  live.detail = d.detail || ""; live.words = d.words || "";
+  live.endsFrom = performance.now();
+  live.endsAt = d.ends_in ? live.endsFrom + d.ends_in * 1000 : 0;
+  if (!live.endsAt && d.state !== "speaking") $("level").style.transform = "scaleX(0)";
+}
+function showCountdown(now) {
+  if (!live.endsAt || shown() === "speaking") return;
+  const left = clamp((live.endsAt - now) / (live.endsAt - live.endsFrom), 0, 1);
+  $("level").style.transform = `scaleX(${left})`;
+  if (left === 0) live.endsAt = 0;
+}
+
 function handle(kind, d) {
   live.lastEvent = performance.now();
   if (kind === "state") {
     if (d.state !== "idle") live.activeAt = performance.now();
     if (live.state === "listening" && d.state === "thinking") react("perked", .6);
     live.state = d.state;
+    setDetail(d);
     showState();
   } else if (kind === "level") {
     live.voiceTarget = d.level; live.voiceAt = performance.now();

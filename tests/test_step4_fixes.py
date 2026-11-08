@@ -254,8 +254,12 @@ def utt(reason="wake", pcm=b"\1\0" * 800):
     return {"reason": reason, "had_speech": True, "seconds": 1.5}, {"audio_b64": base64.b64encode(pcm).decode()}
 
 
-def states(bus):
-    return [r["data"]["state"] for r in reversed(bus.trace.recent()) if r["type"] == "pip.state"]
+def states(bus, details=False):
+    """The states published, each change once (within a state, what he's doing can change: D-112)."""
+    seen = [(r["data"]["state"], r["data"].get("detail", "")) for r in reversed(bus.trace.recent()) if r["type"] == "pip.state"]
+    if details:
+        return seen
+    return [s for i, (s, _) in enumerate(seen) if i == 0 or seen[i - 1][0] != s]
 
 
 async def test_thinking_tone_plays_instantly_and_state_follows(tmp_path):
@@ -273,6 +277,8 @@ async def test_thinking_tone_plays_instantly_and_state_follows(tmp_path):
     await asyncio.sleep(0.6)
     s = states(bus)
     assert s == ["listening", "thinking", "speaking", "listening", "idle"]  # no flicker in between (for the face)
+    assert states(bus, details=True)[:3] == [("listening", "called"), ("listening", "hearing"), ("listening", "turn")]
+    assert ("listening", "follow_up") in states(bus, details=True)
     assert "One sec." not in [t for k, t, _ in got]
     await finish(bus, tasks)
 

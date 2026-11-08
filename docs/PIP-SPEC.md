@@ -211,6 +211,15 @@ stateDiagram-v2
     MicOff --> Idle: two claps / switch on
 ```
 
+**What exactly he's doing** (D-112). Within each state he shows a situation, with its own face on the monitor and words under it (also next to the dashboard's circle, and as Conversation bars if you tick the box under Listening & sounds):
+
+| State | Situations |
+|---|---|
+| Listening | heard my name: go on (counts down) · working out what you said · waiting to see if you're done (counts down) · listening for your reply (counts down) · learning a voice |
+| Thinking | thinking (Claude) · searching the web · looking it up · getting the words out |
+| Idle | quiet · following the conversation · heard my name mentioned: is it for me? · thinking about joining in |
+| Speaking | talking · joining in · saying hi |
+
 Sounds without a human voice in them (a click, a cough, a hiss) are dropped before speech-to-text, so Pip no longer "hears" a phantom "Thank you." (D-85).
 
 ### Screen and dashboard

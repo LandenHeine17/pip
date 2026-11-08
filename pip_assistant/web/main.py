@@ -39,6 +39,7 @@ class State:
         self.listeners: set[asyncio.Queue] = set()
         self.online = True       # D-95: the dashboard's small offline indicator
         self.pip_state = "idle"  # idle / listening / thinking / speaking / interrupted / ringing / offline / mic_off
+        self.pip_detail: dict = {}   # what exactly he's doing within it: {detail, words, ends_in} (D-112)
         self.tv_listeners: set[asyncio.Queue] = set()   # the TV page's own, narrower stream (D-110)
         self.tv_boxes: list[str] = []   # the kinds of box on the monitor now (D-111)
         self.tv_room = False            # a conversation box showing room talk is up: room lines go to the TV too
@@ -109,7 +110,7 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
 
     async def health(request):
         return JSONResponse({"version": __version__, "connected": bus.connected.is_set(), "programs": state.health,
-                             "state": state.pip_state, "online": state.online})
+                             "state": state.pip_state, "state_detail": state.pip_detail, "online": state.online})
 
     async def trace(request):
         if not state.trace and bus.connected.is_set():
@@ -221,7 +222,7 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
 
     async def tv_data(request):
         """What the TV's boxes show: timers, next events, weather; plus Pip's state."""
-        out = {"state": state.pip_state, "online": state.online, "weather": {}}
+        out = {"state": state.pip_state, "state_detail": state.pip_detail, "online": state.online, "weather": {}}
         try:
             r = await bus.request("core", "core.tv", timeout=3)
             out.update(r.private or {})
@@ -308,8 +309,9 @@ def listen(bus, state: State) -> None:
 
     async def on_state(msg: Message):
         state.pip_state = msg.data.get("state", "idle")
-        state.push("state", {"state": state.pip_state})
-        state.push_tv("state", {"state": state.pip_state})
+        state.pip_detail = {k: msg.data.get(k) for k in ("detail", "words", "ends_in")}
+        state.push("state", {"state": state.pip_state, **state.pip_detail})
+        state.push_tv("state", {"state": state.pip_state, **state.pip_detail})
 
     async def on_level(msg: Message):
         state.push_tv("level", {"level": msg.data.get("level", 0)})

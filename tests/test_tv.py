@@ -169,3 +169,23 @@ def test_pip_core_sends_the_screen_and_only_the_lists_on_it(tmp_path):
     reg.modules["screen"].screen.show("morning")    # it has the household's to-do list
     snap = tv_snapshot(sched, reg)
     assert snap["lists"][""]["items"] == ["milk"]
+
+
+def test_every_detail_has_a_face_and_reaches_the_tv():
+    """D-112: each situation in pip-core's DETAILS has its own expression on the monitor (plain thinking and
+    talking use the state's own face)."""
+    import asyncio
+    from pathlib import Path
+    from pip_assistant.core.conversation import DETAILS
+    page = (Path(__file__).parent.parent / "pip_assistant/web/static/tv.html").read_text()
+    for detail in DETAILS:
+        if detail not in ("answer", "asking"):
+            assert f':{detail}"' in page, detail
+    bus, state = FakeBus(), State()
+    listen(bus, state)
+    q = tv_feed(state)
+    asyncio.run(bus.deliver(Message("event", "pip.state", data={"state": "listening", "detail": "turn",
+                                                                 "words": DETAILS["turn"], "ends_in": 2.5})))
+    assert drain(q) == [("state", {"state": "listening", "detail": "turn", "words": DETAILS["turn"], "ends_in": 2.5})]
+    client = TestClient(build_app(FakeBus({"core.tv": {}}), state, {}))
+    assert client.get("/api/tv").json()["state_detail"]["detail"] == "turn"
