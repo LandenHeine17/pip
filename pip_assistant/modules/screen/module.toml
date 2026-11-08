@@ -1,0 +1,34 @@
+# The monitor's screen (step 7, D-111): what's on it, changed by voice or on Pip's dashboard.
+
+name = "screen"
+kind = "widget"
+summary = "What's on the monitor: Pip's face and boxes (clock, weather, timers, calendar, a to-do list, notes, Pi health, the conversation), changed by voice, with saved screens and undo."
+says_examples = ["Pip, show the morning screen", "make the clock bigger", "put the shopping list up",
+                 "make your face small", "undo that", "save this as the study screen", "what can go on the screen?"]
+offline = true
+permissions = []
+needs = []
+
+[claude]
+instructions = """
+Screen (the monitor, 12 wide × 8 tall; Pip's face is a box in the top left): each message says what it \
+shows and where. Box kinds: clock, weather, timers, calendar, todos (a to-do list: "list": its name, \
+or none for the household's), notes ("title" and "lines": anything worth putting up; it doesn't update \
+itself), health (the Pi's), conversation (what's said; room talk too unless "room": false). Any box \
+can have "color" (red, orange, yellow, green, teal, blue, purple, pink, white, gray, "#rrggbb", or none). \
+Place a box with x (0-11), y (0-7), w, h; or just w and h; or nothing (usually best: it's fitted in). \
+ACTION lines (Pip's code does it and says so):
+- {"do": "show_screen", "name": "morning"} · {"do": "save_screen", "name": "study", "boxes": [...], \
+"face": "small"} (no "boxes": saves what's showing under that name) · {"do": "delete_screen", "name": "study"}
+- {"do": "add_box", "type": "weather", "w": 5, "h": 3} · {"do": "remove_box", "box": "weather"}
+- {"do": "move_box", "box": "clock", "x": 4, "y": 0, "w": 8, "h": 3} · face: {"do": "move_box", "box": \
+"face", "size": "large|medium|small|tiny"} or "align": "top|middle|bottom"
+- {"do": "change_box", "box": "notes", "lines": [...], "title": "...", "color": "blue", "list": "Shopping", "room": false}
+- {"do": "undo_screen"} ("undo that", "put it back") · {"do": "screen_options"} (what can go on it)
+- {"do": "screen_fix"} only when a fix is waiting for an okay and they agree.
+Changing the screen that's showing keeps the change.
+"""
+
+[dashboard]
+page = "index.html"
+label = "Screen"

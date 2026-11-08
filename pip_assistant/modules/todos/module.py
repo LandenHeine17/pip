@@ -76,6 +76,21 @@ class Todos(Module):
         acc = accounts.get((lists.get(t["list_id"]) or {}).get("account_id", ""))
         return not acc or acc["sharing"] == "everyone" or acc["person_id"] == call.person_id
 
+    def screen_list(self, name: str = "") -> dict:
+        """A to-do list for the monitor (D-111): its open to-dos, by name, or the household's. Only a
+        list Pip may mention to everyone goes on the screen."""
+        lists = self.store.lists()
+        want = str(name or "").strip().lower()
+        lst = (next((x for x in lists if x["name"].lower() == want), None)
+               or next((x for x in lists if want and want in x["name"].lower()), None)) if want else \
+            next((x for x in lists if x["id"] == self.household()), None)
+        if not lst:
+            return {"name": name or "To-dos", "missing": True, "items": []}
+        acc = self._accounts().get(lst.get("account_id", ""))
+        if acc and acc["sharing"] != "everyone":
+            return {"name": lst["name"], "private": True, "items": []}
+        return {"name": lst["name"], "items": [t["title"] for t in self.store.items() if t["list_id"] == lst["id"]][:20]}
+
     # ---------------------------------------------------------------- what Claude reads
     def summary(self, call: Call) -> str:
         if call.kind == "join":   # join-in checks run every ~40 s: keep them small (D-102)
