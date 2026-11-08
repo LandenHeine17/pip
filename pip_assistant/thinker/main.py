@@ -127,7 +127,7 @@ class Thinker:
 
     @classmethod
     def user_text(cls, text: str, transcript: list[str] | None = None, now: str | None = None, schedule: str = "",
-                  people: str = "", memories: str = "", kind: str = "direct", mood: str = "") -> str:
+                  people: str = "", memories: str = "", kind: str = "direct", mood: str = "", looked_up: str = "") -> str:
         """What Claude reads: the time, who's here, what's set and remembered, the room conversation, and what's asked."""
         now = now or time.strftime("%A %B %-d %Y, %-I:%M %p")
         head = "; ".join(x for x in (now, people, schedule, memories) if x)
@@ -136,7 +136,8 @@ class Thinker:
             lines = [f"Someone: {text}"]
         ask = cls.ASK.get(kind, cls.ASK["direct"]).format(mood=mood)
         convo = "\n".join(lines) if lines else "(nothing yet)"
-        return f"[{head}]\n\nThe conversation so far, oldest first:\n{convo}\n\n{ask}"
+        look = f"\n\nYou asked to look this up first (now answer with it; don't look again): {looked_up}" if looked_up else ""
+        return f"[{head}]\n\nThe conversation so far, oldest first:\n{convo}{look}\n\n{ask}"
 
     async def on_ask(self, msg: Message) -> Message:
         aid = msg.data.get("answer_id", "")
@@ -154,7 +155,8 @@ class Thinker:
                                                              schedule=msg.private.get("schedule", ""),
                                                              people=msg.private.get("people", ""),
                                                              memories=msg.private.get("memories", ""),
-                                                             kind=kind, mood=msg.private.get("mood", "")),
+                                                             kind=kind, mood=msg.private.get("mood", ""),
+                                                             looked_up=msg.private.get("looked_up", "")),
                                                sentence, searching, held=kind == "join")
         except Exception as e:
             log.warning("answer failed: %s", e)

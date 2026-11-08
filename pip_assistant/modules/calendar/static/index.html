@@ -27,6 +27,9 @@ dialog form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 dialog form .full{grid-column:1/-1}
 dialog label{font-size:.8rem;color:var(--muted);display:flex;flex-direction:column;gap:4px}
 dialog label.inline{flex-direction:row;align-items:center;gap:6px;color:var(--ink)}
+.calrow{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.calrow input[type=text]{flex:1;min-width:0}
+.calrow input[type=color]{width:38px;height:32px;padding:0;border:0;background:none}
 textarea{font:inherit;font-size:.9rem;padding:8px 12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);min-height:60px}
 </style>
 </head>
@@ -36,7 +39,7 @@ textarea{font:inherit;font-size:.9rem;padding:8px 12px;border-radius:12px;border
   <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
     <div><h1>Calendar</h1><div class="sub">Pip's calendar and everyone's connected Google calendars · <a href="/m/google/">connect Google</a></div></div></div>
   <div class="status"><button onclick="move(-1)">‹</button><b id="title" style="min-width:150px;text-align:center"></b><button onclick="move(1)">›</button>
-    <button onclick="goToday()">Today</button><button class="primary" onclick="openForm()">+ Add</button></div>
+    <button onclick="goToday()">Today</button><button onclick="openCals()">Calendars</button><button class="primary" onclick="openForm()">+ Add</button></div>
 </header>
 <section>
   <div class="cal" id="cal"></div>
@@ -71,6 +74,18 @@ textarea{font:inherit;font-size:.9rem;padding:8px 12px;border-radius:12px;border
     <button class="primary" type="submit">Save</button></span></div>
 </form></dialog>
 
+<dialog id="cals"><div style="display:flex;flex-direction:column;gap:6px">
+  <h2>Calendars</h2>
+  <div class="sub">Rename, recolour or delete calendars (in Google too). To hide one from Pip completely, use
+    <a href="/m/google/">Ignore on the Google page</a>.</div>
+  <div id="calList"></div>
+  <form id="newCal" style="display:flex;gap:8px;align-items:center;margin-top:8px">
+    <input name="name" placeholder="New calendar name" required maxlength="60" style="flex:1;min-width:0">
+    <input type="color" name="color" value="#0b8043" style="width:38px;height:32px;padding:0;border:0;background:none">
+    <select name="account" id="newCalAcc"></select><button class="primary">Make</button></form>
+  <div style="display:flex;justify-content:flex-end;margin-top:8px"><button onclick="calsDlg.close()">Done</button></div>
+</div></dialog>
+
 <script src="/pip.js"></script>
 <script>
 const DOW = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
@@ -102,7 +117,7 @@ function render(){
   }
   $("cal").innerHTML = html;
   $("legend").innerHTML = data.calendars.map(c => `<label><input type="checkbox" ${c.ticked?"checked":""} onchange="tick('${c.id}',this.checked)">
-     <i style="--c:${c.color}"></i>${esc(c.whose ? c.whose+": "+c.name : c.name)}${c.household?" <span class='sub'>(household)</span>":""}</label>`).join("");
+     <i style="--c:${c.color}"></i>${esc(c.label)}${c.household?" <span class='sub'>(household)</span>":""}</label>`).join("");
   $("note").textContent = data.calendars.some(c => c.id.startsWith("g:")) ? "Synced with Google every couple of minutes; Pip's changes go straight away."
     : "Only Pip's own calendar so far. Connect Google to see yours here.";
   const sd = new Date(sel+"T12:00");
@@ -127,7 +142,7 @@ function openForm(day, id){
   $("formTitle").textContent = editing ? "Edit event" : "New event";
   $("del").hidden = !editing;
   const cals = data.calendars.filter(c => c.writable);
-  form.calendar_id.innerHTML = cals.map(c => `<option value="${c.id}" ${c.household?"selected":""}>${esc(c.whose?c.whose+": "+c.name:c.name)}</option>`).join("");
+  form.calendar_id.innerHTML = cals.map(c => `<option value="${c.id}" ${c.household?"selected":""}>${esc(c.label)}</option>`).join("");
   $("calPick").hidden = !!editing || cals.length < 2;
   if (editing) {
     const s = new Date(editing.start*1000), e = new Date(editing.end*1000);
@@ -146,6 +161,30 @@ form.onsubmit = async ev => {
   if (r) { dlg.close(); sel = f.date; load(); }
 };
 async function removeEv(){ if (editing && confirm(`Delete ${editing.title}?`)) { await pip.act(pip.post("delete", {id: editing.id})); dlg.close(); load(); } }
+const calsDlg = $("cals");
+function openCals(){ renderCals(); calsDlg.showModal(); }
+function renderCals(){
+  $("calList").innerHTML = data.calendars.map(c => {
+    const own = c.owner && !c.primary, google = c.id.startsWith("g:");
+    return `<div class="calrow"><input type="color" value="${c.color}" ${c.writable||google?"":"disabled"} onchange="editCal('${c.id}', {color: this.value})">
+      ${own ? `<input type="text" value="${esc(c.name)}" maxlength="60" onchange="editCal('${c.id}', {name: this.value})">`
+            : `<span style="flex:1">${esc(c.label)}${c.primary?" <span class='sub'>(main)</span>":""}${!c.writable?" <span class='sub'>(read-only)</span>":""}</span>`}
+      ${c.primary ? "" : `<button class="ghost" onclick="delCal('${c.id}')">${c.owner?"Delete":"Remove"}</button>`}</div>`;
+  }).join("");
+  const accs = [...new Map(data.calendars.filter(c => c.account_id).map(c => [c.account_id, c.whose || "Google"])).entries()];
+  $("newCalAcc").innerHTML = accs.length ? accs.map(([id, who]) => `<option value="${id}">${esc(who)}'s Google</option>`).join("")
+    : `<option value="">Pip's own</option>`;
+  $("newCalAcc").hidden = accs.length < 2;
+}
+async function editCal(id, change){ const r = await pip.act(pip.post("edit_calendar", {id, ...change})); await load(); renderCals(); }
+async function delCal(id){
+  const c = data.calendars.find(x => x.id === id); if (!c) return;
+  const label = c.label, owner = c.owner;
+  if (!confirm(owner ? `Delete ${label} and everything on it? This deletes it in Google too.` : `Take ${label} off your list? (It isn't deleted for the people who share it.)`)) return;
+  await pip.act(pip.post("delete_calendar", {id})); await load(); renderCals(); }
+$("newCal").onsubmit = async ev => { ev.preventDefault();
+  const r = await pip.act(pip.post("new_calendar", Object.fromEntries(new FormData(ev.target))));
+  if (r) { ev.target.reset(); await load(); renderCals(); } };
 pip.live(load);
 load();
 </script>

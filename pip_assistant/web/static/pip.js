@@ -3,16 +3,17 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 // Talk to this page's module in pip-core: pip.get("range", {from, to}) · pip.post("add", {...})
+// (or another module, last argument: pip.get("all_calendars", {}, "calendar"))
 const pip = {
   module: location.pathname.split("/")[2],
-  async get(action, args = {}) {
+  async get(action, args = {}, module = pip.module) {
     const q = new URLSearchParams({action, ...args});
-    const r = await (await fetch(`/api/m/${pip.module}?${q}`, {cache: "no-store"})).json();
+    const r = await (await fetch(`/api/m/${module}?${q}`, {cache: "no-store"})).json();
     if (r.error) throw new Error(r.error);
     return r;
   },
-  async post(action, body = {}) {
-    const r = await (await fetch(`/api/m/${pip.module}`, {method: "POST", headers: {"Content-Type": "application/json"},
+  async post(action, body = {}, module = pip.module) {
+    const r = await (await fetch(`/api/m/${module}`, {method: "POST", headers: {"Content-Type": "application/json"},
                                                           body: JSON.stringify({action, ...body})})).json();
     if (r.error) throw new Error(r.error);
     return r;

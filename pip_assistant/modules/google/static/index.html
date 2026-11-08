@@ -58,8 +58,23 @@ code{background:var(--soft);padding:1px 6px;border-radius:6px;font-size:.85em}
 </main>
 <script src="/pip.js"></script>
 <script>
-let snap = {accounts:[], people:[]};
-async function load(){ const r = await pip.act(pip.get("status")); if (r) { snap = r; render(); } }
+let snap = {accounts:[], people:[]}, cals = [];
+async function load(){
+  const r = await pip.act(pip.get("status"));
+  try { cals = (await pip.get("all_calendars", {}, "calendar")).calendars; } catch (e) { cals = []; }
+  if (r) { snap = r; render(); } }
+function calSettings(a){
+  const mine = cals.filter(c => c.account_id === a.id);
+  if (!mine.length) return "";
+  return `<details style="margin-top:6px"><summary class="sub" style="cursor:pointer">Calendars (${mine.filter(c => !c.ignored).length} of ${mine.length} used)</summary>
+    <div class="sub" style="margin:4px 0">Ignored calendars aren't fetched, don't show on the calendar page, and Pip never hears about them.</div>
+    ${mine.map(c => `<label style="display:flex;gap:8px;align-items:center;padding:3px 0">
+      <select onchange="ignore('${c.id}', this.value === 'ignore')"><option value="use" ${c.ignored?"":"selected"}>Use</option>
+        <option value="ignore" ${c.ignored?"selected":""}>Ignore</option></select>
+      <i style="width:10px;height:10px;border-radius:3px;background:${esc(c.color)}"></i>
+      <span style="${c.ignored?"opacity:.5;text-decoration:line-through":""}">${esc(c.primary ? "Main calendar" : c.name)}</span></label>`).join("")}</details>`;
+}
+async function ignore(id, value){ await pip.act(pip.post("ignore", {id, value}, "calendar")); load(); }
 function render(){
   $("setupState").innerHTML = snap.configured ? `<span class="done">✓ set up</span>` : "not set up yet";
   $("guide").open = !snap.configured;
@@ -70,7 +85,9 @@ function render(){
   $("accounts").innerHTML = snap.accounts.map(a => `<div class="item"><div><b>${esc(a.person)}</b> · ${esc(a.email)}
       <div class="sub">${a.status==="ok" ? (a.last_sync ? "last synced "+new Date(a.last_sync*1000).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"}) : "connected")
         : a.status==="missing" ? `<span style="color:var(--bad)">${esc(a.error)}</span>`
-        : `<span style="color:var(--bad)">needs reconnecting</span>`}${a.error && a.status==="ok" ? " · last try: "+esc(a.error) : ""}</div></div>
+        : `<span style="color:var(--bad)">needs reconnecting</span>`}${a.error && a.status==="ok" ? " · last try: "+esc(a.error) : ""}
+        ${a.status==="ok" && !a.can_manage ? `<div>To let Pip make, rename or delete calendars: press Connect Google again for this person and tick Select all (no need to disconnect).</div>` : ""}</div>
+        ${calSettings(a)}</div>
       <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><label class="sub">Pip may mention
         <select onchange="sharing('${a.id}', this.value)"><option value="everyone" ${a.sharing==="everyone"?"selected":""}>to everyone</option>
         <option value="me" ${a.sharing==="me"?"selected":""}>only to ${esc(a.person)}</option></select></label>

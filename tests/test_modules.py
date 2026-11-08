@@ -62,6 +62,11 @@ def test_a_module_can_only_write_its_own_tables(tmp_path):
     db.execute("INSERT INTO dice_rolls VALUES (4)")
     with pytest.raises(sqlite3.DatabaseError):
         db.execute("CREATE TABLE people (id TEXT)")
+    db.commit()
+    db.execute("ALTER TABLE dice_rolls ADD COLUMN sides INTEGER")      # a later version adds a column: fine
+    sqlite3.connect(tmp_path / "pip.db").execute("CREATE TABLE people (id TEXT)")
+    with pytest.raises(sqlite3.DatabaseError):
+        db.execute("ALTER TABLE people ADD COLUMN x TEXT")             # someone else's table: no
 
 
 def test_claudes_action_reaches_the_module_that_declares_it(tmp_path):

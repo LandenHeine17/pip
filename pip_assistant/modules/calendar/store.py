@@ -25,7 +25,9 @@ CREATE TABLE IF NOT EXISTS calendar_calendars (
     writable    INTEGER NOT NULL DEFAULT 1,
     is_primary  INTEGER NOT NULL DEFAULT 0,
     sync_token  TEXT NOT NULL DEFAULT '',
-    reminder    REAL                         -- the calendar's default heads-up, minutes (Google's default reminder)
+    reminder    REAL,                        -- the calendar's default heads-up, minutes (Google's default reminder)
+    owner       INTEGER NOT NULL DEFAULT 1,  -- theirs (can be renamed / deleted), not just shared with them
+    ignored     INTEGER NOT NULL DEFAULT 0   -- set on the Google page: not synced, not shown, never told to Pip (D-104)
 );
 CREATE TABLE IF NOT EXISTS calendar_events (
     id          TEXT PRIMARY KEY,
@@ -58,6 +60,12 @@ class CalendarStore:
         import time
         self.db, self.schedule, self.clock = db, schedule, clock or time.time
         self.db.executescript(SCHEMA)
+        have = {r[1] for r in self.db.execute("PRAGMA table_info(calendar_calendars)")}
+        for col in ("owner INTEGER NOT NULL DEFAULT 1", "ignored INTEGER NOT NULL DEFAULT 0"):
+            if col.split()[0] not in have:
+                self.db.execute(f"ALTER TABLE calendar_calendars ADD COLUMN {col}")
+                if col.startswith("owner"):   # until the next sync says: read-only ones aren't theirs
+                    self.db.execute("UPDATE calendar_calendars SET owner = writable")
         self.db.execute("INSERT OR IGNORE INTO calendar_calendars (id, name, color) VALUES ('pip', 'Pip', '#6c5ce7')")
         self.db.commit()
         self.on_change = []          # called with the event id after any change Pip makes (sync, dashboard)
@@ -75,8 +83,10 @@ class CalendarStore:
         self.db.commit()
 
     # ---------------------------------------------------------------- calendars
-    def calendars(self) -> list[dict]:
-        return [dict(r) for r in self.db.execute("SELECT * FROM calendar_calendars ORDER BY account_id != '', name")]
+    def calendars(self, ignored: bool = False) -> list[dict]:
+        """The calendars Pip uses (ignored ones only if asked: the Google page's settings list)."""
+        return [dict(r) for r in self.db.execute("SELECT * FROM calendar_calendars ORDER BY account_id != '', is_primary DESC, name")
+                if ignored or not r["ignored"]]
 
     def calendar(self, cid: str) -> dict | None:
         r = self.db.execute("SELECT * FROM calendar_calendars WHERE id = ?", (cid,)).fetchone()
@@ -93,14 +103,26 @@ class CalendarStore:
         self.db.commit()
 
     def remove_calendar(self, cid: str) -> None:
+        self.drop_events(cid)
+        self.db.execute("DELETE FROM calendar_calendars WHERE id = ?", (cid,))
+        self.db.commit()
+        self.version += 1
+
+    def drop_events(self, cid: str) -> None:
         for ev in self.db.execute("SELECT id FROM calendar_events WHERE calendar_id = ?", (cid,)).fetchall():
             self._cancel_alerts(ev["id"])
         self.db.execute("DELETE FROM calendar_events WHERE calendar_id = ?", (cid,))
-        self.db.execute("DELETE FROM calendar_calendars WHERE id = ?", (cid,))
         self.db.commit()
 
+    def set_ignored(self, cid: str, ignored: bool) -> None:
+        """Ignored: Pip forgets its events and stops fetching them; un-ignored: fetched again from scratch."""
+        self.upsert_calendar(cid, ignored=int(ignored), sync_token="")
+        if ignored:
+            self.drop_events(cid)
+        self.version += 1
+
     def ticked(self) -> set[str]:
-        return {r["id"] for r in self.db.execute("SELECT id FROM calendar_calendars WHERE ticked = 1")}
+        return {r["id"] for r in self.db.execute("SELECT id FROM calendar_calendars WHERE ticked = 1 AND ignored = 0")}
 
     # ---------------------------------------------------------------- events
     def event(self, eid: str) -> dict | None:
@@ -194,6 +216,16 @@ class CalendarStore:
             self.db.execute("DELETE FROM calendar_events WHERE id = ?", (eid,))
         self.db.commit()
         self._changed(eid)
+
+    def copy_to(self, ev: dict, cid: str) -> dict:
+        """Move an event by making it again in another calendar and removing the original (both synced)."""
+        new = self.add_event(ev["title"], datetime.fromtimestamp(ev["start"]), all_day=bool(ev["all_day"]), repeat=ev["repeat"],
+                             end=datetime.fromtimestamp(ev["end"]), location=ev["location"], notes=ev["notes"],
+                             private=bool(ev["private"]), calendar_id=cid)
+        if ev["reminder"] is not None:
+            new = self.update_event(new["id"], reminder=ev["reminder"])
+        self.remove_event(ev["id"])
+        return new
 
     def forget(self, eid: str) -> None:
         """Gone for good (deleted at Google, or by sync): no further syncing."""

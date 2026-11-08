@@ -40,6 +40,11 @@ def me(person) -> Call:
     return Call(speaker=Match(person["id"], person["name"], "sure", 0.9), now=NOW)
 
 
+def look(reg, call=None, first="2026-11-07", last="2026-12-06"):
+    """What Claude gets when it looks the calendar up (ACTION look)."""
+    return say(reg, "look:calendar", {"from": first, "to": last}, call)
+
+
 def say(reg, verb, a, call=None):
     act = reg.action(verb)
     call = call or Call(now=NOW)
@@ -64,7 +69,8 @@ async def test_pips_own_calendar_works_without_google(env):
     reg, cal, fake, people, sched, clock = env
     assert say(reg, "add:event", {"title": "dentist", "at": "2026-11-13T15:00", "heads_up_minutes": 30}) == \
         "Added dentist, Friday at 3 PM."
-    assert "dentist Fri 2026-11-13 15:00–16:00" in reg.summary(Call(now=NOW))
+    assert "dentist Fri 2026-11-13 15:00–16:00" in look(reg)
+    assert "Fri 1" in reg.summary(Call(now=NOW))      # the short summary only counts it (D-102)
     [h] = sched.active(("event",))
     assert datetime.fromtimestamp(h["due"]) == datetime(2026, 11, 13, 14, 30)
     with pytest.raises(Invalid):
@@ -89,9 +95,9 @@ async def test_two_way_sync_with_google(env):
     # Pip's own upcoming events went into the household's (Landen's) Google calendar on first connect
     assert any(e["summary"] == "pizza night" for e in fake.events["landen@example.com"].values())
     # Private events: never told to Claude, no heads-up (D-99); others get Google's default 10-minute reminder
-    summary = reg.summary(me(landen))
+    summary = look(reg, me(landen))
     assert "Chem lab" in summary and "Hamilton Hall" in summary and "Doctor" not in summary
-    assert "Landen's calendar" in summary
+    assert "Landen's main (household)" in reg.summary(me(landen))
     heads = {h["label"] for h in sched.active(("event",))}
     assert "Chem lab" in heads and "Doctor" not in heads
     # A voice-added event from Landen goes to his Google calendar, straight away on the next sync
@@ -150,10 +156,10 @@ async def test_a_roommate_can_keep_his_calendar_to_himself(env):
                    end={"dateTime": "2026-11-09T11:00:00-06:00"})
     acc = await connect(reg.modules["google"], fake, sam["id"], "sam@example.com")
     await cal.sync.run_once()
-    assert "Sam's interview" in reg.summary(me(landen))
+    assert "Sam's interview" in look(reg, me(landen))
     await reg.modules["google"].dashboard("sharing", {"id": acc["id"], "value": "me"})
-    assert "Sam's interview" not in reg.summary(me(landen)) and "Sam's interview" not in reg.summary(Call(now=NOW))
-    assert "Sam's interview" in reg.summary(me(sam))
+    assert "Sam's interview" not in look(reg, me(landen)) and "Sam's interview" not in look(reg, Call(now=NOW))
+    assert "Sam's interview" in look(reg, me(sam))
     # "put it on Sam's calendar"
     say(reg, "add:event", {"title": "rent due", "date": "2026-11-15", "all_day": True, "calendar": "Sam"}, me(landen))
     await cal.sync.run_once()
@@ -168,7 +174,7 @@ async def test_the_dashboard_page(env):
     [ev] = out["events"]
     assert ev["title"] == "Dinner" and ev["private"] and ev["location"] == "Home"   # the owner's own view shows it
     assert not sched.active(("event",))                                            # but private: no heads-up
-    assert "Dinner" not in reg.summary(Call(now=NOW))
+    assert "Dinner" not in look(reg)
     await cal.dashboard("edit", {"id": r["id"], "title": "Dinner out", "date": "2026-11-14", "start": "20:00", "end": "22:00"})
     [ev] = (await cal.dashboard("range", {"from": "2026-11-14", "to": "2026-11-14"}))["events"]
     assert ev["title"] == "Dinner out" and datetime.fromtimestamp(ev["start"]).hour == 20 and not ev["private"]
@@ -190,3 +196,160 @@ async def test_disconnecting_forgets_that_persons_calendars_here(env):
     await reg.modules["google"].dashboard("disconnect", {"id": acc["id"]})
     assert cal.store.all_events() == [] and [c["id"] for c in cal.store.calendars()] == ["pip"]
     assert fake.events["sam@example.com"]                          # nothing deleted in Google
+
+
+# ---------------------------------------------------------------- D-102: a short summary, and looking further ahead
+async def test_claude_gets_a_short_calendar_and_looks_further_ahead(env):
+    reg, cal, fake, people, sched, clock = env
+    say(reg, "add:event", {"title": "lunch", "at": "2026-11-07T12:00"})          # today
+    cal.store.add_event("breakfast", datetime(2026, 11, 7, 8, 0), end=datetime(2026, 11, 7, 8, 45))   # already over
+    say(reg, "add:event", {"title": "brunch", "at": "2026-11-08T11:00"})         # tomorrow
+    for d in (10, 10, 12):
+        say(reg, "add:event", {"title": f"class {d}", "at": f"2026-11-{d}T09:00"})
+    say(reg, "add:event", {"title": "far away", "at": "2026-11-28T09:00"})
+    full = reg.summary(Call(now=NOW))
+    assert "lunch" in full and "brunch" in full and "Tue 2" in full and "Thu 1" in full
+    assert "class" not in full and "far away" not in full and "breakfast" not in full
+    join = reg.summary(Call(now=NOW, kind="join"))
+    assert "lunch" in join and "brunch" not in join and "Calendars" not in join and len(join) < len(full)
+    assert "far away Sat 2026-11-28" in say(reg, "look:calendar", {"date": "2026-11-28"})
+    assert "nothing" in say(reg, "look:calendar", {"from": "2026-11-29", "to": "2026-11-30"})
+    with pytest.raises(Invalid):
+        say(reg, "look:calendar", {"from": "2026-11-01", "to": "2027-01-30"})     # at most a month at a time
+
+
+async def test_the_real_summary_stays_small(env):
+    """~100 events in two weeks (like the owner's) → only a few hundred tokens per message."""
+    reg, cal, fake, people, sched, clock = env
+    for d in range(7, 21):
+        for h in range(9, 16):
+            say(reg, "add:event", {"title": f"meeting with the project group {h}", "at": f"2026-11-{d:02d}T{h:02d}:00",
+                                   "location": "Hamilton Hall"})
+    assert len(reg.summary(Call(now=NOW))) < 1800                     # was ~9,000 characters
+    assert len(reg.summary(Call(now=NOW, kind="join"))) < 900
+
+
+# ---------------------------------------------------------------- D-103: knowing and managing calendars
+async def google_with_two_calendars(env, narrow=False):
+    reg, cal, fake, people, sched, clock = env
+    landen = people.add_person("Landen", "admin")
+    fake.narrow = narrow
+    fake.calendars["landen@example.com"] = {"summary": "landen@example.com", "primary": True, "accessRole": "owner",
+                                            "owner": "landen@example.com"}
+    fake.calendars["work1"] = {"summary": "Work", "accessRole": "owner", "owner": "landen@example.com"}
+    fake.calendars["shared1"] = {"summary": "Abby & Landen", "accessRole": "writer", "owner": "landen@example.com"}
+    fake.calendars["hol"] = {"summary": "Holidays", "accessRole": "reader", "owner": "landen@example.com"}
+    fake.add_event("work1", summary="standup", start={"dateTime": "2026-11-07T15:00:00-06:00"},
+                   end={"dateTime": "2026-11-07T15:15:00-06:00"})
+    fake.add_event("hol", summary="Veterans Day", start={"date": "2026-11-11"}, end={"date": "2026-11-12"})
+    await connect(reg.modules["google"], fake, landen["id"], "landen@example.com")
+    await cal.sync.run_once()
+    return landen
+
+
+async def test_pip_knows_which_calendar_and_moves_events(env):
+    reg, cal, fake, people, sched, clock = env
+    landen = await google_with_two_calendars(env)
+    s = reg.summary(me(landen))
+    assert "Landen's main (household)" in s and "Landen: Work" in s and "Landen: Holidays (read-only)" in s
+    assert "Abby & Landen (shared with them)" in s and "standup" in s and "[Landen: Work]" in s
+    # Adding to a named calendar
+    assert say(reg, "add:event", {"title": "gym", "at": "2026-11-07T17:00", "calendar": "work"}, me(landen)) == \
+        "Added gym, today at 5 PM, on Landen's Work calendar."
+    with pytest.raises(Invalid):
+        say(reg, "add:event", {"title": "x", "at": "2026-11-07T17:00", "calendar": "Holidays"}, me(landen))  # read-only
+    with pytest.raises(Invalid):
+        say(reg, "add:event", {"title": "x", "at": "2026-11-07T17:00", "calendar": "Gym"}, me(landen))       # no such one
+    await cal.sync.run_once()
+    # Moving within the account: Google's own move (keeps everything)
+    standup = next(e for e in cal.store.all_events() if e["title"] == "standup")
+    said = await say(reg, "change:event", {"id": "#" + standup["id"][:6], "calendar": "Landen's main"}, me(landen))
+    assert said == "Moved standup to Landen's main."
+    assert any(e["summary"] == "standup" and e["status"] != "cancelled" for e in fake.events["landen@example.com"].values())
+    assert cal.store.event(standup["id"])["calendar_id"].endswith(":landen@example.com")
+    # From Pip's own calendar to a Google one: made there, gone here
+    cal.store.add_event("pizza", datetime(2026, 11, 9, 19, 0), calendar_id="pip")
+    pizza = next(e for e in cal.store.all_events() if e["title"] == "pizza")
+    assert await say(reg, "change:event", {"id": "#" + pizza["id"][:6], "calendar": "Work"}) == "Moved pizza to Landen: Work."
+    await cal.sync.run_once()
+    assert any(e["summary"] == "pizza" for e in fake.events["work1"].values())
+    assert [e["calendar_id"] for e in cal.store.all_events() if e["title"] == "pizza"] != ["pip"]
+
+
+async def test_making_renaming_colouring_and_deleting_calendars(env):
+    reg, cal, fake, people, sched, clock = env
+    landen = await google_with_two_calendars(env)
+    assert await say(reg, "add:calendar", {"name": "Gym", "color": "green"}, me(landen)) == "Made a new calendar: Landen: Gym."
+    gid = next(k for k, c in fake.calendars.items() if c["summary"] == "Gym")
+    assert fake.calendars[gid]["backgroundColor"] == "#0b8043"
+    assert await say(reg, "change:calendar", {"calendar": "gym", "name": "Fitness"}, me(landen)) == "Renamed Landen: Gym to Fitness."
+    assert fake.calendars[gid]["summary"] == "Fitness"
+    await say(reg, "change:calendar", {"calendar": "Fitness", "color": "purple"}, me(landen))
+    assert fake.calendars[gid]["backgroundColor"] == "#8e24aa"
+    assert await say(reg, "change:calendar", {"calendar": "Fitness", "shown": False}, me(landen)) == "Hiding Landen: Fitness."
+    assert "Fitness (hidden)" in reg.summary(me(landen))
+    # Deleting: only after a spoken yes; main calendars never; a shared one only leaves their list
+    with pytest.raises(Invalid):
+        say(reg, "cancel:calendar", {"calendar": "Fitness"}, me(landen))
+    with pytest.raises(Invalid):
+        say(reg, "cancel:calendar", {"calendar": "Landen's main", "confirmed": True}, me(landen))
+    assert await say(reg, "cancel:calendar", {"calendar": "Fitness", "confirmed": True}, me(landen)) == "Deleted Landen: Fitness."
+    assert gid not in fake.calendars and "Fitness" not in reg.summary(me(landen))
+    assert await say(reg, "cancel:calendar", {"calendar": "Abby & Landen", "confirmed": True}, me(landen)) == \
+        "Took Landen: Abby & Landen off the list."
+    # The same from the dashboard
+    r = await cal.dashboard("new_calendar", {"name": "Trips", "color": "#039be5"})
+    assert r["said"] == "Made a new calendar: Landen: Trips."
+    trips = next(c for c in cal.calendars_view() if c["name"] == "Trips")
+    await cal.dashboard("edit_calendar", {"id": trips["id"], "name": "Travel"})
+    await cal.dashboard("delete_calendar", {"id": trips["id"]})
+    assert not any(c["name"] in ("Trips", "Travel") for c in cal.calendars_view())
+
+
+async def test_without_the_wider_permission_pip_says_how_and_keeps_syncing(env):
+    reg, cal, fake, people, sched, clock = env
+    landen = await google_with_two_calendars(env, narrow=True)
+    said = await say(reg, "add:calendar", {"name": "Gym"}, me(landen))
+    assert "reconnect Google" in said and "Select all" in said
+    assert reg.modules["google"].api.accounts()[0]["status"] == "ok"     # the account itself is fine
+    assert (await reg.modules["google"].dashboard("status", {}))["accounts"][0]["can_manage"] is False
+    with pytest.raises(ValueError, match="reconnect"):
+        await cal.dashboard("new_calendar", {"name": "Gym"})
+
+
+# ---------------------------------------------------------------- D-104: ignored calendars
+async def test_an_ignored_calendar_is_gone_everywhere_until_brought_back(env):
+    reg, cal, fake, people, sched, clock = env
+    landen = await google_with_two_calendars(env)
+    hol = next(c for c in cal.calendars_view() if c["name"] == "Holidays")
+    assert "Veterans Day" in say(reg, "look:calendar", {"from": "2026-11-11"})
+    await cal.dashboard("ignore", {"id": hol["id"], "value": True})
+    await cal.sync.run_once()
+    assert not any(c["name"] == "Holidays" for c in cal.calendars_view())             # no tick box on the calendar page
+    assert "Holidays" not in reg.summary(me(landen))
+    assert "Veterans Day" not in say(reg, "look:calendar", {"from": "2026-11-11"})
+    assert not cal.store.db.execute("SELECT 1 FROM calendar_events WHERE calendar_id = ?", (hol["id"],)).fetchone()
+    assert [c["ignored"] for c in (await cal.dashboard("all_calendars", {}))["calendars"] if c["name"] == "Holidays"] == [True]
+    with pytest.raises(Invalid):
+        say(reg, "look:calendar", {"from": "2026-11-11", "calendar": "Holidays"})
+    # By voice too; bringing it back is on the Google page
+    assert "ignore" in await say(reg, "change:calendar", {"calendar": "Abby & Landen", "ignored": True}, me(landen))
+    await cal.dashboard("ignore", {"id": hol["id"], "value": False})
+    await cal.sync.run_once()
+    assert "Veterans Day" in say(reg, "look:calendar", {"from": "2026-11-11"})
+
+
+def test_an_older_database_is_upgraded(tmp_path, monkeypatch):
+    """Installing over the Pi's existing pip.db: the new columns are added (a module may alter its own tables)."""
+    monkeypatch.setenv("PIP_DATA", str(tmp_path))
+    db = sqlite3.connect(tmp_path / "pip.db")
+    db.execute("CREATE TABLE google_accounts (id TEXT PRIMARY KEY, person_id TEXT NOT NULL, email TEXT NOT NULL DEFAULT '', "
+               "status TEXT NOT NULL DEFAULT 'ok', sharing TEXT NOT NULL DEFAULT 'everyone', created REAL NOT NULL, "
+               "last_sync REAL, error TEXT NOT NULL DEFAULT '')")
+    db.execute("CREATE TABLE calendar_calendars (id TEXT PRIMARY KEY, account_id TEXT NOT NULL DEFAULT '', google_id TEXT NOT NULL "
+               "DEFAULT '', name TEXT NOT NULL, color TEXT NOT NULL DEFAULT '#6c5ce7', ticked INTEGER NOT NULL DEFAULT 1, "
+               "writable INTEGER NOT NULL DEFAULT 1, is_primary INTEGER NOT NULL DEFAULT 0, sync_token TEXT NOT NULL DEFAULT '', reminder REAL)")
+    db.commit()
+    reg = Registry.load({}, infos=[read(ROOT / "google"), read(ROOT / "calendar")], db_path=tmp_path / "pip.db")
+    assert set(reg.modules) == {"google", "calendar"}
+    assert [c["ignored"] for c in reg.modules["calendar"].calendars_view(ignored=True)] == [False]

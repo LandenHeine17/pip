@@ -5,8 +5,11 @@ At startup every enabled module (common/modules.py finds them) is imported and i
 setup returns a Module. Each of its parts is optional:
 
     actions           ACTION verbs Claude may use ("add_task", "add:event" = do add, kind event)
-                      → Action(check, do): everything is checked before anything is done
-    summary(call)     its part of what Claude reads with each request (sent privately)
+                      → Action(check, do): everything is checked before anything is done; `do` may be
+                      async (e.g. it has to ask Google). "look:<kind>" is a look-up: its `do` returns
+                      text for Claude, who is then asked again with it (the calendar beyond tomorrow)
+    summary(call)     its part of what Claude reads with each request (sent privately); keep it short,
+                      and shorter still when call.kind == "join" (join-in checks run every ~40 s)
     find(ref)         an item from a short id Claude used ("#e1a2b3") → kind name, e.g. "event"
     dashboard(...)    answers its dashboard page (/m/<name>/ ↔ /api/m/<name>)
     tasks()           background jobs (e.g. syncing every two minutes)
@@ -45,6 +48,7 @@ class Call:
     """Who's asking and when, passed to actions and summaries."""
     speaker: Any = None               # people.Match or None
     now: datetime = field(default_factory=datetime.now)
+    kind: str = "direct"              # direct / mentioned / join (a join-in check gets a shorter summary)
 
     @property
     def person_id(self) -> str | None:
@@ -97,7 +101,9 @@ class ModuleContext:
         con.execute("PRAGMA journal_mode=WAL")
         prefix = self.name + "_"
 
-        def guard(action, table, *_):
+        def guard(action, table, arg2, *_):
+            if action == sqlite3.SQLITE_ALTER_TABLE:   # here SQLite gives ("main", table): adding a column later
+                table = arg2
             if action in (sqlite3.SQLITE_CREATE_TABLE, sqlite3.SQLITE_DROP_TABLE, sqlite3.SQLITE_INSERT,
                           sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE, sqlite3.SQLITE_ALTER_TABLE,
                           sqlite3.SQLITE_CREATE_INDEX) and table and not table.startswith((prefix, "sqlite_")):
