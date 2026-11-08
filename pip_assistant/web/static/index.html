@@ -24,7 +24,7 @@
   <div id="ringing"></div>
   <div class="cols2">
     <div><div class="label">Timers, alarms &amp; reminders</div><div class="items" id="alerts"></div></div>
-    <div><div class="label" style="display:flex;justify-content:space-between">Calendar · next few days <a href="/m/calendar/" id="calLink" hidden>Open calendar ›</a></div><div class="items" id="events"></div></div>
+    <div><div class="label" style="display:flex;justify-content:space-between">Calendar · next two weeks <a href="/m/calendar/" id="calLink" hidden>Open calendar ›</a></div><div class="items" id="events"></div></div>
   </div>
   <form id="newtimer"><input id="tmin" type="number" min="0.1" step="0.1" placeholder="Minutes" style="width:7em" required>
     <input id="tlabel" placeholder="Label (optional)" maxlength="40" style="flex:1;min-width:8em"><button class="primary">Start timer</button></form>
@@ -229,22 +229,9 @@ function renderSched(){
       ${pct!=null?`<div class="bar"><i style="width:${pct}%"></i></div>`:""}</div>
       <span style="display:flex;align-items:center;gap:6px">${a.kind==="timer" ? `<span class="big">${left(a.due-now)}</span>` : ""}<button class="ghost" title="Cancel" onclick="act({action:'cancel',id:'${esc(a.id)}'})">✕</button></span></div>`;
   }).concat(missed).concat(sched.later_heads_ups ? [`<div class="sub" style="padding:4px 2px">+ ${sched.later_heads_ups} more calendar heads-up${sched.later_heads_ups>1?"s":""} after tomorrow · <a href="/m/calendar/">calendar</a></div>`] : []).join("") || `<div class="empty">Nothing set.</div>`;
-  // The next 3 days, grouped by day (the rest is on the Calendar page, D-109)
-  const dayKey = ts => { const d = new Date(ts*1000); d.setHours(0,0,0,0); return d.getTime(); };
-  const today = dayKey(now), horizon = today + 3*86400000;
-  const soon = sched.events.filter(e => dayKey(e.at) < horizon).slice(0, 8);
-  const rest = sched.events.length - soon.length;
-  let lastDay = null;
-  $("events").innerHTML = soon.map(e => {
-    const k = dayKey(e.at), head = k !== lastDay;
-    lastDay = k;
-    const label = k === today ? "Today" : k === today + 86400000 ? "Tomorrow" : new Date(e.at*1000).toLocaleDateString([], {weekday:"long"});
-    return `${head?`<div class="label" style="margin:8px 0 2px">${label}</div>`:""}<div style="display:flex;gap:8px;align-items:baseline;padding:2px 0;font-size:.9rem">
-      <i style="flex:none;width:8px;height:8px;border-radius:50%;background:${e.color||"var(--muted)"}"></i>
-      <span class="sub" style="flex:none;min-width:4.2em;font-variant-numeric:tabular-nums">${e.all_day ? "all day" : new Date(e.at*1000).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"})}</span>
-      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.title)}${e.private?` <span class="sub">(private)</span>`:""}</span></div>`;
-  }).join("") + (rest > 0 ? `<div class="sub" style="padding:4px 2px">+ ${rest} more in the next two weeks · <a href="/m/calendar/">open calendar</a></div>` : "")
-    || `<div class="empty">Nothing in the next few days.</div>`;
+  $("events").innerHTML = sched.events.map(e => `<div class="item" style="border-left:4px solid ${e.color||"transparent"}"><div><b>${esc(e.title)}</b>${e.private?` <span class="pill" style="background:var(--line)">private</span>`:""}<div class="sub">${e.all_day ? new Date(e.at*1000).toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"})+" · all day" : clock(e.at)}${e.repeat?" · "+REP(e.repeat):""}</div></div>
+      <button class="ghost" title="Remove" onclick="if(confirm('Remove this event${e.repeat?" (all repeats)":""}?')) act({action:'remove_event',id:'${esc(e.id)}'})">✕</button></div>`).join("")
+    || `<div class="empty">Nothing on the calendar.</div>`;
 }
 async function loadSched(){ try{ const r = await (await fetch("/api/alerts",{cache:"no-store"})).json(); if(r.now){ sched = r; skew = Date.now()/1000 - r.now; $("ringing").dataset.key = ""; renderSched(); } }catch(e){} }
 async function act(body){ try{ const r = await (await fetch("/api/alerts/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})).json(); if(r.error) alert(r.error); return r; }catch(e){ alert("Couldn't reach Pip"); } finally { loadSched(); } }

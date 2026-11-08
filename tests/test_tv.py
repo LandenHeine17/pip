@@ -111,3 +111,17 @@ def test_what_the_face_wears():
     assert dress(95, 60) == "storm" and dress(63, 50) == "umbrella" and dress(73, 20) == "snow"
     assert dress(3, 30) == "beanie" and dress(0, 75) == "sunglasses" and dress(0, 75, day=False) == ""
     assert dress(2, 55) == ""
+
+
+def test_six_seven_is_heard_only_as_words():
+    """The kept six-seven joke (D-35): the page's own pattern, run on the same cases in Python."""
+    import re
+    from pathlib import Path
+    page = (Path(__file__).parent.parent / "pip_assistant/web/static/tv.html").read_text()
+    words = re.search(r"words: /(.+)/i,", page).group(1)
+    heard = lambda text: bool(re.search(words, text, re.I))
+    for yes in ("six seven", "Six, seven!", "6 7", "6-7", "it's 67", "SIX SEVEN SIX SEVEN"):
+        assert heard(yes), yes
+    for no in ("6:07", "167", "6.7", "67.5", "sixty seven", "1.67", "six", "seventy"):
+        assert not heard(no), no
+    assert 'd.who === "you" && heardSixSeven(d.text)' in page   # never his own replies

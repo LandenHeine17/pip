@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <title>Pip</title>
-<!-- Pip's face on the monitor (step 7, D-110). The face is Ziggletron's, brought over: its drawing code is
-     unchanged, the states and colours are Pip's. It only watches: no buttons, nothing sent. It gets only what
+<!-- Pip's face on the monitor (step 7, D-110). The face and its drawing come from Ziggletron's tv.html;
+     the states and colours are Pip's. It only watches: no buttons, nothing sent. It gets only what
      it shows (/api/tv and /api/tv/stream): Pip's state, the mouth level, timers, next events, weather, and
      captions of what was said to Pip and his replies. Never room talk. The layout is fixed for now: the face
      on the left, clock, weather, timers and next events on the right (layouts by voice come later). -->
@@ -28,7 +28,6 @@
     transition: transform 20s ease-in-out, filter 3s;
   }
   body.resting .screen { filter: brightness(.45); }
-  body.offline #meters, body.offline #facts { opacity: .35; }  /* these numbers are out of date now */
 
   /* The face's own box, always in the top left. */
   /* Each part has its own row, so hiding one (the name, in a small box) never shifts the others. */
@@ -67,8 +66,6 @@
 
   /* Every section is a box of its own, placed on the grid, that pops in, slides when it moves and
      pops out. What's inside fits itself to the box's size (the @container rules). */
-  #board { display: contents; }
-  #stock { display: none; }
   .box {
     display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; container-type: size;
     background: linear-gradient(160deg, #17171d, #111115); border: 1px solid var(--line); border-radius: 1.6rem;
@@ -80,7 +77,7 @@
   @keyframes pop-out { to { opacity: 0; transform: scale(.82); } }
   .clock-section { justify-content: center; }
 
-  /* A box Ziggletron was asked to colour: its edge, title and highlights take the colour. */
+  /* A box Pip was asked to colour: its edge, title and highlights take the colour. */
   .box.tinted {
     border-color: color-mix(in srgb, var(--tint) 55%, var(--line));
     background: linear-gradient(160deg, color-mix(in srgb, var(--tint) 15%, #17171d), #111115);
@@ -107,12 +104,9 @@
   .pick.on { color: var(--ink); font-weight: 600; }
   .pick .label { max-width: 0; overflow: hidden; opacity: 0; transition: max-width 1s, opacity .8s; }
   #rail.awake .pick .label { max-width: 20rem; opacity: 1; }
-  .clock { font-size: min(5.6rem, 52cqh, 23cqw); }
-  .date { font-size: min(1.9rem, 16cqh, 8cqw); }
   .upcoming { flex: 1 1 0; min-height: 0; overflow: hidden; }
   @container (max-height: 15rem) { .box .day { display: none; } }
   @container (max-height: 11rem) { .feels { display: none; } }
-  @container (max-height: 17rem) { #facts { display: none; } }
   @container (min-width: 46rem) { #meters { grid-template-columns: repeat(4, 1fr); } }
 
   /* A small face box keeps just the face and what it's doing. */
@@ -128,11 +122,6 @@
   .said { padding: .35rem 0; }
   .said b { color: var(--muted); font-weight: 600; }
   .said.back b { color: var(--state); }
-  .log { font-size: 1.4rem; padding: .2rem 0; display: flex; gap: 1rem; }
-  .log time { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .log.error { color: var(--critical); }
-  .fact-line { padding: .4rem 0; border-bottom: 1px solid var(--line); }
-  .fact-line:last-child { border-bottom: 0; }
   .now { display: flex; align-items: center; gap: 1.6rem; }
   .temp { font-size: min(5rem, 30cqh, 20cqw); font-weight: 300; line-height: 1.1; white-space: nowrap; }
   .sky { font-size: 2rem; line-height: 1.15; }
@@ -142,16 +131,11 @@
   .day > :last-child { text-align: right; }
   .day .words { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .day .rain, .day .name-of-day { color: var(--muted); }
-  .picture { flex: 1 1 0; min-height: 0; width: 100%; object-fit: contain; display: block; }
-  .picture-about { color: var(--muted); font-size: 1.4rem; text-align: center; margin-top: .6rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .picture-credit { color: var(--muted); opacity: .7; font-size: 1rem; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .waiting { margin: auto; text-align: center; color: var(--muted); font-size: 2.2rem; }
-  .clock { font-size: 5.6rem; font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .clock { font-size: min(5.6rem, 52cqh, 23cqw); font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
   .clock small { font-size: 2.4rem; color: var(--muted); margin-left: .5rem; letter-spacing: 0; }
-  .date { color: var(--muted); font-size: 1.9rem; margin-top: .5rem; }
+  .date { color: var(--muted); font-size: min(1.9rem, 16cqh, 8cqw); margin-top: .5rem; }
   h2 { margin: 1.3rem 0 .6rem; padding-top: 1rem; border-top: 1px solid var(--line); font-size: 1.4rem; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
 
-  .upcoming { flex: 1 1 0; min-height: 0; overflow: hidden; }
   .item { display: flex; justify-content: space-between; align-items: baseline; gap: 1.2rem; padding: .35rem 0; }
   .item .what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .item .when { white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -168,10 +152,6 @@
   .bar div { height: 100%; background: var(--muted); border-radius: .25rem; transition: width 1s; }
   .warning .bar div { background: var(--warning); }
   .critical .bar div { background: var(--critical); }
-  .facts { margin-top: 1rem; font-size: 1.4rem; }
-  .fact { display: flex; justify-content: space-between; gap: 1.2rem; padding: .2rem 0; }
-  .fact span:first-child { color: var(--muted); white-space: nowrap; }
-  .fact span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* Pip's fixed layout: the face on the left, the boxes on the right. */
   #face-box { grid-area: 1 / 1 / span 8 / span 7; }
   #b-clock { grid-area: 1 / 8 / span 2 / span 5; }
@@ -211,7 +191,6 @@
 const $ = (id) => document.getElementById(id);
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const CAPTION_S = 60;     // what was said leaves the screen after this long
-const FRESH_S = 5;        // older events (the history replayed on connecting) don't make it react
 const DOZE_S = 600;       // idle this long with nobody talking to him: he dozes (less motion, PIP-NEW-062)
 const SILENCE_S = 40;     // nothing at all for this long, and it counts as unreachable
 const RECONNECT_S = 3;
@@ -222,67 +201,83 @@ const RECONNECT_S = 3;
 //   slant: + worried, - focused     look: where it's looking    smile: -1 frown to 1 grin
 //   mouth: mouth width     gape: mouth open     lean: extra size, as if leaning in
 const REST = { w: 1, h: 1, open: 1, happy: 0, slant: 0, lookX: 0, lookY: 0, smile: .35, mouth: 1, gape: 0, lean: 0 };
+// Pip's states (what pip-core says he's doing), plus three of the screen's own: loading (the page has
+// just opened), lost (it can't reach Pip) and dozing (idle and quiet for a while).
 const FACES = {
-  loading:      { open: .35, smile: 0, mouth: .6, lookY: .3 },
-  idle:         {},
-  listening:    { h: 1.06, lean: .04, smile: .25, mouth: .8, gape: .05 },
-  interrupted:  { h: 1.12, slant: .3, smile: -.1, mouth: .6, gape: .25, lookY: -.1 },
-  mic_off:      { open: .55, slant: .3, smile: -.05, mouth: .5, lookY: .25 },
-  lost:         { open: .5, slant: .9, smile: -.75, mouth: .7, lookY: .5 },
-  hearing:      { h: 1.08, lean: .05, smile: .2, mouth: .75, gape: .1 },
-  transcribing: { open: .75, slant: -.35, lookX: .5, smile: 0, mouth: .6 },
-  thinking:     { open: .85, slant: -.2, lookX: .6, lookY: -.7, smile: -.05, mouth: .5 },
-  speaking:     { smile: .3, mouth: .95 },
-  dozing:       { open: .3, slant: .25, lookY: .35, smile: .15, mouth: .7 },
-  asleep:       { open: 0, smile: .1, mouth: .45, lookY: .3 },
-  away:         { open: .12, lookY: .4, smile: 0, mouth: .5 },
-  paused:       { open: .55, slant: .3, smile: -.05, mouth: .5, lookY: .25 },
-  offline:      { open: .5, slant: .9, smile: -.75, mouth: .7, lookY: .5 },
-  ringing:      { w: 1.05, h: 1.2, smile: 0, mouth: .55, gape: .9, lean: .08 },
+  loading:     { open: .35, smile: 0, mouth: .6, lookY: .3 },
+  idle:        {},
+  listening:   { h: 1.06, lean: .04, smile: .25, mouth: .8, gape: .05 },
+  thinking:    { open: .85, slant: -.2, lookX: .6, lookY: -.7, smile: -.05, mouth: .5 },
+  speaking:    { smile: .3, mouth: .95 },
+  interrupted: { h: 1.12, slant: .3, smile: -.1, mouth: .6, gape: .25, lookY: -.1 },
+  ringing:     { w: 1.05, h: 1.2, smile: 0, mouth: .55, gape: .9, lean: .08 },
+  mic_off:     { open: .55, slant: .3, smile: -.05, mouth: .5, lookY: .25 },
+  offline:     { open: .8, slant: .4, smile: -.2, mouth: .7, lookY: .2 },   // no internet: just the basics
+  lost:        { open: .5, slant: .9, smile: -.75, mouth: .7, lookY: .5 },
+  dozing:      { open: .3, slant: .25, lookY: .35, smile: .15, mouth: .7 },
   // Brief reactions, on top of whatever it's doing:
-  pleased:      { h: .72, happy: 1, smile: 1, mouth: 1.15 },
-  music:        { h: .72, happy: .9, smile: .85, mouth: 1 },
-  confused:     { slant: .55, smile: -.4, mouth: .6, lookX: -.5 },
-  perked:       { h: 1.12, lean: .06, smile: .5 },
-  sixseven:     { w: 1.08, h: 1.18, smile: .75, mouth: 1.15, gape: .7, lean: .07, lookY: -.15 },  // it heard "six seven"
+  pleased:     { h: .72, happy: 1, smile: 1, mouth: 1.15 },   // thanked
+  perked:      { h: 1.12, lean: .06, smile: .5 },             // it's just heard something for it
 };
 // Pip's state colours, the same as the circle on the dashboard (D-108), brighter for a dark screen.
 const COLORS = {
   loading: "#a8a8b4", idle: "#b9bec6", listening: "#5fe0b0", thinking: "#a58cff", speaking: "#6ea8ff",
   interrupted: "#ffa64d", ringing: "#ff6b5e", mic_off: "#6b7280", offline: "#8c96a8", lost: "#ff6b5e",
-  dozing: "#7fb2dc", asleep: "#7a8ae0", pleased: "#6ea8ff", music: "#7fdcff", confused: "#ffa64d", perked: "#5fe0b0",
-  sixseven: "#ffb347",
+  dozing: "#7fb2dc", pleased: "#6ea8ff", perked: "#5fe0b0",
 };
 const WORDS = {
   loading: "Starting up", idle: "", listening: "Listening", thinking: "Thinking", speaking: "Talking",
   interrupted: "Interrupted", ringing: "Ringing", mic_off: "Not listening", offline: "Offline: just the basics",
-  lost: "Can't reach Pip", dozing: "", asleep: "",
+  lost: "Can't reach Pip", dozing: "",
 };
+
+// --- "Six seven" ------------------------------------------------------------------------------
+// A joke kept from Ziggletron (D-35): when someone says "six seven" to him, he freaks out for a few
+// seconds: wide eyes, a grin, a little shake, two hands see-sawing (the meme) and "6" "7" floating up.
+// Only for what people say, not his own replies ("It's 67 degrees" shouldn't set him off), and at most
+// once every half a minute so it stays funny (the calm rule, PIP-NEW-062).
+const SIXSEVEN = {
+  seconds: 4, every: 30,
+  face: { w: 1.08, h: 1.18, smile: .75, mouth: 1.15, gape: .7, lean: .07, lookY: -.15 },
+  color: "#ffb347",
+  // "six seven", "six, seven!", "6 7", "6-7" or "67" as a word; not "6:07", "167", "6.7" or "67.5".
+  words: /(?<![\d.:])\b(?:six[\s,.!?\-–—]*seven|6[ \-–—]?7)\b(?![.:]\d)/i,
+};
+FACES.sixseven = SIXSEVEN.face;
+COLORS.sixseven = SIXSEVEN.color;
+function heardSixSeven(text) { return SIXSEVEN.words.test(text || ""); }
 
 const canvas = $("face"), ctx = canvas.getContext("2d");
 const face = { ...REST, ...FACES.loading };
-const body = { color: [168, 168, 180], blink: 1, saccadeX: 0, saccadeY: 0, voice: 0, mic: 0, gape: 0, shake: 0 };
-const live = { state: "loading", reaction: null, reactionUntil: 0, connected: false, lastEvent: 0, voiceAt: 0, micTarget: 0, voiceTarget: 0, activeAt: 0 };
+const body = { color: [168, 168, 180], blink: 1, saccadeX: 0, saccadeY: 0, voice: 0, gape: 0 };
+const live = { state: "loading", reaction: null, reactionUntil: 0, sixSevenAt: -Infinity, connected: false,
+               lastEvent: 0, voiceAt: 0, voiceTarget: 0, activeAt: 0, weather: {}, align: "middle" };
 let particles = [];
 
 function hexRgb(hex) { return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)); }
-function shown() {  // the state the screen is in, most important first
-  if (!live.connected) return "lost";
+function shown() {  // the state the screen is in
+  if (!live.connected) return live.wasLost ? "lost" : "loading";
   if (live.state === "idle" && performance.now() - live.activeAt > DOZE_S * 1000) return "dozing";  // calmer when quiet
   return live.state;
 }
-function expression() {
+function expression() {  // the state, or a reaction on top of it
   const state = shown();
   if (live.reaction && performance.now() < live.reactionUntil) {
-    // "Six seven" is too much to keep in, whatever it's doing; only an alarm or losing touch comes first.
+    // Six seven is too much to keep in, whatever he's doing; only an alarm or losing touch comes first.
     if (live.reaction === "sixseven" && state !== "lost" && state !== "ringing") return "sixseven";
-    // Reactions colour its quiet moments; they don't hide that it's busy. It can smile while talking.
-    if (state === "idle" || state === "listening" || state === "dozing" || (state === "speaking" && live.reaction === "pleased"))
+    // Other reactions colour his quiet moments; they don't hide that he's busy. He can smile while talking.
+    if (["idle", "listening", "dozing"].includes(state) || (state === "speaking" && live.reaction === "pleased"))
       return live.reaction;
   }
   return state;
 }
 function react(name, seconds) { live.reaction = name; live.reactionUntil = performance.now() + seconds * 1000; }
+function sixSeven() {
+  const now = performance.now();
+  if (now - live.sixSevenAt < SIXSEVEN.every * 1000) return;
+  live.sixSevenAt = now;
+  react("sixseven", SIXSEVEN.seconds);
+}
 
 // One eye, as an outline: a rounded square whose top is held down by the lid and bottom pushed up
 // by the cheek. Keeping it one shape means the glow follows the lids properly.
@@ -311,15 +306,13 @@ function draw(now) {
   ctx.lineJoin = ctx.lineCap = "round";
   const state = expression(), t = now / 1000;
 
-  // A slow float, as if breathing. It dances to music and shakes when an alarm rings.
-  const dancing = state === "music";
-  const floatY = Math.sin(t * (dancing ? 5.2 : .9)) * u * (dancing ? .3 : .09);
-  const swayX = dancing ? Math.sin(t * 2.6) * u * .3 : Math.sin(t * .37) * u * .06;
+  // A slow float, as if breathing. It shakes when an alarm rings, and a little at six seven.
+  const floatY = Math.sin(t * .9) * u * .09, swayX = Math.sin(t * .37) * u * .06;
   const shake = shown() === "ringing" ? Math.sin(t * 46) * u * .09 : state === "sixseven" ? Math.sin(t * 38) * u * .05 : 0;
-  // Where in its box the face sits: Ziggletron can move it up or down (the face's "align").
-  const middle = H * .5;
+  // Where in its box the face sits: the top, middle or bottom (the face's "align" in the screen layout).
+  const middle = { top: 3 * u, bottom: H - 2.8 * u }[live.align] ?? H * .5;
   const cx = W / 2 + swayX + shake, cy = Math.max(3 * u, Math.min(H - 2.8 * u, middle)) + floatY;
-  const scale = 1 + face.lean + body.mic * .05;
+  const scale = 1 + face.lean;
 
   const gazeX = (face.lookX + body.saccadeX) * u * .55, gazeY = (face.lookY + body.saccadeY) * u * .4;
   const spread = u * 2.25 * scale, eyeW = u * 2.45 * face.w * scale, eyeH = u * 3.1 * face.h * scale;
@@ -351,7 +344,7 @@ function draw(now) {
   drawParticles(state, t, cx, cy, u, rgb);
 }
 
-// --- What it wears: it dresses for the weather (core/weather.py's dress() says what) ---------------
+// --- What it wears: it dresses for the weather (common/weather.py's dress() says what) ---------------
 // Everything is measured in u, like the face, so it fits any size of box.
 // November to Twelfth Night, a warm hat is a Santa hat. With no forecast yet, it wears one anyway then.
 function holidays(date) { return date.getMonth() >= 10 || (date.getMonth() === 0 && date.getDate() <= 6); }
@@ -512,9 +505,8 @@ function drawSunglasses(cx, u, { spread, eyeY, gazeX, eyeW, eyeH }) {
   ctx.stroke();
 }
 
-// "Six seven": it hears it and freaks out. The only time it has hands: two little glowing ones,
-// drawn like its eyes and mouth, palms up, see-sawing up and down opposite each other.
-function sixSeven(text) { return /\b(?:six[\s,.!?\-–—]*seven|6[\s\-–—]*7)\b/i.test(text || ""); }
+// The six-seven hands: the only time he has hands. Two little glowing ones, drawn like his eyes and
+// mouth, palms up, see-sawing up and down opposite each other.
 function drawSixSevenHands(t, cx, cy, u, rgb) {
   const beat = Math.sin(t * Math.PI * 2 * 2.1);  // about two bounces a second, like the meme
   const k = u * .5;  // the hand's size: little, next to its eyes
@@ -544,9 +536,15 @@ function drawSixSevenHands(t, cx, cy, u, rgb) {
   }
 }
 
-// Thought dots, sleepy z's and music notes.
+// Thought dots while thinking (or starting up); floating glyphs for some states: sleepy z's while he
+// dozes, "6" and "7" at six seven. Each glyph rises, grows and fades over a few seconds.
+const GLYPHS = {
+  dozing:   { chars: "zZz", every: 1.9, swap: 1, side: () => 1 },                          // to one side, slowly
+  sixseven: { chars: "67", every: .6, swap: 2.5, side: (t) => Math.sign(Math.sin(t * 7.3)) || 1 },  // both sides, fast
+};
+const GLYPH_S = 4.5, MAX_GLYPHS = 12;
 function drawParticles(state, t, cx, cy, u, rgb) {
-  if (state === "thinking" || state === "transcribing" || shown() === "loading") {
+  if (state === "thinking" || state === "loading") {
     for (let i = 0; i < 3; i++) {
       const phase = t * 2.4 - i * .55, x = cx + (i - 1) * u * .85, y = cy - u * 2.6;
       const glow = .3 + .7 * Math.max(0, Math.sin(phase));
@@ -554,13 +552,13 @@ function drawParticles(state, t, cx, cy, u, rgb) {
       ctx.beginPath(); ctx.arc(x, y - glow * u * .15, u * .17, 0, 7); ctx.fill();
     }
   }
-  const glyphs = state === "asleep" ? "zZz" : state === "music" ? "♪♫" : state === "sixseven" ? "67" : "";
-  if (glyphs && (!particles.length || particles.at(-1).born < t - (state === "asleep" ? 1.9 : state === "sixseven" ? .6 : .8)) && particles.length < 12)
-    particles.push({ state, born: t, glyph: glyphs[Math.floor(t * (state === "sixseven" ? 2.5 : 1)) % glyphs.length], side: state === "asleep" ? 1 : Math.sign(Math.sin(t * 7.3)) || 1, drift: (t * 3.7) % 1 });
-  particles = particles.filter((p) => p.state === state && t - p.born < 4.5);
+  const g = GLYPHS[state];
+  if (g && (!particles.length || particles.at(-1).born < t - g.every) && particles.length < MAX_GLYPHS)
+    particles.push({ state, born: t, glyph: g.chars[Math.floor(t * g.swap) % g.chars.length], side: g.side(t), drift: (t * 3.7) % 1 });
+  particles = particles.filter((p) => p.state === state && t - p.born < GLYPH_S);
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   for (const p of particles) {
-    const age = (t - p.born) / 4.5;
+    const age = (t - p.born) / GLYPH_S;
     ctx.globalAlpha = Math.sin(Math.PI * age) * .9;
     ctx.fillStyle = `rgb(${rgb})`;
     ctx.font = `600 ${u * (.55 + age * .55)}px system-ui, "DejaVu Sans", sans-serif`;
@@ -573,14 +571,14 @@ let lastFrame = 0, nextBlink = 2500, blinkStart = -1, nextSaccade = 1500;
 function step(now) {
   requestAnimationFrame(step);
   const state = expression();
-  const resting = ["asleep", "dozing", "mic_off", "lost"].includes(shown());
+  const resting = ["dozing", "mic_off", "lost"].includes(shown());
   if (now - lastFrame < (resting ? 66 : 32)) return;          // 30 frames a second, 15 at rest: it's on all day
   const dt = Math.min((now - lastFrame) / 1000, .25); lastFrame = now;
   const ease = (rate) => 1 - Math.exp(-rate * dt);
 
   const target = { ...REST, ...FACES[state] };
   for (const key in REST) face[key] += (target[key] - face[key]) * ease(key === "happy" ? 9 : 6.5);
-  const rgb = hexRgb(COLORS[state]);
+  const rgb = hexRgb(COLORS[state] || COLORS.idle);
   body.color = body.color.map((c, i) => c + (rgb[i] - c) * ease(4));
 
   // Blinks, sometimes twice, and small glances about.
@@ -595,18 +593,17 @@ function step(now) {
   }
   if (now > nextSaccade) {
     nextSaccade = now + 1400 + Math.random() * 4400;
-    const still = resting || ["thinking", "transcribing", "hearing"].includes(state);
+    const still = resting || state === "thinking";
     body.saccadeX = still ? 0 : Math.random() < .35 ? 0 : (Math.random() - .5) * 1.1;
     body.saccadeY = still ? 0 : Math.random() < .5 ? 0 : (Math.random() - .5) * .55;
   }
 
-  // The mouth follows its real voice. If that isn't coming through, it still moves while talking.
-  body.mic += (live.micTarget - body.mic) * ease(14);
+  // The mouth follows his real voice (speech.level from pip-ears). If that isn't coming through, it
+  // still moves while he talks.
   body.voice += (live.voiceTarget - body.voice) * ease(20);
   const heardVoice = now - live.voiceAt < 800;
   const talking = shown() === "speaking";
-  const made = heardVoice ? clamp(body.voice * 4, 0, 1)
-    : .35 + .3 * Math.sin(now / 75) * Math.sin(now / 190);
+  const made = heardVoice ? clamp(body.voice * 4, 0, 1) : .35 + .3 * Math.sin(now / 75) * Math.sin(now / 190);
   const wanted = talking ? made : target.gape;
   body.gape += (wanted - body.gape) * ease(talking ? 22 : 8);
 
@@ -724,7 +721,7 @@ function handle(kind, d) {
   } else if (kind === "caption") {
     live.activeAt = performance.now();
     showCaption(d.who, d.text, d.speaker);
-    if (sixSeven(d.text)) react("sixseven", 4);
+    if (d.who === "you" && heardSixSeven(d.text)) sixSeven();
     else if (d.who === "you" && /\b(thanks|thank you|good job|nice one|love you)\b/i.test(d.text)) react("pleased", 3);
   } else if (kind === "refresh") {
     refresh();
@@ -734,7 +731,7 @@ function handle(kind, d) {
 function setConnected(connected) {
   if (connected === live.connected) return;
   live.connected = connected;
-  if (!connected) { live.micTarget = live.voiceTarget = 0; $("level").style.transform = "scaleX(0)"; }
+  if (!connected) { live.voiceTarget = 0; $("level").style.transform = "scaleX(0)"; }
   showState();
 }
 function connect() {
