@@ -72,7 +72,7 @@ class TodoSync:
             seen.add(lid)
             self.store.upsert_list(lid, account_id=acc["id"], google_id=item["id"], name=item.get("title", "?"),
                                    is_default=int(i == 0))
-        for lst in self.store.lists():
+        for lst in self.store.lists(ignored=True):
             if lst["account_id"] == acc["id"] and lst["id"] not in seen:
                 self.store.remove_list(lst["id"])
         for lst in self.store.lists():

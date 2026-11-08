@@ -73,3 +73,23 @@ async def test_two_way_with_google_tasks(env):
     say(reg, "complete_task", {"id": "#t" + stamps["id"][:5]}, me(landen))
     await todos.sync.run_once()
     assert next(t for t in fake.tasks["L1"].values() if t["title"] == "buy stamps")["status"] == "completed"
+
+
+async def test_an_ignored_list_is_not_fetched_shown_or_told(env):
+    """D-109: Use / Ignore per Google Tasks list, on the account's settings page."""
+    reg, todos, fake, people = env
+    landen = people.add_person("Landen", "admin")
+    fake.lists["L1"] = {"title": "My Tasks", "owner": "landen@example.com"}
+    fake.lists["L2"] = {"title": "Work stuff", "owner": "landen@example.com"}
+    fake.tasks["L2"] = {"t9": {"id": "t9", "title": "file the report", "status": "needsAction", "etag": '"a"', "updated_ts": 0}}
+    acc = await connect(reg.modules["google"], fake, landen["id"], "landen@example.com")
+    await todos.sync.run_once()
+    assert "file the report" in reg.summary(me(landen))
+    work = next(x for x in (await todos.dashboard("account_lists", {"account": acc["id"]}))["lists"] if x["name"] == "Work stuff")
+    await todos.dashboard("set_list", {"id": work["id"], "ignored": True})
+    await todos.sync.run_once()
+    assert "file the report" not in reg.summary(me(landen))
+    assert all(x["name"] != "Work stuff" for x in (await todos.dashboard("list", {}))["lists"])
+    await todos.dashboard("set_list", {"id": work["id"], "ignored": False})
+    await todos.sync.run_once()
+    assert "file the report" in reg.summary(me(landen))

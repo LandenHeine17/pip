@@ -99,7 +99,11 @@ async def test_two_way_sync_with_google(env):
     assert "Chem lab" in summary and "Hamilton Hall" in summary and "Doctor" not in summary
     assert "Landen's main (household)" in reg.summary(me(landen))
     heads = {h["label"] for h in sched.active(("event",))}
-    assert "Chem lab" in heads and "Doctor" not in heads
+    assert "Chem lab" not in heads and "Doctor" not in heads     # only the calendar's automatic reminder: no heads-up (D-109)
+    main = next(c for c in cal.store.calendars() if c["is_primary"])
+    await cal.dashboard("set_calendar", {"id": main["id"], "field": "heads_up", "value": "all"})
+    heads = {h["label"] for h in sched.active(("event",))}
+    assert "Chem lab" in heads and "Doctor" not in heads         # "every event": now it gets one; private never
     # A voice-added event from Landen goes to his Google calendar, straight away on the next sync
     say(reg, "add:event", {"title": "gym", "at": "2026-11-11T07:00"}, me(landen))
     await cal.sync.run_once()
@@ -353,3 +357,82 @@ def test_an_older_database_is_upgraded(tmp_path, monkeypatch):
     reg = Registry.load({}, infos=[read(ROOT / "google"), read(ROOT / "calendar")], db_path=tmp_path / "pip.db")
     assert set(reg.modules) == {"google", "calendar"}
     assert [c["ignored"] for c in reg.modules["calendar"].calendars_view(ignored=True)] == [False]
+
+
+# ---------------------------------------------------------------- D-109: an account's settings
+async def classes_and_dentist(env):
+    """A main calendar with an automatic 30-minute reminder: classes use it, the dentist has its own."""
+    reg, cal, fake, people, sched, clock = env
+    landen = people.add_person("Landen", "admin")
+    fake.calendars["landen@example.com"] = {"summary": "landen@example.com", "primary": True, "accessRole": "owner",
+                                            "owner": "landen@example.com",
+                                            "defaultReminders": [{"method": "popup", "minutes": 30}]}
+    fake.calendars["fam"] = {"summary": "Family", "accessRole": "owner", "owner": "landen@example.com"}
+    for d in (9, 10, 11):
+        fake.add_event("landen@example.com", summary=f"Calc class {d}", start={"dateTime": f"2026-11-{d:02d}T10:00:00-06:00"},
+                       end={"dateTime": f"2026-11-{d:02d}T11:00:00-06:00"})
+    fake.add_event("landen@example.com", summary="Dentist", start={"dateTime": "2026-11-09T15:00:00-06:00"},
+                   end={"dateTime": "2026-11-09T16:00:00-06:00"},
+                   reminders={"useDefault": False, "overrides": [{"method": "popup", "minutes": 60}]})
+    fake.add_event("fam", summary="Mom's flight", start={"dateTime": "2026-11-10T07:30:00-06:00"},
+                   end={"dateTime": "2026-11-10T09:00:00-06:00"},
+                   reminders={"useDefault": False, "overrides": [{"method": "popup", "minutes": 60}]})
+    acc = await connect(reg.modules["google"], fake, landen["id"], "landen@example.com")
+    await cal.sync.run_once()
+    main = next(c for c in cal.store.calendars() if c["is_primary"])
+    fam = next(c for c in cal.store.calendars() if c["name"] == "Family")
+    return acc, main, fam
+
+
+def heads(sched):
+    return sorted(h["label"] for h in sched.active(("event",)))
+
+
+async def test_heads_ups_only_for_events_with_their_own_reminder_by_default(env):
+    reg, cal, fake, people, sched, clock = env
+    acc, main, fam = await classes_and_dentist(env)
+    local = lambda iso: datetime.fromisoformat(iso).astimezone().replace(tzinfo=None)
+    # Classes only have the calendar's automatic reminder: no heads-up. The dentist and Mom's flight have their own.
+    # (Mom's flight at 7:30 has its heads-up at 6:30: night, so skipped.)
+    night_hour = local("2026-11-10T06:30:00-06:00").hour
+    assert heads(sched) == (["Dentist"] if night_hour < 7 or night_hour >= 23 else ["Dentist", "Mom's flight"])
+    await cal.dashboard("set_pref", {"account": acc["id"], "key": "night", "value": False})
+    assert heads(sched) == ["Dentist", "Mom's flight"]
+    await cal.dashboard("set_calendar", {"id": fam["id"], "field": "heads_up", "value": "off"})
+    assert heads(sched) == ["Dentist"]
+    await cal.dashboard("set_calendar", {"id": main["id"], "field": "heads_up", "value": "all"})
+    assert heads(sched) == ["Calc class 10", "Calc class 11", "Calc class 9", "Dentist"]
+    await cal.dashboard("set_calendar", {"id": main["id"], "field": "heads_up", "value": "15"})
+    dentist = next(h for h in sched.active(("event",)) if h["label"] == "Dentist")
+    assert datetime.fromtimestamp(dentist["due"]) == local("2026-11-09T14:45:00-06:00")
+    with pytest.raises(ValueError):
+        await cal.dashboard("set_calendar", {"id": main["id"], "field": "heads_up", "value": "7"})
+
+
+async def test_the_dashboard_lists_and_household_choice(env):
+    reg, cal, fake, people, sched, clock = env
+    acc, main, fam = await classes_and_dentist(env)
+    assert any(e["title"].startswith("Calc") for e in cal.upcoming(14))
+    await cal.dashboard("set_calendar", {"id": main["id"], "field": "in_list", "value": False})
+    assert [e["title"] for e in cal.upcoming(14)] == ["Mom's flight"]          # classes left out of the two-week list
+    assert cal.sync.household() == main["id"]
+    r = await cal.dashboard("set_pref", {"account": acc["id"], "key": "household", "value": fam["id"]})
+    assert r["household_now"] == fam["id"] and cal.sync.household() == fam["id"]
+    assert say(reg, "add:event", {"title": "game night", "at": "2026-11-12T19:00"}) == "Added game night, Thursday at 7 PM."
+    with pytest.raises(ValueError):
+        await cal.dashboard("set_pref", {"account": acc["id"], "key": "household", "value": "pip"})   # not this account's
+    s = await cal.dashboard("account_settings", {"account": acc["id"]})
+    assert {c["name"] for c in s["calendars"]} == {"landen@example.com", "Family"} and s["night"] is True
+
+
+async def test_the_timers_list_shows_only_the_next_day_of_heads_ups(env, tmp_path):
+    from pip_assistant.core.main import alerts_snapshot
+    reg, cal, fake, people, sched, clock = env
+    acc, main, fam = await classes_and_dentist(env)
+    await cal.dashboard("set_calendar", {"id": main["id"], "field": "heads_up", "value": "all"})
+    sched.add("timer", "pasta", clock() + 600, length=600)
+    snap = alerts_snapshot(sched, reg)
+    soon = [a["label"] for a in snap["alerts"]]
+    assert "pasta" in soon and all(a["due"] <= clock() + 86400 for a in snap["alerts"] if a["kind"] == "event")
+    assert snap["later_heads_ups"] == len(sched.active(("event",))) - len([a for a in snap["alerts"] if a["kind"] == "event"])
+    assert snap["later_heads_ups"] >= 3

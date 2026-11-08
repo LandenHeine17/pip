@@ -72,7 +72,7 @@
     <select id="clapmic" onchange="setPref('clap_mic', this.value)"><option value="">…</option></select>
     <span class="sub" id="clapnote"></span></div>
   <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="claps" onchange="setPref('claps', this.checked)">
-    Two claps switch listening <span class="sub">(leave this off while recording Session F)</span></label>
+    Two claps switch listening <span class="sub">(while it's off, two claps just show up in the Conversation as a trial)</span></label>
   <div class="sub" style="margin-top:6px">Two claps switch listening off and on. The speakerphone's own noise filter removes claps,
     so they're heard on a second, plain USB microphone (any cheap one that isn't "noise-cancelling"). Choosing the
     microphone doesn't switch claps on: tick the box for that. Not finished yet: it's tuned once you've recorded Session F on that microphone.</div>
@@ -157,6 +157,7 @@ const EVENTS = {
   passed: e => e.about === "mentioned" ? "Pip heard his name and stayed out of it" : "Pip decided not to answer",
   interrupted: () => "Pip was interrupted",
   joined: () => "Pip joined in",
+  claps_trial: () => "Heard two claps (trial: the clap switch isn't on, so nothing changed)",
   mic_off: e => `Mic off${e.how==="claps"?" (two claps)":e.how==="dashboard"?" (dashboard)":""}`,
   mic_on: e => `Mic back on${e.how==="claps"?" (two claps)":e.how==="dashboard"?" (dashboard)":""} · was off for ${dur(e.off_for)}`,
   alert: e => `${({timer:"Timer",alarm:"Alarm",reminder:"Reminder",event:"Calendar heads-up"})[e.alert]||"Alarm"} ${e.what==="ringing"?"ringing":e.what==="snoozed"?`snoozed${e.minutes?` ${e.minutes} min`:""}`:"stopped"}`,
@@ -227,7 +228,7 @@ function renderSched(){
       <div class="sub">${a.kind==="timer" ? "of "+left(a.length||0) : clock(a.due)}${a.repeat?" · "+REP(a.repeat):""}${a.state==="ringing"?" · ringing":""}</div>
       ${pct!=null?`<div class="bar"><i style="width:${pct}%"></i></div>`:""}</div>
       <span style="display:flex;align-items:center;gap:6px">${a.kind==="timer" ? `<span class="big">${left(a.due-now)}</span>` : ""}<button class="ghost" title="Cancel" onclick="act({action:'cancel',id:'${esc(a.id)}'})">✕</button></span></div>`;
-  }).concat(missed).join("") || `<div class="empty">Nothing set.</div>`;
+  }).concat(missed).concat(sched.later_heads_ups ? [`<div class="sub" style="padding:4px 2px">+ ${sched.later_heads_ups} more calendar heads-up${sched.later_heads_ups>1?"s":""} after tomorrow · <a href="/m/calendar/">calendar</a></div>`] : []).join("") || `<div class="empty">Nothing set.</div>`;
   $("events").innerHTML = sched.events.map(e => `<div class="item" style="border-left:4px solid ${e.color||"transparent"}"><div><b>${esc(e.title)}</b>${e.private?` <span class="pill" style="background:var(--line)">private</span>`:""}<div class="sub">${e.all_day ? new Date(e.at*1000).toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"})+" · all day" : clock(e.at)}${e.repeat?" · "+REP(e.repeat):""}</div></div>
       <button class="ghost" title="Remove" onclick="if(confirm('Remove this event${e.repeat?" (all repeats)":""}?')) act({action:'remove_event',id:'${esc(e.id)}'})">✕</button></div>`).join("")
     || `<div class="empty">Nothing on the calendar.</div>`;
@@ -290,14 +291,20 @@ function renderPeople(){
       <span style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
       ${ppl.voice_model ? `<button onclick="pAct({action:'enrol_start',id:'${p.id}'})">${p.voice_samples?"Re-learn voice":"Learn my voice"}</button>` : ""}
       ${ppl.voice_model && ppl.m0_recordings && p.role==="admin" && !p.voice_samples ? `<button title="Uses 8 recordings you already made in the M0 tests: nothing to read" onclick="pAct({action:'voice_from_m0',id:'${p.id}'})">Use my M0 recordings</button>` : ""}
-      ${mods.some(m => m.name === "google") ? `<a class="ghost" style="padding:6px 10px;font-size:.88rem" href="/m/google/?person=${p.id}">Connect Google</a>` : ""}
+      ${!mods.some(m => m.name === "google") ? "" : googleAcc[p.id]
+        ? `<a class="ghost" style="padding:6px 10px;font-size:.88rem" href="/m/google/account.html?id=${googleAcc[p.id]}">Google settings</a>`
+        : `<a class="ghost" style="padding:6px 10px;font-size:.88rem" href="/m/google/?person=${p.id}">Connect Google</a>`}
       ${p.voice_samples ? `<button class="ghost" title="Forget voice" onclick="if(confirm('Forget ${esc(p.name)}\'s voice?')) pAct({action:'forget_voice',id:'${p.id}'})">Forget voice</button>` : ""}
       <button class="ghost" title="Remove person" onclick="if(confirm('Remove ${esc(p.name)}, their voice and memories about them?')) pAct({action:'remove',id:'${p.id}'})">✕</button></span></div>`).join("")
     + ppl.guests.map(g => `<div class="item"><div><b>${esc(g.name)}</b> <span class="pill" style="background:var(--soft)">this visit</span><div class="sub">forgotten after 2 hours of quiet</div></div><button class="ghost" onclick="pAct({action:'guest_join',id:'${g.id}'})">Add to household</button></div>`).join("")
     || `<div class="empty">Nobody added yet. Add yourself first (as Admin).</div>`;
   $("peoplesum").textContent = ppl.voice_model ? `${ppl.people.length} ${ppl.people.length===1?"person":"people"}` : "voice model not installed";
 }
-async function loadPeople(){ try{ const r = await (await fetch("/api/people",{cache:"no-store"})).json(); if(r.people){ ppl = r; renderPeople(); } }catch(e){} }
+let googleAcc = {};   // person id → their connected Google account (for the "Google settings" link, D-109)
+async function loadPeople(){ try{ const r = await (await fetch("/api/people",{cache:"no-store"})).json();
+  try{ const g = await (await fetch("/api/m/google?action=status",{cache:"no-store"})).json();
+    googleAcc = Object.fromEntries((g.accounts||[]).map(a => [a.person_id, a.id])); }catch(e){ googleAcc = {}; }
+  if(r.people){ ppl = r; renderPeople(); } }catch(e){} }
 async function pAct(body){ try{ const r = await (await fetch("/api/people/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})).json(); if(r.error) alert(r.error); return r; }catch(e){ alert("Couldn't reach Pip"); } finally { loadPeople(); loadMemory(); } }
 $("personadd").onsubmit = async ev => { ev.preventDefault(); const r = await pAct({action:"add", name:$("pname").value, role:$("prole").value}); if (r && r.ok) $("pname").value = ""; };
 setInterval(() => { if (ppl.enrolling) loadPeople(); }, 1500);

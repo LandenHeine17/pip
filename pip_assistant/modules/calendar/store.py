@@ -27,7 +27,15 @@ CREATE TABLE IF NOT EXISTS calendar_calendars (
     sync_token  TEXT NOT NULL DEFAULT '',
     reminder    REAL,                        -- the calendar's default heads-up, minutes (Google's default reminder)
     owner       INTEGER NOT NULL DEFAULT 1,  -- theirs (can be renamed / deleted), not just shared with them
-    ignored     INTEGER NOT NULL DEFAULT 0   -- set on the Google page: not synced, not shown, never told to Pip (D-104)
+    ignored     INTEGER NOT NULL DEFAULT 0,  -- set on the Google page: not synced, not shown, never told to Pip (D-104)
+    in_list     INTEGER NOT NULL DEFAULT 1,  -- shown in the dashboard's "next two weeks" list (D-109)
+    heads_up    TEXT NOT NULL DEFAULT 'own'  -- off / own (only events with their own reminder) / all / minutes (D-109)
+);
+CREATE TABLE IF NOT EXISTS calendar_prefs (   -- per account ('' = Pip's own calendar): night, household (D-109)
+    account_id  TEXT NOT NULL,
+    key         TEXT NOT NULL,
+    value       TEXT NOT NULL,
+    PRIMARY KEY (account_id, key)
 );
 CREATE TABLE IF NOT EXISTS calendar_events (
     id          TEXT PRIMARY KEY,
@@ -41,6 +49,7 @@ CREATE TABLE IF NOT EXISTS calendar_events (
     notes       TEXT NOT NULL DEFAULT '',
     private     INTEGER NOT NULL DEFAULT 0, -- Pip never mentions it (D-99)
     reminder    REAL,                      -- heads-up, minutes before (NULL: none)
+    reminder_own INTEGER NOT NULL DEFAULT 0, -- 1: the event's own reminder (not just the calendar's automatic one)
     google_id   TEXT NOT NULL DEFAULT '',
     etag        TEXT NOT NULL DEFAULT '',
     pending     TEXT NOT NULL DEFAULT '',  -- '' / add / change / delete: waiting to be sent to Google
@@ -61,16 +70,25 @@ class CalendarStore:
         self.db, self.schedule, self.clock = db, schedule, clock or time.time
         self.db.executescript(SCHEMA)
         have = {r[1] for r in self.db.execute("PRAGMA table_info(calendar_calendars)")}
-        for col in ("owner INTEGER NOT NULL DEFAULT 1", "ignored INTEGER NOT NULL DEFAULT 0"):
+        for col in ("owner INTEGER NOT NULL DEFAULT 1", "ignored INTEGER NOT NULL DEFAULT 0",
+                    "in_list INTEGER NOT NULL DEFAULT 1", "heads_up TEXT NOT NULL DEFAULT 'own'"):
             if col.split()[0] not in have:
                 self.db.execute(f"ALTER TABLE calendar_calendars ADD COLUMN {col}")
                 if col.startswith("owner"):   # until the next sync says: read-only ones aren't theirs
                     self.db.execute("UPDATE calendar_calendars SET owner = writable")
+        remake = False
+        if "reminder_own" not in {r[1] for r in self.db.execute("PRAGMA table_info(calendar_events)")}:
+            self.db.execute("ALTER TABLE calendar_events ADD COLUMN reminder_own INTEGER NOT NULL DEFAULT 0")
+            self.db.execute("UPDATE calendar_events SET reminder_own = 1 WHERE google_id = '' AND reminder IS NOT NULL")
+            self.db.execute("UPDATE calendar_calendars SET sync_token = ''")   # fetch everything again to learn which are own
+            remake = True
         self.db.execute("INSERT OR IGNORE INTO calendar_calendars (id, name, color) VALUES ('pip', 'Pip', '#6c5ce7')")
         self.db.commit()
         self.on_change = []          # called with the event id after any change Pip makes (sync, dashboard)
         self.version = 0             # goes up whenever anything changes (so the dashboard knows to refresh)
         self._take_legacy()
+        if remake:   # heads-ups made under the old rule (every event) go now; the next sync brings back the right ones
+            self.remake_alerts()
 
     def _take_legacy(self) -> None:
         """Events from before the calendar became a module (core/schedule.py kept them) move in, same ids."""
@@ -121,6 +139,21 @@ class CalendarStore:
             self.drop_events(cid)
         self.version += 1
 
+    # ---------------------------------------------------------------- per-account preferences (D-109)
+    PREFS = {"night": "1", "household": ""}   # no heads-ups 23:00–07:00 · their calendar for "don't know whose"
+
+    def pref(self, account_id: str, key: str) -> str:
+        r = self.db.execute("SELECT value FROM calendar_prefs WHERE account_id = ? AND key = ?", (account_id, key)).fetchone()
+        return r["value"] if r else self.PREFS[key]
+
+    def set_pref(self, account_id: str, key: str, value: str) -> None:
+        if key not in self.PREFS:
+            raise ValueError(f"unknown setting {key}")
+        self.db.execute("INSERT OR REPLACE INTO calendar_prefs (account_id, key, value) VALUES (?,?,?)",
+                        (account_id, key, str(value)))
+        self.db.commit()
+        self.version += 1
+
     def ticked(self) -> set[str]:
         return {r["id"] for r in self.db.execute("SELECT id FROM calendar_calendars WHERE ticked = 1 AND ignored = 0")}
 
@@ -158,11 +191,11 @@ class CalendarStore:
         if end <= start:
             raise ValueError("an event must end after it starts")
         now, eid = self.clock(), new_id()
-        reminder = heads_up_before / 60 if heads_up_before is not None else None
+        reminder = heads_up_before / 60 if heads_up_before is not None else None   # asked for: always "own"
         self.db.execute("INSERT INTO calendar_events (id, calendar_id, title, start, end, all_day, repeat, location, notes, "
-                        "private, reminder, pending, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "private, reminder, reminder_own, pending, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (eid, calendar_id, title.strip()[:200], start.timestamp(), end.timestamp(), int(all_day), repeat,
-                         location.strip()[:200], notes.strip()[:2000], int(private), reminder,
+                         location.strip()[:200], notes.strip()[:2000], int(private), reminder, int(reminder is not None),
                          "add" if self._google_backed(calendar_id) else "", now, now))
         self.db.commit()
         ev = self.event(eid)
@@ -182,6 +215,8 @@ class CalendarStore:
         if cal and not cal["writable"]:
             raise ValueError("That calendar is read-only for Pip")
         new = {k: v for k, v in fields.items() if k in ("title", "location", "notes", "private", "repeat", "reminder")}
+        if "reminder" in new:
+            new["reminder_own"] = int(new["reminder"] is not None)   # set by hand: their own
         if start is not None:
             length = ev["end"] - ev["start"]
             new["start"] = start.timestamp()
@@ -261,27 +296,56 @@ class CalendarStore:
         if self.schedule is not None:
             self.schedule.cancel_for(eid)
 
+    def heads_up_minutes(self, ev: dict, cal: dict | None) -> float | None:
+        """How long before this event Pip gives a heads-up, by the calendar's setting (D-109): off, only events
+        with their own reminder ("own", the default), every event with a reminder ("all"), or a fixed time."""
+        mode = (cal or {}).get("heads_up", "own")
+        if mode == "off":
+            return None
+        if mode == "own":
+            return ev["reminder"] if ev["reminder_own"] else None
+        if mode == "all":
+            return ev["reminder"]
+        try:
+            return float(mode)
+        except ValueError:
+            return None
+
     def sync_alerts(self, ev: dict) -> None:
-        """Re-make an event's heads-up: none if private, past, or more than a week away (re-checked later)."""
+        """Re-make an event's heads-up: none if private, past, more than a week away (re-checked later), not
+        wanted for that calendar, or at night when that's switched off (D-109)."""
         if self.schedule is None:
             return
         self.schedule.cancel_for(ev["id"])
-        if ev["private"] or ev["reminder"] is None or ev["pending"] == "delete" or ev["calendar_id"] not in self.ticked():
+        cal = self.calendar(ev["calendar_id"])
+        mins = self.heads_up_minutes(ev, cal)
+        if ev["private"] or mins is None or ev["pending"] == "delete" or ev["calendar_id"] not in self.ticked():
             return
         start = datetime.fromtimestamp(ev["start"])
         base = start.replace(hour=8, minute=0) if ev["all_day"] else start   # all-day: count back from 8 AM (FEAT-036)
-        due = base.timestamp() - ev["reminder"] * 60
+        due = base.timestamp() - mins * 60
+        at = datetime.fromtimestamp(due)
+        if (at.hour >= 23 or at.hour < 7) and self.pref((cal or {}).get("account_id", ""), "night") == "1":
+            return   # no heads-ups at night
         soon_enough = ev["repeat"] or due < self.clock() + 7 * 86400   # repeats re-arm themselves after ringing
         if due > self.clock() and soon_enough:
-            self.schedule.add("event", ev["title"], due, length=ev["reminder"] * 60, repeat=ev["repeat"], event_id=ev["id"])
+            self.schedule.add("event", ev["title"], due, length=mins * 60, repeat=ev["repeat"], event_id=ev["id"])
 
     def refresh_alerts(self) -> None:
         """Daily: give events coming into the next week their heads-up."""
         soon = self.clock() + 7 * 86400
         for ev in self.all_events():
-            if self.clock() < ev["start"] < soon and ev["reminder"] is not None and not ev["repeat"]:
+            if self.clock() < ev["start"] < soon and not ev["repeat"]:
                 if not self.schedule or not self.schedule.has_alert_for(ev["id"]):
                     self.sync_alerts(ev)
+
+    def remake_alerts(self, cids: set[str] | None = None) -> None:
+        """A heads-up setting changed: re-make the heads-ups of those calendars (all, if None)."""
+        rows = self.db.execute("SELECT * FROM calendar_events WHERE end > ?", (self.clock(),)).fetchall()
+        for ev in rows:
+            if cids is None or ev["calendar_id"] in cids:
+                self.sync_alerts(dict(ev))
+        self.version += 1
 
     # ---------------------------------------------------------------- when things happen
     @staticmethod

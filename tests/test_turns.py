@@ -179,13 +179,15 @@ async def test_ears_hears_claps_only_on_the_clap_microphone(monkeypatch):
     monkeypatch.setattr(ears_main, "Microphone", FakeMic)
     e = ears_main.Ears.__new__(ears_main.Ears)
     e.bus, e.claps, e.clap_mic, e.clap_task, e.quiet_after = Bus(), Claps(), "", None, 0.0
-    e.mic_mode, e.speaking, e.ring_task = "claps_only", False, None
+    e.mic_mode, e.speaking, e.ring_task, e.claps_live = "claps_only", False, None, False
     await e.on_clap_mic(type("M", (), {"data": {"device": "alsa_input.usb-cheap-mic", "on": False}})())
     await asyncio.sleep(0.05)
-    assert opened == [] and e.clap_task is None                     # claps switched off: the mic isn't even opened
+    assert opened == ["alsa_input.usb-cheap-mic"] and emitted == ["mic.clapped_trial"]   # off: only a trial
+    e.clap_task.cancel()
+    e.clap_task, e.clap_mic, Claps.fed, opened[:] = None, "", 0, []
     await e.on_clap_mic(type("M", (), {"data": {"device": "alsa_input.usb-cheap-mic", "on": True}})())
     await asyncio.sleep(0.05)
-    assert opened == ["alsa_input.usb-cheap-mic"] and emitted == ["mic.clapped"]
+    assert opened == ["alsa_input.usb-cheap-mic"] and emitted[-1] == "mic.clapped"
     e.speaking = True                                  # Pip talking: his own sound reaches that mic too
     Claps.fed = 0
     await e.on_clap_mic(type("M", (), {"data": {"device": "other", "on": True}})())

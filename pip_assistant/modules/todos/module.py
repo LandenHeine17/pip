@@ -34,7 +34,7 @@ class Todos(Module):
         if self.google is not None:
             self.google.on_connect.append(lambda _aid: self._wake.set())
             self.google.on_disconnect.append(
-                lambda aid: [self.store.remove_list(x["id"]) for x in self.store.lists() if x["account_id"] == aid])
+                lambda aid: [self.store.remove_list(x["id"]) for x in self.store.lists(ignored=True) if x["account_id"] == aid])
         self.actions = {"add_task": Action(self.check_add, self.do_add),
                         "complete_task": Action(self.check_ref, self.do_complete),
                         "change_task": Action(self.check_change, self.do_change),
@@ -161,6 +161,15 @@ class Todos(Module):
             since = self.ctx.clock() - self.ctx.settings["show_done_days"] * 86400
             return {"lists": [{**x, "whose": self.whose(x, accounts, names)} for x in s.lists()],
                     "items": s.items(include_done_since=since), "household": self.household()}
+        if action == "account_lists":   # an account's settings page (D-109): its lists, ignored ones too
+            aid = str(args.get("account") or "")
+            return {"lists": [x for x in s.lists(ignored=True) if x["account_id"] == aid]}
+        if action == "set_list":
+            lst = s.get_list(str(args.get("id")))
+            if not lst or lst["id"] == "pip":
+                raise ValueError("That list can't be ignored")
+            s.set_ignored(lst["id"], bool(args.get("ignored")))
+            return {"ok": True, "lists": [x for x in s.lists(ignored=True) if x["account_id"] == lst["account_id"]]}
         if action == "add":
             t = s.add(str(args.get("title", "")), str(args.get("list_id") or self.household()), due=str(args.get("due") or ""))
             return {"ok": True, "id": t["id"]}

@@ -66,9 +66,14 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
 
 
 def alerts_snapshot(schedule: Schedule, modules: Registry) -> dict:
-    """The dashboard's timers card, plus the next two weeks from the calendar module (if it's on)."""
+    """The dashboard's timers card, plus the next two weeks from the calendar module (if it's on).
+    Calendar heads-ups are listed only for the next 24 hours; the rest are just counted (D-109)."""
     cal = modules.modules.get("calendar")
-    return {**schedule.snapshot(), "events": cal.upcoming(14) if cal else []}
+    snap = schedule.snapshot()
+    soon = snap["now"] + 86400
+    later = [a for a in snap["alerts"] if a["kind"] == "event" and a["state"] != "ringing" and a["due"] > soon]
+    snap["alerts"] = [a for a in snap["alerts"] if a not in later]
+    return {**snap, "later_heads_ups": len(later), "events": cal.upcoming(14) if cal else []}
 
 
 def memory_snapshot(memory: Memory, people: People) -> dict:

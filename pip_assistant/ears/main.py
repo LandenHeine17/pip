@@ -4,7 +4,8 @@ instantly when talked over.
 Events it sends:   heard.wake {word, score} · heard.started {reason} · heard.utterance {reason, seconds, had_speech} (+ private audio)
                    speech.started · speech.interrupted · speech.finished {interrupted}
                    ears.status {state}  (listening / speaking / muted_or_quiet / mic_off)
-                   mic.clapped   (two claps: pip-core decides what that switches, D-91)
+                   mic.clapped   (two claps: pip-core decides what that switches, D-91) · mic.clapped_trial (heard, but
+                   the clap switch isn't ticked yet: only shown on the dashboard)
 Commands it takes: ears.say (private.text) · ears.chime · ears.tone {name: "thinking" / "mic_on" / "mic_off"} · ears.stop
                    ears.listen {seconds} (follow-up window) · ears.mic {mode: on / claps_only / off}
                    ears.clap_mic {device, on} (which microphone listens for claps, "" = none; on = claps switch at all) · ears.mics (request: list them)
@@ -53,6 +54,7 @@ class Ears:
         self.claps = ClapDetector(cfg.get("mic", {}))
         self.clap_mic = ""         # which microphone listens for claps (pip-core says; "" = none, D-91)
         self.clap_task: asyncio.Task | None = None
+        self.claps_live = False    # False: trial (only reported), until "Two claps switch listening" is ticked
         self.quiet_after = 0.0     # Pip's own sound reaches the clap microphone: ignore it until a moment after
         self.seg = Segmenter(speech_dbfs=li["speech_dbfs"], end_silence_s=li["end_silence_seconds"],
                              max_s=li["max_utterance_seconds"], wait_for_speech_s=li["wait_for_speech_seconds"],
@@ -77,11 +79,18 @@ class Ears:
                 self.claps.reset()   # switched off on the dashboard, or it's Pip's own sound
                 continue
             if self.claps.feed(frame):
-                log.info("heard two claps")
-                await self.bus.emit("mic.clapped", {})
+                if self.claps_live:
+                    log.info("heard two claps")
+                    await self.bus.emit("mic.clapped", {})
+                else:   # trial: the clap switch isn't ticked yet, just show it was heard (D-91)
+                    log.info("heard two claps (trial)")
+                    await self.bus.emit("mic.clapped_trial", {})
 
     async def on_clap_mic(self, msg: Message):
-        device = str(msg.data.get("device") or "") if msg.data.get("on", True) else ""   # claps off: don't listen
+        """Which microphone hears claps. With claps switched off it still listens, as a trial: two claps only
+        show up on the dashboard's conversation feed ("would have switched"), nothing is switched."""
+        device = str(msg.data.get("device") or "")
+        self.claps_live = bool(msg.data.get("on", True))
         if device == self.clap_mic and (self.clap_task or not device):
             return {"ok": True}
         if self.clap_task:
