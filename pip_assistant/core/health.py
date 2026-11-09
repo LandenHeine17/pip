@@ -10,8 +10,9 @@ OK, STUCK, MISSING = "ok", "stuck", "missing"
 
 class Health:
     def __init__(self, expected: list[str], stuck_after: float = 10.0, restart: bool = True,
-                 restart_fn=None, clock=time.time):
+                 restart_fn=None, clock=time.time, release: str = "dev"):
         self.expected = expected
+        self.release = release  # which installed version pip-core is (common/program.release_id)
         self.stuck_after = stuck_after
         # Restarting only makes sense when systemd runs Pip (INVOCATION_ID is set by systemd).
         self.restart = restart and bool(os.environ.get("INVOCATION_ID"))
@@ -39,7 +40,8 @@ class Health:
     def snapshot(self) -> dict:
         now = self.clock()
         names = list(dict.fromkeys(self.expected + list(self.programs)))
-        out = {"core": {"state": OK, "uptime_s": round(now - self.started), "rss_mb": rss_mb()}}
+        out = {"core": {"state": OK, "uptime_s": round(now - self.started), "rss_mb": rss_mb(),
+                        "release": self.release}}
         for n in names:
             p = self.programs.get(n, {})
             out[n] = {"state": self.state(n), "rss_mb": p.get("rss_mb"), "uptime_s": p.get("uptime_s"),

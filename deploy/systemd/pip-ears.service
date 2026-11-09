@@ -4,7 +4,8 @@ After=pip-core.service
 Wants=pip-core.service
 
 [Service]
-ExecStart=%h/pip/.venv/bin/pip-ears
+WorkingDirectory=%h/pip-app/current
+ExecStart=%h/pip-app/current/.venv/bin/pip-ears
 Restart=on-failure
 RestartSec=3
 MemoryMax=600M

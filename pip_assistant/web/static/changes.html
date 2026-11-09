@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Changes</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+/* Changes to Pip himself (M1b): someone asks, Pip plans, you approve the plan, he builds and checks it,
+   you approve the finished change, and it goes live (and can be undone). */
+.item.open{outline:2px solid var(--accent)}
+.item[data-open]{cursor:pointer}
+.risk{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.04em}
+.risk.cosmetic{background:var(--goodbg);color:var(--good)} .risk.behaviour,.risk.data{background:var(--warnbg);color:var(--warn)}
+.risk.security{background:var(--badbg);color:var(--bad)}
+.quote{padding:10px 14px;border-left:3px solid var(--accent);background:var(--soft);border-radius:0 12px 12px 0;white-space:pre-wrap;word-break:break-word}
+.block{margin:14px 0}
+.block ul{margin:4px 0;padding-left:20px}
+.notice{padding:10px 14px;border-radius:14px;background:var(--warnbg);color:var(--warn);font-weight:600;font-size:.88rem;margin-bottom:14px}
+.notice.bad{background:var(--badbg);color:var(--bad)}
+.notice[hidden]{display:none}
+pre{margin:0;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+.box{background:var(--soft);border-radius:12px;padding:10px 12px;max-height:420px;overflow:auto}
+.diff{border:1px solid var(--line);border-radius:12px;margin:8px 0;overflow:hidden}
+.diff>summary{padding:8px 12px;background:var(--soft);font-weight:600;font-size:.86rem;display:flex;justify-content:space-between;gap:8px}
+.diff pre{padding:6px 0;max-height:520px;overflow:auto}
+.diff pre span{display:block;padding:0 12px}
+.diff .add{background:var(--goodbg);color:var(--good)} .diff .del{background:var(--badbg);color:var(--bad)}
+.diff .hunk{color:var(--accent);background:var(--accentbg)}
+.log div{padding:2px 0;border-bottom:1px solid var(--line);font-size:.84rem}
+.log .k{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-right:6px}
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+textarea{font:inherit;font-size:.9rem;padding:8px 12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);width:100%;min-height:4.5em;resize:vertical}
+.qa{margin:8px 0}
+.qa input{width:100%;margin-top:4px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+    <div><h1>Changes</h1><div class="sub">Changes to Pip himself · you approve the plan, then the finished change · <a href="/">dashboard</a></div></div></div>
+</header>
+
+<div class="notice" id="paused" hidden></div>
+
+<div class="grid">
+<div>
+  <section>
+    <div class="head"><h2>Waiting for you</h2><span class="sub" id="waitsum"></span></div>
+    <div class="items" id="waiting"></div>
+  </section>
+  <section>
+    <div class="head"><h2>In progress</h2><span class="sub">one change at a time</span></div>
+    <div class="items" id="progress"></div>
+  </section>
+  <section>
+    <div class="head"><h2>Asked</h2><span class="sub">waiting their turn to be planned</span></div>
+    <div class="items" id="asked"></div>
+  </section>
+  <section>
+    <details id="histbox">
+      <summary><h2>History</h2><span class="sub" id="histsum"></span></summary>
+      <div class="items" id="history"></div>
+    </details>
+  </section>
+</div>
+<div>
+  <section>
+    <div class="head"><h2>Ask Pip to change something</h2></div>
+    <form id="askform" style="margin-top:0">
+      <textarea id="asktext" maxlength="2000" required placeholder="What should Pip do differently, or what should he learn to do? For example: keep track of whose turn it is for the dishes."></textarea>
+      <button class="primary">Ask</button><span class="sub" id="askmsg"></span>
+    </form>
+    <div class="sub" style="margin-top:8px">Pip writes a plan first and nothing changes until you say "Build it". Once it's built and its tests pass, you see exactly what changed and decide whether it goes live. Anyone Pip recognises can also ask out loud ("Pip, could you…"); voice can never approve.</div>
+  </section>
+  <section id="detail" hidden></section>
+</div>
+</div>
+</main>
+<script src="/pip.js"></script>
+<script>
+// Plain-language names for each step (builder statuses)
+const STATUS = {
+  asked: "Asked · waiting to be planned", planning: "Writing a plan", questions: "Has questions for you",
+  plan_ready: "Plan ready · needs your OK", building: "Being built", checking: "Being checked",
+  ready: "Finished · ready to go live", deploying: "Going live", live: "Live", rolled_back: "Rolled back (it didn't start properly)",
+  failed: "Failed", rejected: "Turned down", stopped: "Stopped", undone: "Undone",
+};
+const PILL = {questions:"stuck", plan_ready:"stuck", ready:"stuck", live:"ok", failed:"missing", rolled_back:"missing"};
+const WAITING = ["questions", "plan_ready", "ready"];
+const ACTIVE = ["planning", "building", "checking", "deploying"];
+const RISK = {cosmetic: "How it looks", behaviour: "How it behaves", data: "Touches saved data", security: "Security"};
+let list = {changes: [], paused: null, busy: null}, current = null, openId = null, poll = null;
+
+const when = ts => !ts ? "" : new Date((typeof ts === "number" ? ts*1000 : ts)).toLocaleString([], {weekday:"short", month:"short", day:"numeric", hour:"numeric", minute:"2-digit"});
+const risk = r => r ? `<span class="risk ${esc(r)}" title="${esc(RISK[r]||r)}">${esc(r)}</span>` : "";
+const status = s => `<span class="pill ${PILL[s]||""}" style="${PILL[s]?"":"background:var(--soft)"}">${esc(STATUS[s]||s)}</span>`;
+const items = v => Array.isArray(v) ? v : (v == null || v === "" ? [] : [v]);
+const plain = v => typeof v === "string" ? v : JSON.stringify(v);
+
+async function api(body){
+  const r = await (await fetch("/api/changes", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)})).json();
+  if (r.error) throw new Error(r.error);
+  return r;
+}
+
+// ---------------------------------------------------------------- the lists
+function card(c){
+  return `<div class="item${c.id===openId?" open":""}" data-open="${esc(c.id)}"><div style="min-width:0"><b>${esc(c.summary || "A change")}</b> ${risk(c.risk)}
+    <div class="sub">${status(c.status)} · ${esc(c.asked_by || "someone")} · ${esc(when(c.updated || c.created))}</div></div><span class="sub">›</span></div>`;
+}
+function renderList(){
+  const cs = list.changes || [];
+  const groups = {
+    waiting: cs.filter(c => c.waiting || WAITING.includes(c.status)),
+    progress: cs.filter(c => ACTIVE.includes(c.status) && !c.waiting),
+    asked: cs.filter(c => c.status === "asked" && !c.waiting),
+  };
+  const shown = new Set([...groups.waiting, ...groups.progress, ...groups.asked].map(c => c.id));
+  groups.history = cs.filter(c => !shown.has(c.id));
+  const empty = {waiting: "Nothing needs you right now.", progress: "Nothing is being worked on.", asked: "No requests waiting.", history: "No finished changes yet."};
+  for (const k of Object.keys(groups)) $(k).innerHTML = groups[k].map(card).join("") || `<div class="empty">${empty[k]}</div>`;
+  $("waitsum").textContent = groups.waiting.length ? `${groups.waiting.length} waiting` : "";
+  $("histsum").textContent = groups.history.length ? `${groups.history.length}` : "";
+  const p = list.paused;
+  $("paused").hidden = !p;
+  if (p) $("paused").textContent = `Self-changes are paused${p.until ? " until " + when(p.until) : ""}${p.why ? ": " + p.why : ""}.`;
+}
+async function loadList(){
+  try{ const r = await (await fetch("/api/changes", {cache:"no-store"})).json();
+    if (r.error) throw new Error(r.error);
+    list = r; renderList();
+  }catch(e){ $("waiting").innerHTML = `<div class="empty">Can't reach Pip's change builder right now (${esc(e.message || "offline")}).</div>`; }
+}
+
+// ---------------------------------------------------------------- one change
+function renderDiff(diff){
+  if (!diff) return "";
+  const lines = diff.split("\n"), files = [];
+  let f = null;
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    const git = l.match(/^diff --git a\/(.+?) b\/(.+)$/);
+    const plainStart = !git && l.startsWith("--- ") && (lines[i+1] || "").startsWith("+++ ") && !(f && f.git);
+    if (git || plainStart) {
+      f = {name: git ? git[2] : lines[i+1].slice(4).replace(/^b\//, ""), lines: [], add: 0, del: 0, git: !!git};
+      files.push(f);
+      if (git) continue;
+    }
+    if (!f) { f = {name: "(changes)", lines: [], add: 0, del: 0}; files.push(f); }
+    if (l.startsWith("@@")) f.hunk = true;
+    else if (!f.hunk && /^(index |--- |\+\+\+ |new file mode|deleted file mode|similarity |rename )/.test(l)) {
+      if (l.startsWith("+++ ") && !f.git) f.name = l.slice(4).replace(/^b\//, "");
+      continue;
+    }
+    if (l.startsWith("+")) f.add++; else if (l.startsWith("-")) f.del++;
+    f.lines.push(l);
+  }
+  return files.map(f => `<details class="diff" open><summary><span>${esc(f.name)}</span><span><span style="color:var(--good)">+${f.add}</span> <span style="color:var(--bad)">−${f.del}</span></span></summary>
+    <pre>${f.lines.map(l => `<span class="${l.startsWith("@@")?"hunk":l.startsWith("+")?"add":l.startsWith("-")?"del":""}">${esc(l) || " "}</span>`).join("")}</pre></details>`).join("");
+}
+function block(title, html){ return html ? `<div class="block"><div class="label">${title}</div>${html}</div>` : ""; }
+function list_(v){ const xs = items(v); return xs.length ? `<ul>${xs.map(x => `<li>${esc(plain(x))}</li>`).join("")}</ul>` : ""; }
+
+function renderDetail(){
+  const c = current, d = $("detail");
+  if (!c) { d.hidden = true; return; }
+  d.hidden = false;
+  const plan = c.plan || {}, qs = items(c.questions), ans = items(c.answers);
+  const busy = list.busy && list.busy !== c.id;
+  let h = `<div class="head"><h2>${esc(c.summary || plan.summary || "A change")}</h2><button class="ghost" data-act="close">✕</button></div>
+    <div>${status(c.status)} ${risk(c.risk || plan.risk)}</div>
+    <div class="sub" style="margin-top:6px">Asked by ${esc(c.asked_by || "someone")}${c.source ? " · " + esc(c.source === "voice" ? "out loud" : c.source === "dashboard" ? "on the dashboard" : c.source) : ""} · ${esc(when(c.created))}${c.updated && c.updated !== c.created ? " · updated " + esc(when(c.updated)) : ""}</div>`;
+  if (c.request) h += block("What was asked", `<div class="quote">${esc(c.request)}</div>`);
+  if (c.error) h += `<div class="notice bad" style="margin-top:12px">${esc(c.error)}</div>`;
+
+  // Questions the plan needs answered (PIP-NEW-070)
+  if (c.status === "questions" && qs.length) {
+    h += block("Pip's questions", qs.map((q, i) => `<div class="qa"><b>${esc(plain(q))}</b><input data-answer="${i}" maxlength="500" value="${esc(ans[i] || "")}"></div>`).join("")
+      + `<div class="actions"><button class="primary" data-act="answer">Send answers</button></div>`);
+  } else if (qs.length) {
+    h += block("Questions and answers", qs.map((q, i) => `<div class="qa"><b>${esc(plain(q))}</b><div class="sub">${esc(ans[i] || "(not answered)")}</div></div>`).join(""));
+  }
+
+  // The plan (approval 1)
+  if (plan.summary || plan.why || items(plan.files).length) {
+    let p = "";
+    if (plan.summary) p += `<div><b>${esc(plan.summary)}</b></div>`;
+    if (plan.why) p += `<div class="sub" style="margin-top:4px">Why: ${esc(plan.why)}</div>`;
+    if (plan.risk) p += `<div style="margin-top:6px">Risk: ${risk(plan.risk)} <span class="sub">${esc(RISK[plan.risk] || "")}</span></div>`;
+    p += block("Files it will change", list_(plan.files)) + block("How it will be tested", list_(plan.tests)) + block("How to undo it", list_(plan.rollback));
+    h += block("The plan", p);
+    if (c.status === "plan_ready") h += `<div class="actions"><button class="primary" data-act="approve_plan"${busy ? " disabled title=\"Another change is being worked on\"" : ""}>Build it</button><button data-act="reject">No</button>${busy ? `<span class="sub">Another change is being worked on; this one waits its turn.</span>` : ""}</div>`;
+  }
+
+  // What's happening (live while it works)
+  const log = items(c.log);
+  if (log.length || ACTIVE.includes(c.status)) {
+    h += block(ACTIVE.includes(c.status) ? "What's happening (live)" : "What happened",
+      `<div class="box log" id="logbox">${log.slice(-300).map(e => `<div><span class="sub">${esc(when(e.at))}</span> <span class="k">${esc(e.kind || "")}</span>${esc(e.text || "")}</div>`).join("") || `<div class="sub">Starting…</div>`}</div>`);
+    if (["planning", "building", "checking"].includes(c.status)) h += `<div class="actions"><button data-act="stop">Stop</button></div>`;
+  }
+
+  // The finished change (approval 2)
+  if (c.diff || c.test_report || items(c.files).length) {
+    let f = "";
+    if (c.summary) f += `<div><b>${esc(c.summary)}</b> ${risk(c.risk)}</div>`;
+    f += block("Files changed", list_(c.files));
+    f += block("Exactly what changed", renderDiff(c.diff));
+    if (c.test_report) f += block("Test report", `<div class="box"><pre>${esc(c.test_report)}</pre></div>`);
+    h += block("The finished change", f);
+    if (c.status === "ready") {
+      const sec = (c.risk || plan.risk) === "security";
+      h += `<div class="notice" style="margin-top:12px">Passing tests only means it's ready for you to look at. Read what changed before making it live.</div>`;
+      if (sec) h += `<label style="display:flex;gap:8px;align-items:center;font-weight:600"><input type="checkbox" id="readdiff" style="width:auto"> I've read the diff (this change touches security)</label>`;
+      h += `<div class="actions"><button class="primary" data-act="approve"${sec ? " disabled" : ""}>Make it live</button><button data-act="reject">Throw away</button></div>`;
+    }
+  }
+
+  if (c.commit || c.branch || c.release) h += `<div class="sub" style="margin-top:12px">${c.commit ? "Commit " + esc(String(c.commit).slice(0,7)) : ""}${c.branch ? " · branch " + esc(c.branch) : ""}${c.release ? " · release " + esc(String(c.release).slice(0,7)) : ""}</div>`;
+  if (c.status === "live") h += `<div class="actions"><button data-act="undo">Undo this change</button><span class="sub">Puts back how Pip was before, as a new change.</span></div>`;
+  d.innerHTML = h;
+  const lb = $("logbox"); if (lb) lb.scrollTop = lb.scrollHeight;
+  const rd = $("readdiff"); if (rd) rd.onchange = () => { d.querySelector('[data-act="approve"]').disabled = !rd.checked; };
+}
+async function openChange(id, quiet){
+  openId = id;
+  if (location.hash.slice(1) !== id) history.replaceState(null, "", "#" + encodeURIComponent(id));
+  try{ current = (await api({action: "get", id})).change; }
+  catch(e){ if (!quiet) alert(e.message || "Couldn't reach Pip"); return; }
+  // Don't redraw answer boxes the owner is typing in
+  if (!(quiet && current.status === "questions" && $("detail").contains(document.activeElement))) renderDetail();
+  renderList();
+  clearTimeout(poll);
+  if (current && (ACTIVE.includes(current.status) || current.status === "asked")) poll = setTimeout(() => openChange(id, true), 3000);
+}
+function closeChange(){ openId = current = null; clearTimeout(poll); history.replaceState(null, "", location.pathname); renderDetail(); renderList(); }
+
+const CONFIRM = {reject: "Turn this down? Nothing will change.", undo: "Undo this change? Pip goes back to how he was before it.",
+                 stop: "Stop working on this change?", approve: "Make this change live? Pip restarts at a quiet moment."};
+document.addEventListener("click", async ev => {
+  const open = ev.target.closest("[data-open]");
+  if (open) return openChange(open.dataset.open);
+  const b = ev.target.closest("[data-act]");
+  if (!b || b.disabled) return;
+  const act = b.dataset.act;
+  if (act === "close") return closeChange();
+  if (!current) return;
+  if (CONFIRM[act] && !confirm(CONFIRM[act])) return;
+  const body = {action: act, id: current.id};
+  if (act === "answer") body.answers = [...document.querySelectorAll("[data-answer]")].map(i => i.value.trim());
+  if (act === "approve") body.read_diff = !!($("readdiff") && $("readdiff").checked);
+  b.disabled = true;
+  try{ await api(body); }catch(e){ alert(e.message || "Couldn't reach Pip"); }
+  finally{ b.disabled = false; await loadList(); await openChange(current.id, true); }
+});
+
+$("askform").onsubmit = async ev => {
+  ev.preventDefault();
+  const text = $("asktext").value.trim();
+  if (!text) return;
+  $("askmsg").textContent = "Sending…";
+  try{ const r = await api({action: "ask", text}); $("asktext").value = ""; $("askmsg").textContent = "Asked. Pip will write up a plan.";
+    await loadList(); if (r.id) openChange(r.id); }
+  catch(e){ $("askmsg").textContent = e.message || "Couldn't reach Pip"; }
+};
+
+function live(){
+  if (location.search.includes("nolive")) return;
+  const es = new EventSource("/api/stream");
+  es.addEventListener("builder", ev => {   // if the dashboard forwards the builder's news; the polling covers it otherwise
+    loadList();
+    let d = {}; try{ d = JSON.parse(ev.data); }catch(e){}
+    if (openId && (!d.id || d.id === openId)) openChange(openId, true);
+  });
+}
+setInterval(loadList, 10000);
+loadList().then(() => { const id = decodeURIComponent(location.hash.slice(1)); if (id) openChange(id, true); });
+live();
+</script>
+</body>
+</html>

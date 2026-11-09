@@ -1,0 +1,32 @@
+#!/bin/sh
+# Run the project's tests with no network and no home folder. It's the only command Pip's coding agent may
+# run (M1b, PIP-NEW-072, AC-SM-03), and anyone can use it. Run it from the project folder (it needs .venv):
+#     tools/sandbox-test                         # the whole suite
+#     tools/sandbox-test tests/test_x.py -k name
+# What it does: a new user, network and mount namespace (unshare -rnm: only loopback, no internet); the home
+# folder replaced by an empty one, so ~/pip-data/secrets.toml, ~/.claude/.credentials.json, ~/.ssh and ~/pip
+# are gone, with only this project folder and uv's Python (read-only) put back; a private, empty /tmp; an empty
+# environment; and the tests run as your own user id again, not root.
+set -eu
+PATH=/usr/bin:/bin; export PATH
+[ -x .venv/bin/python ] || { echo "sandbox-test: run it from the project folder (no .venv/bin/python here)" >&2; exit 2; }
+uid=$(id -u); gid=$(id -g)
+exec /usr/bin/unshare -rnm --propagation private -- env -i PATH=/usr/bin:/bin HOME="$HOME" WS="$(pwd -P)" \
+    OUTER_UID="$uid" OUTER_GID="$gid" sh -euc '
+    py="$HOME/.local/share/uv/python"
+    mount -t tmpfs -o mode=755 pip-stage /mnt
+    mkdir /mnt/ws /mnt/py
+    mount --rbind "$WS" /mnt/ws
+    [ -d "$py" ] && mount --rbind "$py" /mnt/py
+    mount -t tmpfs -o mode=1777 pip-tmp /tmp
+    mount -t tmpfs -o mode=755 pip-home "$HOME"
+    case "$WS" in "$HOME"/*|/tmp/*) mkdir -p "$WS"; mount --rbind /mnt/ws "$WS" ;; esac
+    if [ -d "$py" ] || [ -n "$(ls -A /mnt/py)" ]; then
+        mkdir -p "$py"; mount --rbind /mnt/py "$py"; mount -o remount,bind,ro "$py" 2>/dev/null || true
+    fi
+    umount -l /mnt
+    cd "$WS"
+    exec unshare --map-user="$OUTER_UID" --map-group="$OUTER_GID" -- \
+        env -i PATH=/usr/bin:/bin HOME="$HOME" LANG=C.UTF-8 PYTHONDONTWRITEBYTECODE=1 \
+        .venv/bin/python -m pytest -q -p no:cacheprovider "$@"
+' sandbox-test "$@"

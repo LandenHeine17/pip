@@ -4,7 +4,7 @@ The short, living description of Pip 2.0. Read this first.
 
 **How the docs fit together (for building):** this page says *what* Pip does → [REQUIREMENTS.md](REQUIREMENTS.md) lists every requirement, and its **Detail** link opens the exact behaviour rules in the archived proposal ([archive/pip-v2-proposals-2026-11/](archive/pip-v2-proposals-2026-11/README.md)) → [DECISIONS.md](DECISIONS.md) (`D-nn`) **overrides** anything older, and REQUIREMENTS §0 lists the archived passages that have been overridden. What Ziggletron did (for parity) is in [archive/ziggletron-discovery/](archive/ziggletron-discovery/PRODUCT-OVERVIEW.md).
 
-*Last updated 2026-11-09 · Phase: M1a building. Steps 1–6 done, installed and tested by the owner: hearing, answers, timers/alarms, memory, people and voices, listening to the room like Ziggletron, everything in natural language, the calendar / to-dos / Google modules with per-account settings, the two-clap switch on its own mic. Step 7 built and installed: the face on the monitor, changing the screen by voice, and seeing what Pip is doing (D-110–D-113); fixes from a code review and D-114–D-115 (2026-11-09). Step 8 built: the Settings page, an editable personality and Ziggletron's memories and personality brought over; no logins (D-116, D-117); the owner is trying it. Next: step 8. How the code works: [HOW-PIP-WORKS.md](HOW-PIP-WORKS.md). Dashboard: `http://100.118.171.118:8790`.*
+*Last updated 2026-11-09 · Phase: M1b built. M1a is done (steps 1–8, installed): hearing, answers, timers/alarms, memory, people and voices, listening to the room like Ziggletron, everything in natural language, the calendar / to-dos / Google modules, the face on the monitor and the screen by voice, the Settings page and an editable personality (D-110–D-117). M1b built 2026-11-09 (D-118): Pip changing his own code with your approval twice, versioned installs that roll back by themselves, and the usage meter; it goes live when the owner runs `sh deploy/install.sh`. Next: M2. How the code works: [HOW-PIP-WORKS.md](HOW-PIP-WORKS.md). Dashboard: `http://100.118.171.118:8790`.*
 
 ## 1. In one paragraph
 
@@ -81,7 +81,7 @@ flowchart LR
 ### Memory (built in step 5)
 - Saves things **when you ask** ("Pip, remember the bins go out Tuesday night"). **Never** saves overheard conversation. Never deletes old memories by itself (D-54). *Later:* Pip asking first ("Want me to remember that?").
 - New memories are visible to the household by default; one can be made private, and then it's only used when its owner's voice is recognised for sure. Admins can read all memories (D-15, D-16).
-- A **Memory Center** on the dashboard: an inbox to approve or reject, search, add, edit, make private, archive (kept but not used) and delete. Ziggletron's memories will be imported for review in step 8 (D-07).
+- A **Memory Center** on the dashboard: an inbox to approve or reject, search, add, edit, make private, archive (kept but not used) and delete. Ziggletron's 80 memories were brought into the inbox for review in step 8 (D-117).
 - A **private** memory waiting in the inbox is only ever shown to, or approvable by, the person who made it, even if it mentions someone else. A memory about someone Pip doesn't know (not on the household list) also waits in the inbox.
 - No conversation transcripts or recordings are kept as logs. Your test recordings and voice-trained models stay on the Pi (D-72).
 
@@ -245,17 +245,44 @@ Sounds without a human voice in them (a click, a cough, a hiss) are dropped befo
 - **Brought over from Ziggletron** (once, read-only; Ziggletron's files are checked unchanged): his **80 memories go to the memory inbox** for you to approve or reject, and his **personality text** becomes Pip's (Pip's own stays in the version list, one click away). Nothing else (reminders, screens, people, voices, passwords) is brought over.
 - **No logins** (D-116): the dashboard is reachable only on your Tailscale devices.
 
+### Switched over from Ziggletron (done)
+- Pip has taken over: Ziggletron is switched off (D-82), the monitor shows Pip's face (D-110), and Ziggletron's memories and personality were brought over (D-117). Ziggletron stays installed as the owner's fallback; only the owner starts it.
+
 ### Explaining himself (later, M2)
 - Answers "how does your memory work?" from an up-to-date feature list, the docs and his own code (read-only), and says when the docs and code disagree (PIP-NEW-064–067).
 - Answers "why didn't you answer me?" from a 48-hour record of what he decided and why, never by guessing (PIP-NEW-066).
 
-### Changing himself (later, M1b)
-- You can ask by voice. He clarifies, writes a plan, codes it in a **sandbox**, tests it, and shows you the plan and then the actual change on the dashboard. **You approve twice**, and it goes live with automatic rollback if anything breaks (D-09, PIP-NEW-069–076).
+### Changing himself (built in M1b, 2026-11-09)
+- **Asking:** say it to Pip ("Pip, keep track of whose turn it is for the dishes"), or type it on the dashboard's **Changes** page. By voice, only people he recognises for sure may ask; guests and voices he isn't sure of are told to ask on the dashboard. Questions about how he works never start a change (D-118).
+- **Two approvals, both on the dashboard.** Claude Code reads his code and writes a plan (what changes, why, which files, how risky, how it's tested, how to undo it). If something is unclear, its questions wait on the Changes page. You approve the plan; then it's built in a **sandbox** and tested; you see the diff and the test report and approve again. Voice can ask, never approve. A change to security-sensitive code also needs "I've read the diff".
+- **Undo:** the Undo button on a live change takes it back out (a new commit, installed the same way).
+- One change at a time; you can stop one while it's being planned, built or checked. The words of a request are private (shown only on the Changes page) and deleted after 90 days. Commit messages are made from the approved summary, never your words. Pip never pushes to GitHub.
+
+```mermaid
+flowchart TD
+    A["Someone asks<br/>(voice: recognised for sure;<br/>or the Changes page)"] --> P["Claude Code writes a plan<br/>(read-only, in the sandbox)"]
+    P --> Q{"Questions?"}
+    Q -- "yes" --> QA["You answer on the Changes page"] --> P
+    Q -- "no" --> AP1{"Approval 1 (dashboard):<br/>build it?"}
+    AP1 -- "no" --> R["Rejected"]
+    AP1 -- "yes" --> B["Built in the sandbox;<br/>tests run with no internet<br/>and no passwords"]
+    B --> C["Checked: forbidden files, secrets,<br/>all tests in the strict sandbox"]
+    C -- "fails" --> F["Failed (nothing changes)"]
+    C -- "passes" --> AP2{"Approval 2 (dashboard):<br/>diff + test report; go live?"}
+    AP2 -- "no" --> R
+    AP2 -- "yes" --> D["Committed and installed<br/>as a new version"]
+    D --> H{"Healthy?"}
+    H -- "yes" --> L["Live (Undo button)"]
+    H -- "no" --> RB["Rolled back by itself"]
+```
+
 - He can suggest improvements from recurring problems, but never acts on them himself (M4).
 
 ### Reliability
-- Alarms and "stop" can never be blocked by slower work. A watchdog restarts stuck parts. (Rolling back updates comes with self-changes, M1b.)
-- Brain: your **Claude Pro subscription** via Claude Code, plus, later (M2), a small local model when Claude is unavailable (D-75); for now his own offline commands do the basics. Later, when usage runs low, he'll stop joining in and pause self-changes first (D-05, D-17, D-65, D-69).
+- Alarms and "stop" can never be blocked by slower work. A watchdog restarts stuck parts.
+- **Every update rolls back by itself** (built in M1b, PIP-NEW-080): Pip runs from a separate copy (`~/pip-app`); a new version goes live only after he's healthy on it for 2½ minutes, otherwise he switches back to the one before. The last 3 versions are kept. The dashboard header shows which version is running.
+- Brain: your **Claude Pro subscription** via Claude Code, plus, later (M2), a small local model when Claude is unavailable (D-75); for now his own offline commands do the basics.
+- **Usage meter** (built in M1b, PIP-NEW-089): the dashboard shows "Claude today: N requests (≈$X)". When Claude says the plan's usage limit is reached, he stops joining in and pauses self-changes until it resets (or for an hour); replies to people keep trying (D-69). There's no early "80%" warning: the Pro plan doesn't say how much is left (D-05, D-17, D-65).
 - Heavy jobs run under a memory cap (lesson from the M0 freeze).
 
 ### Devices (later, M3)
@@ -289,7 +316,7 @@ Each time Pip asks Claude something (an answer, a mention, or whether to join in
 
 ## 5. Building it
 
-- **Milestones:** M0 measure (done) → architecture design (approved, D-78) → **M1a** groundwork + Ziggletron's features (now) → **M1b** safe self-changes (switch over from Ziggletron) → **M2** smarter conversation and self-knowledge → **M3** devices, lists, calendar, music → **M4** self-improvement suggestions (D-08, D-29).
+- **Milestones:** M0 measure (done) → architecture design (approved, D-78) → **M1a** groundwork + Ziggletron's features (done) → **M1b** safe self-changes (built 2026-11-09) → **M2** (next) smarter conversation and self-knowledge → **M3** devices, lists, calendar, music → **M4** self-improvement suggestions (D-08, D-29).
 - **Made to be understood and extended** (D-70, D-71): plain-language docs and diagrams for every part; module templates so a new feature (a command, a widget, a device type) is fill-in-the-blanks; swappable speech, voice and AI services; a fresh clone of the repo works without anyone's personal data (PIP-NEW-091–097).
 - **May be open-sourced later:** nothing personal ever goes to GitHub, enforced by a commit check.
 - **How it's built:** [ARCHITECTURE.md](ARCHITECTURE.md) (approved, D-78).

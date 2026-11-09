@@ -2,7 +2,7 @@
 
 A playful household voice assistant for a Raspberry Pi 5, the successor to Ziggletron.
 
-**Status:** M1a, building. Steps 1–6 done and installed (hearing, answers, timers and alarms, memory, people and voices, listening to the room like Ziggletron, the calendar / to-dos / Google modules). Step 7 built and installed (the face on the monitor, what Pip is doing, and changing the screen by voice); the owner is trying it out. Next: step 8 (settings page, accounts, moving over from Ziggletron). Pip's dashboard: `http://100.118.171.118:8790`; M0 results and to-dos: `http://100.118.171.118:8780` (Tailscale only).
+**Status:** M1a done (steps 1–8: hearing, answers, timers and alarms, memory, people and voices, listening to the room like Ziggletron, the calendar / to-dos / Google modules, the face on the monitor, the Settings page). M1b built 2026-11-09: Pip changing his own code with the owner's approval twice, versioned installs that roll back by themselves, and the usage meter. Pip has taken over from Ziggletron. Next: M2. Pip's dashboard: `http://100.118.171.118:8790`; M0 results and to-dos: `http://100.118.171.118:8780` (Tailscale only).
 
 ## Read
 

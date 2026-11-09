@@ -4,7 +4,8 @@ After=pip-core.service
 Wants=pip-core.service
 
 [Service]
-ExecStart=%h/pip/.venv/bin/pip-thinker
+WorkingDirectory=%h/pip-app/current
+ExecStart=%h/pip-app/current/.venv/bin/pip-thinker
 Restart=on-failure
 RestartSec=3
 MemoryMax=2G

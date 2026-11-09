@@ -9,6 +9,8 @@ words are spoken). He only asks when all of these hold:
       since he last considered joining in
     - enough time has passed since he last considered it (mood: quiet 2 min, normal 40 s, chatty 15 s)
     - it isn't quiet hours (23:00–07:00, D-66)
+    - Claude's usage limit isn't reached: after pip-thinker's "usage.limited" he doesn't join in until it
+      resets (D-69, common/usage.py). Replies to people carry on as normal.
 
 If anyone starts talking while he's deciding, or the conversation moves on before he speaks, he
 drops it. Joining in can never set timers or save memories (nothing overheard is ever acted on).
@@ -46,6 +48,18 @@ class Joining:
         self.last_check = 0.0
         self.checked_count = -1      # transcript.count when he last considered joining in
         self.task: asyncio.Task | None = None
+        self.paused_until = 0.0      # Claude's usage limit: no joining in until then (unix time)
+        bus = getattr(conv, "bus", None)
+        if bus is not None and hasattr(bus, "core_listen"):
+            bus.core_listen("usage.limited", self.on_limited)
+
+    async def on_limited(self, msg) -> None:
+        """pip-thinker: Claude's usage limit is reached until data.until."""
+        try:
+            self.paused_until = max(self.paused_until, float(msg.data.get("until") or 0))
+        except (TypeError, ValueError):
+            self.paused_until = max(self.paused_until, self.clock() + 3600)
+        self.cancel_wait()
 
     @property
     def interval(self) -> float:
@@ -86,4 +100,5 @@ class Joining:
                 and tr.count != self.checked_count
                 and self.pause - 0.05 <= now - human["ts"] <= self.live
                 and now - self.last_check >= self.interval
+                and now >= self.paused_until
                 and not in_quiet_hours(self.quiet_hours, now))

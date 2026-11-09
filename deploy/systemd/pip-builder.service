@@ -1,0 +1,17 @@
+[Unit]
+Description=Pip: pip-builder (self-changes: plans, builds and checks them in sandboxes; approved on the dashboard)
+After=pip-core.service
+Wants=pip-core.service
+
+[Service]
+ExecStart=%h/pip-app/current/.venv/bin/pip-builder
+WorkingDirectory=%h/pip-app/current
+Restart=on-failure
+RestartSec=3
+# Small: the heavy work (Claude Code, the tests, making environments) runs in its own capped systemd jobs.
+MemoryMax=300M
+MemorySwapMax=0
+Nice=5
+
+[Install]
+WantedBy=default.target

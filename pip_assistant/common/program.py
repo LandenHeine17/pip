@@ -1,7 +1,10 @@
 """Shared start-up for Pip's programs: settings, logging, connect to pip-core, stop cleanly."""
 import asyncio
+import json
 import logging
 import signal
+from functools import cache
+from pathlib import Path
 from typing import Awaitable, Callable
 
 from . import settings
@@ -9,9 +12,27 @@ from .client import BusClient
 from .messages import Message
 
 
+@cache
+def release_info() -> dict:
+    """Which installed version this code is (PIP-NEW-080): the RELEASE file that `release.py install` writes
+    into each version's folder (~/pip-app/releases/<id>/RELEASE). Running straight from the repo there is
+    none, so it's "dev". Read once at start-up: a running program never changes version."""
+    f = Path(__file__).resolve().parents[2] / "RELEASE"
+    try:
+        info = json.loads(f.read_text())
+        return {"release": str(info["short"]), "release_time": info.get("time")}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {"release": "dev", "release_time": None}
+
+
+def release_id() -> str:
+    return release_info()["release"]
+
+
 def make_bus(name: str) -> tuple[BusClient, dict]:
     cfg = settings.load()
     bus = BusClient(name, heartbeat_seconds=cfg["programs"]["heartbeat_seconds"])
+    bus.status["release"] = release_id()  # every heartbeat says which version is running (health check)
 
     async def ping(msg: Message) -> dict:
         return {"pong": True, "program": name}
