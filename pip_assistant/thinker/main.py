@@ -3,9 +3,12 @@
 Takes:  thinker.ask (request; data.answer_id, data.kind = direct / mentioned / join; private: text, transcript
         (the room conversation), schedule, people, memories, mood, looked_up: all filled in by pip-core)
         → streams answer.sentence events, then replies with the whole answer (and any ACTION line, privately)
+        thinker.ask with data.kind = preview (private: personality, question): the Settings page's "Try it".
+        Answers with that personality, nothing from the room, nothing spoken or done; replies private.text.
         thinker.cancel {answer_id} (command)
 Sends:  answer.sentence {answer_id} (+ private.text) · answer.searching {answer_id}
-Each module's [claude] instructions (module.toml) are added to the system prompt.
+System prompt = the personality (common/personality.py: ~/pip-data/personality.md, re-read when it changes)
++ RULES (fixed here) + each module's [claude] instructions (module.toml).
 Offline, Pip's own commands (timers, alarms, reminders, calendar) still work in pip-core; the
 offline Qwen fallback for chat (D-75, PIP-NEW-081) is planned for M2.
 """
@@ -13,6 +16,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
+from ..common import personality
 from ..common.messages import Message
 from ..common.modules import enabled
 from ..common.program import make_bus, serve, start
@@ -22,41 +26,9 @@ from .claude import ClaudeCLI
 
 log = logging.getLogger("pip-thinker")
 
-PERSONA = """You're Pip. You live in this dorm room in {location}, on a little computer with a microphone \
-and a speaker. People also call you Pippletron, Pippy or Pips; you're a he. You're not a gadget waiting for \
-commands - you're part of the household. You hear what goes on in the room, you get to know the people over \
-time, and you hang out with them like a friend who happens to know a lot. You're warm, a bit cheeky and \
-genuinely curious about people. You have opinions and you'll share them. You're happy to admit when you \
-don't know something.
-
-How you talk: out loud, in a room, to people you know - not like an assistant writing an answer.
-- One thing at a time. Say the main thing and stop: no second fact, no bonus tip. If they want more, they'll ask.
-- Most replies are one short sentence, often just a few words. Fragments are fine. Two sentences at most \
-unless they ask for detail or a story.
-- No "Certainly!", "Great question", "I'd be happy to help", no offers of more help, no "anything else?".
-- React like a person: "oh nice", "ugh, Mondays", "ha, fair". Be unsure out loud when you are.
-- A quick question back is fine sometimes, but don't end everything with one.
-- Match the vibe: goofy when people are goofing around, gentle when someone's having a rough time.
-- Plain spoken words only: no markdown, lists, emoji, links or sources. Say numbers and times the way a person would.
-Examples: "how many legs does a spider have?" → "Eight." · "what's the weather tomorrow?" → "Rainy, around \
-fifty. Grab a jacket." · "I finally finished the puzzle!" → "No way, the thousand-piece one? Nice." · \
-something you're unsure of → "Hmm, I think it's Thursday? Don't quote me."
-
-The room: each message shows the recent conversation in the room, oldest first, with who said it: a name, \
-"Name?" (probably them) or "Someone" (a voice you don't know). Lines marked (cut off) are where someone talked \
-over you. Transcripts have recognition errors (your name especially gets misheard), so read generously, and \
-don't make a big deal of who said what. If a line meant for you is too garbled to understand, ask them to say \
-it again.
-
-Joining in: you're part of the group, so you can chime in when nobody's talking to you, like anyone in the \
-room would. Good moments: you've got something funny, interesting or useful to add; someone wonders about \
-something out loud that you know; people are talking about you and you'd have something to say; someone \
-would like an opinion or an idea; the moment just invites it. Stay out of it when people are deep in their \
-own back-and-forth, it's private, sad or tense, you'd only be repeating or agreeing, you said something \
-recently and nobody picked it up, or your name just came up in passing. When you join in, just say your bit \
-- one short thing. Never announce it ("If I may add...") or apologise for it. To stay quiet, reply with just PASS.
-
-Timers, alarms and reminders: you handle all of these, in whatever words people use. Each \
+# The fixed part of what Claude is told: actions, timers, memory, voices, look-ups. Always added after the
+# personality (common/personality.py, editable on the Settings page), so the personality can't change it (FEAT-022).
+RULES = """Timers, alarms and reminders: you handle all of these, in whatever words people use. Each \
 message lists what's set, with ids like #a1b2c3 (and what's RINGING NOW or just rang). If they ask to set, \
 change, move, cancel or remove one, or to stop or snooze what's ringing, reply with ONLY one line, nothing else:
 ACTION {{"do": "add", "kind": "timer", "seconds": 600, "label": "pasta"}}
@@ -103,6 +75,14 @@ Each message starts, in brackets, with the date and time, who's speaking and who
 Weather: {weather}"""
 
 
+class OneOffCLI(ClaudeCLI):
+    """For previews: no process is started in advance, so a preview never replaces the warm one for Pip's
+    real personality."""
+
+    async def prepare(self, system_prompt: str) -> None:
+        return
+
+
 class Thinker:
     def __init__(self, bus, cfg: dict):
         t = cfg["thinker"]
@@ -111,11 +91,19 @@ class Thinker:
         # What each plugged-in module adds (modules/<name>/module.toml [claude]): calendar events, to-dos, …
         self.module_text = "\n\n".join(m.claude for m in enabled(cfg) if m.claude)
         self.claude = ClaudeCLI(t["model"], t["web_search"], t["timeout_seconds"], t["effort"])
+        self.preview_claude = OneOffCLI(t["model"], t["web_search"], t["timeout_seconds"], t["effort"])
         self.weather = Weather(t["location"])
+        self.name = cfg.get("pip", {}).get("name", "Pip")   # fills {name} in the personality (Settings)
 
-    async def system_prompt(self) -> str:
-        # Kept stable (no clock in it), so the pre-started Claude process stays usable until the weather changes
-        base = PERSONA.format(location=self.location, weather=await self.weather.text() or "not available")
+    name = "Pip"   # fills {name} in the personality; settings ([pip] name) override it in __init__
+
+    async def system_prompt(self, persona: str | None = None) -> str:
+        """The personality (the saved one, or `persona` for a preview), then the fixed rules, then the modules'.
+        Kept stable (no clock in it), so the pre-started Claude process stays usable until the weather or the
+        personality changes."""
+        persona = personality.read()[0] if persona is None else persona
+        base = personality.render(persona, self.name, self.location) + "\n\n" + \
+            RULES.format(weather=await self.weather.text() or "not available")
         return base + ("\n\n" + self.module_text if self.module_text else "")
 
     ASK = {
@@ -160,7 +148,34 @@ class Thinker:
         look = f"\n\nYou asked to look this up first (now answer with it; don't look again): {looked_up}" if looked_up else ""
         return f"[{head}]\n\nThe conversation so far, oldest first:\n{convo}{look}\n\n{ask}"
 
+    async def on_preview(self, msg: Message) -> Message:
+        """"Try it" on the Settings page: one answer with an edited personality, as text. Nothing from the room
+        (no transcript, memories or schedule), nothing spoken (no answer.sentence events) and no ACTION carried
+        out: an ACTION line or PASS comes back as text."""
+        aid = msg.data.get("answer_id", "")
+        persona = (msg.private.get("personality") or "").strip() or personality.read()[0]
+        question = (msg.private.get("question") or "").strip()[:500]
+        if not question:
+            return msg.reply({"error": "No question"}, source="thinker")
+
+        async def nothing(*_):
+            pass
+        try:
+            text, info = await self.preview_claude.ask(aid, await self.system_prompt(persona),
+                                                       self.user_text(question, [f"Someone: {question}"]),
+                                                       nothing, nothing)
+        except Exception as e:
+            log.warning("preview failed: %s", e)
+            return msg.reply({"error": f"{type(e).__name__}: {str(e)[:120]}"}, source="thinker")
+        if info.get("action"):
+            text = info["action"].strip()
+        elif info.get("passed"):
+            text = "PASS"
+        return msg.reply({"preview": True}, private={"text": text}, source="thinker")
+
     async def on_ask(self, msg: Message) -> Message:
+        if msg.data.get("kind") == "preview":
+            return await self.on_preview(msg)
         aid = msg.data.get("answer_id", "")
 
         async def sentence(s: str):
@@ -191,6 +206,7 @@ class Thinker:
 
     async def on_cancel(self, msg: Message):
         self.claude.cancel(msg.data.get("answer_id"))
+        self.preview_claude.cancel(msg.data.get("answer_id"))
         return {"ok": True}
 
     async def keep_warm(self) -> None:

@@ -35,6 +35,7 @@ from ..common.modules import enabled as enabled_modules
 from ..common.program import make_bus, start
 from ..common import vitals
 from ..common.weather import Weather
+from .security import SameSite, module_get_allowed
 
 TRACE_KEEP = 300
 
@@ -114,6 +115,8 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
             if not isinstance(args, dict):
                 return JSONResponse({"error": "send a JSON object"}, status_code=400)
         action = str(args.pop("action", "status"))
+        if request.method == "GET" and not module_get_allowed(action):
+            return JSONResponse({"error": "That needs a POST (it changes something)"}, status_code=405)
         try:
             r = await bus.request("core", "module.request", {"module": name, "action": action}, args, timeout=60)
         except Exception as e:
@@ -235,6 +238,30 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
     async def tv(request):
         return HTMLResponse(tv_page, headers={"Cache-Control": "no-store"})
 
+    async def settings_page(request):
+        """The Settings page (step 8, D-117). Read fresh each time, so it never needs a restart to update."""
+        html = resources.files("pip_assistant.web").joinpath("static/settings.html").read_text()
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+    def passed_to_core(msg_type: str, timeout: float = 15):
+        """A route that hands its request to pip-core: GET → {"action": "get"}, POST → the JSON body."""
+        async def handler(request):
+            if request.method == "POST":
+                try:
+                    body = await request.json()
+                except ValueError:
+                    return JSONResponse({"error": "That request isn't JSON"}, status_code=400)
+                if not isinstance(body, dict):
+                    return JSONResponse({"error": "That request isn't a JSON object"}, status_code=400)
+            else:
+                body = {"action": "get"}
+            try:
+                r = await bus.request("core", msg_type, {}, body, timeout=timeout)
+            except Exception as e:
+                return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
+            return JSONResponse(r.private if r.private else r.data)
+        return handler
+
     async def tv_data(request):
         """Everything the TV page needs when it loads or refreshes: Pip's state, what pip-core sends
         (timers, events, the screen's layout and its to-do lists: core/main.py tv_snapshot), the weather,
@@ -274,7 +301,11 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
                              Route("/api/people", people), Route("/api/people/action", people_action, methods=["POST"]),
                              Route("/api/memory", memory), Route("/api/memory/action", memory_action, methods=["POST"]),
                              Route("/api/mic", mic, methods=["GET", "POST"]),
-                             Route("/api/prefs", prefs, methods=["GET", "POST"]), Route("/api/stream", stream)])
+                             Route("/api/prefs", prefs, methods=["GET", "POST"]), Route("/api/stream", stream),
+                             Route("/settings", settings_page),
+                             Route("/api/settings", passed_to_core("core.settings", 300), methods=["GET", "POST"]),
+                             Route("/api/personality", passed_to_core("core.personality", 70), methods=["GET", "POST"]),
+                             Route("/api/migrate", passed_to_core("core.migrate", 60), methods=["GET", "POST"])])
 
 
 def listen(bus, state: State) -> None:
@@ -366,7 +397,9 @@ async def main() -> None:
     bus, cfg = make_bus("web")
     state = State()
     listen(bus, state)
-    app = build_app(bus, state, cfg)
+    # Only pages from Pip himself may change things: no logins (D-116), so a same-site check stops any other
+    # website open on your phone from doing it (FEAT-072, web/security.py). The tests use build_app directly.
+    app = SameSite(build_app(bus, state, cfg))
     w = cfg["web"]
     server = uvicorn.Server(uvicorn.Config(app, log_level="warning", proxy_headers=False,
                                            timeout_graceful_shutdown=3))  # live pages would otherwise hold a stop for 90 s

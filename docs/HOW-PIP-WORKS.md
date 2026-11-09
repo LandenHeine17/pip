@@ -199,7 +199,14 @@ Two cautions before you start:
   - Restarting doesn't make a sound, but testing by talking to Pip does: not between 23:00 and 07:00.
 - **Watch it:** tick the state bars option on the dashboard, and open `http://100.118.171.118:8790/tv` in a browser to see the face next to the feed.
 
-## 5. Where to read next
+## 5. Settings and the personality
+
+- **Settings** start in `pip_assistant/defaults.toml`; your changes are in `~/pip-data/settings.toml`; `common/settings.py` loads both when a program starts (`load()`).
+- The Settings page (`web/static/settings.html`) asks pip-core (`core/settingsapi.py`) through `/api/settings`. `SCHEMA` in `common/settings.py` says, for every setting: its group, label, explanation, allowed values, and **which programs read it**. Saving checks every change (`validate`), writes only what differs from the defaults (`save`), then restarts just those programs once Pip is idle.
+- **To add a setting:** add it to `defaults.toml` with a comment, read it where it's used, and add a `SCHEMA` entry. `tests/test_settings.py` fails if the two don't match.
+- **The personality** (who he is, how he talks) is `common/personality.py`: `~/pip-data/personality.md` if you've edited it, else the built-in text, with `{name}` and `{location}` filled in. pip-thinker reads it fresh whenever the file changes, then adds `RULES` (the fixed part: actions, memory, privacy) from `thinker/main.py`.
+
+## 6. Where to read next
 
 | To understand… | Read |
 |---|---|
@@ -207,7 +214,7 @@ Two cautions before you start:
 | when he joins in by himself | `core/joining.py` |
 | knowing who's talking | `core/people.py`, `core/peoplecmds.py` |
 | timers, alarms, reminders | `core/schedule.py`, `core/when.py`, `core/commands.py` |
-| what Claude is told, and the ACTION lines | `thinker/main.py` (`PERSONA`), `core/actions.py` |
+| what Claude is told, and the ACTION lines | `common/personality.py` (his personality, editable on the Settings page), `thinker/main.py` (`RULES`: the fixed part), `core/actions.py` |
 | how a module plugs in | `modules/_template/`, `core/modules.py` |
 | the boxes on the monitor | `modules/screen/` (the layout) and `BOXES` in `tv.html` (drawing them) |
 | the wake word, claps, cutting up speech | `ears/wake.py`, `ears/clap.py`, `ears/segmenter.py` |

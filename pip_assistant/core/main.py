@@ -62,6 +62,19 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
     bus.core_handlers["core.mic"] = lambda m: mic_action(conv, m)
     bus.core_handlers["core.prefs"] = lambda m: conv.set_pref(m.data.get("key"), m.data["value"]) if "key" in m.data \
         else conv.prefs_snapshot()
+    # Step 8 (D-117): the Settings page, the personality editor and the import from Ziggletron. Requests and
+    # replies travel in `private` (personality text, preview questions), so they're never written to the trace.
+    from .migrate import Migration
+    from .personalityapi import PersonalityAPI
+    from .settingsapi import SettingsAPI
+    personality_api, migration = PersonalityAPI(conv), Migration(memory, people)
+    settings_api = SettingsAPI(bus, conv)
+
+    async def privately(handler, m):
+        return {"ok": True}, await handler(dict(m.private or {}))
+    bus.core_handlers["core.personality"] = lambda m: privately(personality_api.handle, m)
+    bus.core_handlers["core.migrate"] = lambda m: privately(migration.handle, m)
+    bus.core_handlers["core.settings"] = lambda m: privately(settings_api.handle, m)
     bus.schedule = schedule
     bus.memory = memory
     bus.modules = modules
