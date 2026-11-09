@@ -424,7 +424,7 @@ class Commands:
             start = at or datetime.fromtimestamp(row["start"] + (shift or 0))
             all_day = bool(row["all_day"]) and at is not None and at.time() == datetime.min.time()
             ev = self.cal.update_event(row["id"], start, all_day=all_day if at else None)
-            when_txt = when.say_day(start.date(), self.now().date()) + ("" if ev["all_day"] else f" at {when.say_clock(start)}")
+            when_txt = when.say_day(start.date(), self.now()) + ("" if ev["all_day"] else f" at {when.say_clock(start)}")
             return f"Moved {ev['title']} to {when_txt}."
         if row["kind"] == "timer":
             if length:
@@ -632,7 +632,7 @@ class Commands:
     def _add_event(self, title: str, at: datetime, all_day: bool = False, rep: str = "", heads: float | None = None) -> str:
         ev = self.cal.add_event(title, at, all_day=all_day, repeat=rep, heads_up_before=heads)
         self.remember("event", ev["id"])
-        when_txt = when.say_day(at.date(), self.now().date()) + ("" if all_day else f" at {when.say_clock(at)}")
+        when_txt = when.say_day(at.date(), self.now()) + ("" if all_day else f" at {when.say_clock(at)}")
         if rep:
             when_txt = when.say_repeat(rep) + ("" if all_day else f" at {when.say_clock(at)}")
         return f"Added {title}, {when_txt}."
@@ -676,12 +676,12 @@ class Commands:
             days = [when.day(t, now) or now.date()]
         found = [(d, at, ev) for d in days for at, ev in self.cal.events_on(d) if not ev["private"]]
         if not found:
-            label = "this week" if len(days) > 1 else when.say_day(days[0], now.date())
+            label = "this week" if len(days) > 1 else when.say_day(days[0], now)
             return f"Nothing on the calendar {label}."
         items = []
         for d, at, ev in found[:5]:
-            day_txt = "" if len(days) == 1 else f" {when.say_day(d, now.date())}"
+            day_txt = "" if len(days) == 1 else f" {when.say_day(d, now)}"
             items.append(f"{ev['title']}{day_txt}" + ("" if ev["all_day"] else f" at {when.say_clock(at)}"))
         more = f", and {len(found) - 5} more" if len(found) > 5 else ""
-        lead = "This week" if len(days) > 1 else when.say_day(days[0], now.date()).capitalize()
+        lead = "This week" if len(days) > 1 else when.say_day(days[0], now).capitalize()
         return f"{lead}: {self._join(items)}{more}."

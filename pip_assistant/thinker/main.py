@@ -11,12 +11,13 @@ offline Qwen fallback for chat (D-75, PIP-NEW-081) is planned for M2.
 """
 import asyncio
 import logging
-import time
+from datetime import datetime, timedelta
 
 from ..common.messages import Message
 from ..common.modules import enabled
 from ..common.program import make_bus, serve, start
 from ..common.weather import Weather
+from ..core import when
 from .claude import ClaudeCLI
 
 log = logging.getLogger("pip-thinker")
@@ -134,11 +135,22 @@ class Thinker:
                  "nothing before or after them. (Don't use ACTION here.)"),
     }
 
+    @staticmethod
+    def time_now(at: datetime | None = None) -> str:
+        """The date and time for Claude. Between midnight and 4 AM nobody has slept yet, so "tomorrow" means
+        the coming day, not the one after (owner, D-114; core/when.py waking_day): Claude is told so."""
+        at = at or datetime.now()
+        out = at.strftime("%A %B %-d %Y, %-I:%M %p")
+        if at.hour < when.NIGHT_ENDS:
+            out += (f" (after midnight: people haven't slept yet, so \"tomorrow\" means {at.strftime('%A')}, "
+                    f"the coming day, and \"today\" or \"tonight\" can mean {(at - timedelta(days=1)).strftime('%A')})")
+        return out
+
     @classmethod
     def user_text(cls, text: str, transcript: list[str] | None = None, now: str | None = None, schedule: str = "",
                   people: str = "", memories: str = "", kind: str = "direct", mood: str = "", looked_up: str = "") -> str:
         """What Claude reads: the time, who's here, what's set and remembered, the room conversation, and what's asked."""
-        now = now or time.strftime("%A %B %-d %Y, %-I:%M %p")
+        now = now or cls.time_now()
         head = "; ".join(x for x in (now, people, schedule, memories) if x)
         lines = list(transcript or [])
         if not lines and text:

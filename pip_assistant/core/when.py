@@ -59,11 +59,22 @@ def duration(text: str) -> float | None:
     return total if found and total > 0 else None
 
 
-def _day(t: str, today: date) -> date | None:
+# "Tomorrow" means after you next sleep, like people mean it (owner, D-114): until this hour, it's still the
+# day before. At 00:30 on Thursday, "wake me up tomorrow at 7" is Thursday 7 AM.
+NIGHT_ENDS = 4
+
+
+def waking_day(now: datetime) -> date:
+    """The day people still think of as "today": before 4 AM, the day before."""
+    return (now - timedelta(hours=NIGHT_ENDS)).date()
+
+
+def _day(t: str, now: datetime) -> date | None:
+    today, awake = now.date(), waking_day(now)
     if re.search(r"\b(day after tomorrow)\b", t):
-        return today + timedelta(days=2)
+        return awake + timedelta(days=2)
     if re.search(r"\btomorrow\b", t):
-        return today + timedelta(days=1)
+        return awake + timedelta(days=1)
     if re.search(r"\b(today|tonight|this (morning|afternoon|evening))\b", t):
         return today
     m = re.search(rf"\b(next )?({'|'.join(WEEKDAYS)})\b", t)
@@ -76,13 +87,13 @@ def _day(t: str, today: date) -> date | None:
 
 
 def has_day(text: str) -> bool:
-    return _day(numbers(text), date.today()) is not None
+    return _day(numbers(text), datetime.now()) is not None
 
 
 def day(text: str, now: datetime | None = None) -> date | None:
     """Just the day mentioned (today, tomorrow, Thursday...), or None."""
     now = now or datetime.now()
-    return _day(numbers(text), now.date())
+    return _day(numbers(text), now)
 
 
 def clock(text: str, now: datetime | None = None, alarm: bool = False) -> datetime | None:
@@ -131,7 +142,7 @@ def clock(text: str, now: datetime | None = None, alarm: bool = False) -> dateti
     elif half == "am" and hour == 12:
         hour = 0
     cands = [hour] if half or hour == 0 or hour > 12 else [hour % 12, hour % 12 + 12]
-    d = _day(t, now.date())
+    d = _day(t, now)
     if d is not None and d != now.date():
         if alarm and len(cands) == 2 and cands[0] != 0:
             cands = cands[:1]   # an alarm "tomorrow at 6" wakes you at 6 AM, not 6 PM
@@ -233,7 +244,11 @@ def say_clock(dt: datetime) -> str:
 
 
 def say_day(d: date, today: date | None = None) -> str:
-    today = today or date.today()
+    """"today", "tomorrow", "Friday" or "Friday November 20". Pass the time now (a datetime) to say it the way
+    people mean it after midnight (waking_day): at 00:30 on Thursday, Thursday is "tomorrow"."""
+    today = today or datetime.now()
+    if isinstance(today, datetime):
+        today = waking_day(today)
     if d == today:
         return "today"
     if d == today + timedelta(days=1):
@@ -245,7 +260,9 @@ def say_day(d: date, today: date | None = None) -> str:
 
 def say_time(dt: datetime, now: datetime | None = None) -> str:
     now = now or datetime.now()
-    day_ = say_day(dt.date(), now.date())
+    if waking_day(dt) == waking_day(now) and dt.date() != waking_day(now):
+        return say_clock(dt)   # later the same night (at 00:30 or 23:00, "1:30 AM"): no day needed
+    day_ = say_day(dt.date(), now)
     return say_clock(dt) if day_ == "today" else f"{say_clock(dt)} {day_}" if day_ == "tomorrow" else f"{day_} at {say_clock(dt)}"
 
 
