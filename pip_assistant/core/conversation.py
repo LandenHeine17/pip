@@ -26,8 +26,9 @@ written to the decision trace (D-34). The room transcript is kept in memory only
 When listening is switched off (dashboard or two claps, core/mic.py, D-91) nothing is heard at all.
 
 Offline (Groq can't be reached): Whisper on the Pi transcribes instead, and Pip's own fixed-phrasing
-commands (core/commands.py) do the basics; anything else gets "I'm offline, so I can only do the basics
-right now" (PIP-NEW-044, D-83). They're also the fallback if Claude fails to answer.
+commands (core/commands.py) do the basics; for anything else he stays quiet (the face and dashboard show
+he's offline; D-83, D-115). They're also the fallback if Claude fails to answer. Groq's daily limit running
+out isn't offline: what's said to him is heard on the Pi and answered by Claude as usual (D-115).
 While an alarm rings, the obvious "stop", "okay", "snooze" or Pip's name silence it instantly; anything
 else said to Pip goes to Claude, which can stop or snooze it.
 
@@ -49,6 +50,7 @@ import time
 from ..common.messages import Message, new_id
 from .joining import Joining, in_quiet_hours
 from .states import DETAILS, situation
+from .stt import RateLimited
 from .transcript import Transcript
 
 log = logging.getLogger(__name__)
@@ -118,7 +120,6 @@ SAYINGS = {
     "stt_failed": "Sorry, I couldn't make out what you said. My hearing service isn't answering.",
     "thinker_failed": "Sorry, my brain isn't answering right now. Try me again in a moment.",
     "no_speech": "",  # wake word but then nothing: stay quiet
-    "offline": "I'm offline, so I can only do the basics right now, like timers and alarms.",
     "command_failed": "Sorry, that didn't work. Nothing was set.",
 }
 
@@ -212,6 +213,7 @@ class Conversation:
         self.trimmed = False         # the current answer was cut short after max_sentences
         self.long_ok = False
         self.stt = stt
+        self.stt_limited = False     # Groq's daily limit is used up (D-115): not offline, just heard on the Pi
         self.answer_id = None
         self.answer_done = asyncio.Event()
         self.speech_done = asyncio.Event()
@@ -344,7 +346,15 @@ class Conversation:
             text = await self.stt.transcribe(pcm)
             if self.net is not None and not self.net.online:
                 await self.net.set(True)
+            await self._stt_limited(False)
             return text, False
+        except RateLimited:
+            # Groq's daily limit is used up (D-115). The internet and Claude still work, so this isn't offline:
+            # what's said to Pip is heard by Whisper on the Pi and answered as usual; room talk waits (D-50).
+            await self._stt_limited(True)
+            if self.local_stt is None or (reason == "room" and not self.ringing):
+                raise
+            return await self.local_stt.transcribe(pcm), False
         except Exception as e:
             if self.net is not None and self.stt is not None:
                 await self.net.failed()
@@ -353,6 +363,12 @@ class Conversation:
             await self.bus.publish(Message("event", "stt.offline", data={"error": type(e).__name__, "reason": reason}))
             self.offline_until = time.monotonic() + 120
             return await self.local_stt.transcribe(pcm), True
+
+    async def _stt_limited(self, limited: bool) -> None:
+        """A bar on the Conversation feed when Groq's limit runs out, and when it's back (D-115)."""
+        if limited != self.stt_limited:
+            self.stt_limited = limited
+            await self.note("stt_limited" if limited else "stt_back")
 
     async def has_voice(self, pcm: bytes, reason: str) -> bool:
         """Noise (a click, a cough, a hiss) never reaches speech-to-text, which would hear "Thank you." (D-85)."""
@@ -670,8 +686,10 @@ class Conversation:
             if await self.local_command(text):
                 return
         if offline:
+            # Offline and not one of the basics: he stays quiet (no repeated "I'm offline" line, owner D-115).
+            # The face and the dashboard show he's offline.
             await self.bus.publish(Message("event", "answer.offline", data={}))
-            await self.say(SAYINGS["offline"], "offline")
+            await self.note("offline_quiet")
             return
         await self.answer(text, reason)
 

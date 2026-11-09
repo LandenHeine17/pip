@@ -306,7 +306,7 @@ async def test_offline_uses_local_hearing_and_only_does_commands(tmp_path):
     local.text = "Pip, what's the capital of Australia?"
     await ears.emit("heard.utterance", d, private=p)
     await asyncio.sleep(0.3)
-    assert [t for k, t, _ in got if k == "ears.say"][-1].startswith("I'm offline")
+    assert [t for k, t, _ in got if k == "ears.say"] == ["Timer's on, 5 minutes."]   # stays quiet (D-115)
     assert "thinker.ask" not in [k for k, _, _ in got]
     d, p = utt("room")                                        # room speech is never transcribed on the Pi (D-50)
     calls = local.calls

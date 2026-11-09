@@ -2,7 +2,10 @@
 
     await stt.transcribe(pcm_int16_16k: bytes) -> str
 
-Groq Whisper Large V3 Turbo with a word list is the default (D-48). When Groq can't be reached,
+Groq Whisper Large V3 Turbo with a word list is the default (D-48). Groq's free plan allows 2,000
+requests a day per model, and Pip hears the whole room (D-92), so when one model's limit is used up he
+switches to a spare model with its own limit (D-115); when all are used up, `RateLimited` is raised (that
+isn't being offline: the internet and Claude still work). When Groq can't be reached,
 Pip falls back to Whisper base on the Pi (LocalWhisperSTT): about 2 s per request and fine for
 clear, close commands like "timer ten minutes" or "snooze" (M0: 12% of words wrong close up), but
 not for room speech (D-50). The owner agreed offline only needs to understand everyday phrasings (D-83); online,
@@ -14,9 +17,15 @@ import io
 import tomllib
 import wave
 
+import time
+
 import httpx
 
 from ..common import paths
+
+
+class RateLimited(Exception):
+    """Every Groq model's request limit is used up for now (Groq said 429). Not offline."""
 
 
 def wav_bytes(pcm: bytes, rate: int = 16000) -> bytes:
@@ -40,8 +49,10 @@ def secret(name: str) -> str:
 class GroqSTT:
     URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 
-    def __init__(self, model: str, word_list: str, timeout: float = 6.0):
+    def __init__(self, model: str, word_list: str, timeout: float = 6.0, spare_models: list[str] | None = None):
         self.model, self.word_list = model, word_list
+        self.models = [model, *(m for m in (spare_models or []) if m != model)]
+        self.limited_until: dict[str, float] = {}   # model → when Groq said to try it again (time.monotonic)
         self.names: list[str] = []   # household names, set by pip-core before each request (D-93)
         key = secret("groq_api_key")
         if not key:
@@ -50,12 +61,30 @@ class GroqSTT:
                                                                  "User-Agent": "pip-assistant"})
 
     async def transcribe(self, pcm: bytes) -> str:
-        data = {"model": self.model, "language": "en", "temperature": "0", "response_format": "json"}
-        if prompt := with_names(self.word_list, self.names):
-            data["prompt"] = prompt
-        r = await self.http.post(self.URL, data=data, files={"file": ("speech.wav", wav_bytes(pcm), "audio/wav")})
-        r.raise_for_status()
-        return r.json().get("text", "").strip()
+        """The text, from the first model whose limit isn't used up. Raises RateLimited if none is free."""
+        for model in self.models:
+            if time.monotonic() < self.limited_until.get(model, 0):
+                continue
+            data = {"model": model, "language": "en", "temperature": "0", "response_format": "json"}
+            if prompt := with_names(self.word_list, self.names):
+                data["prompt"] = prompt
+            r = await self.http.post(self.URL, data=data, files={"file": ("speech.wav", wav_bytes(pcm), "audio/wav")})
+            if r.status_code == 429:   # this model's limit is used up: rest it as long as Groq says, try the next
+                try:
+                    wait = float(r.headers.get("retry-after", 60))
+                except ValueError:
+                    wait = 60.0
+                self.limited_until[model] = time.monotonic() + max(wait, 30.0)
+                continue
+            r.raise_for_status()
+            return r.json().get("text", "").strip()
+        raise RateLimited("every speech-to-text model's limit is used up for now")
+
+    @property
+    def limited(self) -> bool:
+        """True while every model is resting after hitting its limit."""
+        now = time.monotonic()
+        return all(now < self.limited_until.get(m, 0) for m in self.models)
 
 
 class LocalWhisperSTT:
@@ -98,4 +127,4 @@ def make_stt(cfg: dict):
     s = cfg["stt"]
     if s["provider"] not in PROVIDERS:
         raise ValueError(f"Unknown speech-to-text provider '{s['provider']}'. Available: {', '.join(PROVIDERS)}")
-    return PROVIDERS[s["provider"]](s["model"], s["word_list"], s["timeout_seconds"])
+    return PROVIDERS[s["provider"]](s["model"], s["word_list"], s["timeout_seconds"], s.get("spare_models", []))
