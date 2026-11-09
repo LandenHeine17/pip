@@ -205,7 +205,7 @@ Two cautions before you start:
 ## 5. Settings and the personality
 
 - **Settings** start in `pip_assistant/defaults.toml`; your changes are in `~/pip-data/settings.toml`; `common/settings.py` loads both when a program starts (`load()`).
-- The Settings page (`web/static/settings.html`) asks pip-core (`core/settingsapi.py`) through `/api/settings`. `SCHEMA` in `common/settings.py` says, for every setting: its group, label, explanation, allowed values, and **which programs read it**. Saving checks every change (`validate`), writes only what differs from the defaults (`save`), then restarts just those programs once Pip is idle.
+- The Settings page (`web/static/settings.html`) asks pip-core (`core/settingsapi.py`) through `/api/settings`. `SCHEMA` in `core/settings_schema.py` says, for every setting: its group, label, explanation, allowed values, and **which programs read it**. Saving checks every change (`validate`), writes only what differs from the defaults (`save`), then restarts just those programs at a quiet moment (`quiet()` in `core/states.py`).
 - **To add a setting:** add it to `defaults.toml` with a comment, read it where it's used, and add a `SCHEMA` entry. `tests/test_settings.py` fails if the two don't match.
 - **The personality** (who he is, how he talks) is `common/personality.py`: `~/pip-data/personality.md` if you've edited it, else the built-in text, with `{name}` and `{location}` filled in. pip-thinker reads it fresh whenever the file changes, then adds `RULES` (the fixed part: actions, memory, privacy) from `thinker/main.py`.
 
@@ -217,7 +217,12 @@ Someone asks for a change; Claude Code plans it and, after your first approval, 
 |---|---|
 | `main.py` | The program: answers `builder.ask` (a new request) and `builder.page` (the Changes page), reads the `[builder]` settings fresh for each job, and pauses on `usage.limited` |
 | `store.py` | The record: one row per change in the `builder_changes` table of `~/pip-data/pip.db`. `STATUSES` lists them in order. `request` (the asker's words) is private, and `forget_old` blanks it after `keep_days` (90) |
-| `pipeline.py` | The steps, in `Builder`: `ask`, `_plan`, `approve_plan`, `_build`, `_check`, `approve`, `_deploy`, `_watch`/`_finish_release`, `undo`/`_undo`, `stop`, `start` (after a restart). Also `FORBIDDEN` and `SECURITY` (which files may not change, and which make a change security-risk), `Workspaces` (the plain copy), `Deployer` (git: branch, commit, revert, fast-forward main; never pushes), `ReleaseRunner` (runs `release.py install` as its own job) |
+| `pipeline.py` | The steps, in `Builder`: `_plan`, `_build`, `_check`, `_deploy`, `_watch`/`_finish_release`, `_undo`, `start` (after a restart) |
+| `api.py` | What the Changes page can do (`ChangesPage`, part of `Builder`): `ask`, `approve_plan`, `answer`, `approve`, `reject`, `stop`, `undo`, and the lists |
+| `checks.py` | `FORBIDDEN` and `SECURITY` (which files may not change, and which make a change security-risk), the diff, the secret scan, and the test run in the strict sandbox |
+| `workspace.py` | `Workspaces`: the plain copy Claude edits, and its `.venv` |
+| `deploy.py` | `Deployer` (git: branch, commit, revert, fast-forward main; never pushes) and `commit_message` |
+| `releasejob.py` | `ReleaseRunner`: runs `release.py install` as its own job and reads the outcome through `release.py` itself |
 | `agent.py` | Claude Code: `RULES` (what it's told), `PLAN_TASK` and `BUILD_TASK`, `claude_args` (planning gets read-only tools; building may also edit and run only `tools/sandbox-test`), `StreamParser` (Claude's output → the live steps on the Changes page), `parse_plan` |
 | `sandbox.py` | The two sandboxes as `systemd-run` command lines: `agent_command` and `check_command` |
 
@@ -297,7 +302,7 @@ Pip runs from a separate live copy, never from `~/pip`. Every update, yours or a
 4. `check_health`: up to 2 minutes for every expected program to be `ok` **on this version** (each heartbeat carries `release`, read from `RELEASE` by `common/program.py`), and for `/` and `/api/tv` to answer; then 30 s in which nothing may restart.
 5. Healthy: recorded as live; `prune` keeps the newest 3 plus the current and previous. Not healthy: `_recover` switches back to the version before and checks again. On the very first install, it puts back the old service files that ran Pip from `~/pip`.
 
-Exit codes: **0** live, **1** rolled back (healthy again), **2** stopped before anything changed, **3** needs the owner (look at `journalctl --user -u 'pip-*' -n 100`). By hand, from `~/pip`: `python3 -m pip_assistant.release list`, `status`, or `rollback`. The tests (`tests/test_release.py`) fake git, uv, systemd and the health check.
+Exit codes: **0** live, **1** rolled back (healthy again), **2** stopped before anything changed, **3** needs the owner (look at `journalctl --user -u 'pip-*' -n 100`). By hand, from `~/pip`: `python3 -m pip_assistant.release list`, `status` (`status --json` for programs: pip-builder reads it this way), or `rollback`. The exit codes are named in `release.py` (`EXIT_LIVE`…). The tests (`tests/test_release.py`) fake git, uv, systemd and the health check.
 
 ## 8. Where to read next
 
@@ -311,6 +316,6 @@ Exit codes: **0** live, **1** rolled back (healthy again), **2** stopped before 
 | how a module plugs in | `modules/_template/`, `core/modules.py` |
 | the boxes on the monitor | `modules/screen/` (the layout) and `BOXES` in `tv.html` (drawing them) |
 | the wake word, claps, cutting up speech | `ears/wake.py`, `ears/clap.py`, `ears/segmenter.py` |
-| self-changes | `builder/pipeline.py` (`Builder`), `builder/sandbox.py`, `tools/sandbox-test` |
+| self-changes | `builder/pipeline.py` (`Builder`), `builder/checks.py`, `builder/sandbox.py`, `tools/sandbox-test` |
 | installs and rollback | `release.py`, `deploy/install.sh` |
 | the usage meter | `common/usage.py`, `thinker/main.py` |
