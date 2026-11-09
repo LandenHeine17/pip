@@ -2,6 +2,7 @@
 alarms, people, memory, modules, the conversation) and connects them; the small functions below
 answer the dashboard's requests (`core.*`, sent by pip-web). `main` then runs until stopped."""
 import asyncio
+from dataclasses import dataclass
 import logging
 import signal
 
@@ -25,7 +26,17 @@ from .trace import Trace
 log = logging.getLogger("pip-core")
 
 
-def build(cfg: dict) -> tuple[Bus, Trace, Health]:
+@dataclass
+class Core:
+    """Everything build() made that main() starts and stops."""
+    bus: Bus
+    trace: Trace
+    schedule: Schedule
+    net: Net
+    modules: Registry
+
+
+def build(cfg: dict) -> Core:
     trace = Trace(paths.database(), keep_hours=cfg["trace"]["keep_hours"])
     health = Health(cfg["programs"]["expected"], stuck_after=cfg["programs"]["stuck_after_seconds"],
                     restart=cfg["programs"]["restart_stuck"], release=release_info()["release"])
@@ -33,7 +44,6 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
     mic = MicSwitch(paths.database())
     prefs = Prefs(paths.database())
     net = Net(bus)
-    bus.net = net
     bus.core_handlers["core.health"] = lambda m: {"programs": health.snapshot(), "version": __version__,
                                                   "mic": mic.snapshot(), "online": net.online,
                                                   **release_info()}
@@ -77,10 +87,7 @@ def build(cfg: dict) -> tuple[Bus, Trace, Health]:
     bus.core_handlers["core.personality"] = lambda m: privately(personality_api.handle, m)
     bus.core_handlers["core.migrate"] = lambda m: privately(migration.handle, m)
     bus.core_handlers["core.settings"] = lambda m: privately(settings_api.handle, m)
-    bus.schedule = schedule
-    bus.memory = memory
-    bus.modules = modules
-    return bus, trace, health
+    return Core(bus, trace, schedule, net, modules)
 
 
 def alerts_snapshot(schedule: Schedule, modules: Registry) -> dict:
@@ -198,7 +205,7 @@ def memory_action(memory: Memory, people: People, m: Message):
         elif act == "restore":
             memory.update(mid, status="active")
         elif act == "visibility":
-            row = memory._row(mid) or {}
+            row = memory.get(mid) or {}
             if m.data.get("value") == "private" and not row.get("owner") and not row.get("about"):
                 return {"error": "A private memory needs a person it belongs to"}
             memory.update(mid, visibility=m.data.get("value"), owner=row.get("owner") or (row.get("about") or [""])[0])
@@ -213,7 +220,7 @@ def memory_action(memory: Memory, people: People, m: Message):
 
 async def alert_action(schedule: Schedule, conv: Conversation, m: Message) -> dict:
     """Buttons and forms on the dashboard: shut off, snooze, cancel, new timer, remove an event (FEAT-039)."""
-    from . import when
+    from ..common import when
     act = m.data.get("action")
     if act == "stop":
         return {"stopped": await schedule.acknowledge("dashboard")}
@@ -243,7 +250,8 @@ async def alert_action(schedule: Schedule, conv: Conversation, m: Message) -> di
 
 
 async def main() -> None:
-    bus, trace, _ = build(settings.load())
+    core = build(settings.load())
+    bus, trace = core.bus, core.trace
     await bus.start()
     await bus.publish(Message("event", "core.started", data={"version": __version__}))
     log.info("pip-core %s listening on %s", __version__, paths.core_socket())
@@ -252,16 +260,16 @@ async def main() -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)
     keeper = asyncio.create_task(bus.housekeeping())
-    alarms = asyncio.create_task(bus.schedule.run())
-    online = asyncio.create_task(bus.net.run())
-    bus.modules.start()
+    alarms = asyncio.create_task(core.schedule.run())
+    online = asyncio.create_task(core.net.run())
+    core.modules.start()
     from .voicecheck import voice_seconds_sync  # load the voice detector now, not on the first thing heard
     loop.run_in_executor(None, voice_seconds_sync, bytes(3200))
     await stop.wait()
     keeper.cancel()
     alarms.cancel()
     online.cancel()
-    bus.modules.stop()
+    core.modules.stop()
     await bus.publish(Message("event", "core.stopping"))
     trace.flush()
     await bus.stop()

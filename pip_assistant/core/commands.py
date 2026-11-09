@@ -5,7 +5,7 @@ lines (core/actions.py). These rules are the fallback when the internet is down 
 D-83): timers, alarms, reminders, the calendar, "what time is it", "stop". What they still do
 online: `while_ringing` (the obvious "stop", "okay", "snooze" or his name silence a ringing alarm
 instantly; anything else said to Pip while it rings goes to Claude), the dashboard's box for typing
-a command, and the code that makes and changes things (`_make_timer`, `apply_change`…), which
+a command, and the code that makes and changes things (`make_timer`, `apply_change`…), which
 Claude's actions reuse. Replies are short (D-79), and
 Pip only says something is set once it really is (PIP-NEW-039). If a cancel matches nothing he
 says so; if it could mean several, he asks which (FEAT-042).
@@ -20,10 +20,10 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from . import when
+from ..common import when
+from .names import NAME_WITH_GREETING as NAME
 from .schedule import Schedule
 
-NAME = re.compile(r"\b(hey |hi |ok |okay )?(pip|pipp|pips|pippy|pippie|pippletron|pipple ?tron|piple ?tron|pipletron)\b[,.!]?", re.I)
 POLITE = re.compile(r"\b(please|can you|could you|would you|will you|can u|i want you to|i need you to|go ahead and|just)\b", re.I)
 
 STOP = re.compile(r"^(stop|stop it|stop talking|never ?mind|quiet|be quiet|shut up|hush|cancel that|forget it|that's enough|enough)$")
@@ -128,7 +128,7 @@ class Commands:
             if self.clock() - at > max_age:
                 continue
             if table == "alert":
-                row = self.s._row(item_id)
+                row = self.s.get(item_id)
                 if row and row["state"] in ("waiting", "ringing"):
                     return "alert", row
             elif self.cal and (ev := self.cal.event(item_id)) and self._sees(ev):
@@ -189,7 +189,7 @@ class Commands:
                 return reply
         self.awaiting = None
         if re.match(r"^(cancel|delete|remove|scrap) (that|it|this)( one)?$", t) and (f := self.focus(120)):
-            return self._cancel_item(*f)  # just set something, then "cancel that"
+            return self.cancel_item(*f)  # just set something, then "cancel that"
         if STOP.match(t):
             return ""
         for rule in (self._snooze, self._time, self._cancel, self._change, self._timer_query,
@@ -210,14 +210,14 @@ class Commands:
         a = self.awaiting
         self.awaiting = None
         if a["intent"] == "timer_length" and (secs := when.duration(t)):
-            return self._make_timer(secs, a["slots"].get("label") or label_from(t))
+            return self.make_timer(secs, a["slots"].get("label") or label_from(t))
         if a["intent"] == "alarm_time" and (at := when.clock(f"at {t}" if re.match(r"^\d", when.numbers(t)) else t, self.now(),
                                                               alarm=True)):
-            return self._make_alarm(at, a["slots"].get("label", ""), a["slots"].get("repeat", ""))
+            return self.make_alarm(at, a["slots"].get("label", ""), a["slots"].get("repeat", ""))
         if a["intent"] == "reminder_time":
             at = self._reminder_time(t)
             if at:
-                return self._make_reminder(at, a["slots"]["what"], a["slots"].get("repeat", ""))
+                return self.make_reminder(at, a["slots"]["what"], a["slots"].get("repeat", ""))
         if a["intent"] == "event_day" and (d := when.day(t, self.now())):
             at = when.clock(t, self.now())
             start = datetime.combine(d, at.time()) if at else datetime.combine(d, datetime.min.time())
@@ -271,7 +271,7 @@ class Commands:
         if re.search(r"\bcalendar\b", t):
             return None
         if REF.search(t) and (f := self.focus()) and (not kind or self._kind_of(*f) == kind):
-            return self._cancel_item(*f)  # "cancel that" / "cancel that timer": the one we just talked about
+            return self.cancel_item(*f)  # "cancel that" / "cancel that timer": the one we just talked about
         if not kind:
             return None
         opts = self.s.active((kind,))
@@ -301,7 +301,7 @@ class Commands:
             self.s.cancel(p["id"])
         return self._cancelled_text(picks)
 
-    def _cancel_item(self, table: str, row: dict) -> str:
+    def cancel_item(self, table: str, row: dict) -> str:
         if table == "event":
             self.cal.remove_event(row["id"])
             return f"Took {row['title']} off the calendar."
@@ -500,9 +500,9 @@ class Commands:
         label = label_from(t)
         if not secs:
             return self._ask("For how long?", "timer_length", label=label)
-        return self._make_timer(secs, label)
+        return self.make_timer(secs, label)
 
-    def _make_timer(self, secs: float, label: str) -> str:
+    def make_timer(self, secs: float, label: str) -> str:
         secs = max(1.0, secs)
         row = self.s.add("timer", label or "timer", self.clock() + secs, length=secs)
         self.remember("alert", row["id"])
@@ -518,11 +518,11 @@ class Commands:
                         alarm=True)
         if not at:
             if secs := when.duration(t):  # "wake me up in 20 minutes" (real time, even across a clock change)
-                return self._make_alarm(datetime.fromtimestamp(self.clock() + secs), "", rep)
+                return self.make_alarm(datetime.fromtimestamp(self.clock() + secs), "", rep)
             return self._ask("For what time?", "alarm_time", label="", repeat=rep)
-        return self._make_alarm(at, "", rep)
+        return self.make_alarm(at, "", rep)
 
-    def _make_alarm(self, at: datetime, label: str, rep: str) -> str:
+    def make_alarm(self, at: datetime, label: str, rep: str) -> str:
         at = when.first_repeat(rep, at) if rep else at
         row = self.s.add("alarm", label or "alarm", at.timestamp(), repeat=rep, planned=at)
         self.remember("alert", row["id"])
@@ -598,9 +598,9 @@ class Commands:
             return None
         if not at:
             return self._ask("When should I remind you?", "reminder_time", what=what, repeat=rep)
-        return self._make_reminder(at, what, rep)
+        return self.make_reminder(at, what, rep)
 
-    def _make_reminder(self, at: datetime, what: str, rep: str) -> str:
+    def make_reminder(self, at: datetime, what: str, rep: str) -> str:
         at = when.first_repeat(rep, at) if rep else at
         what = re.sub(r"\bmy\b", "your", re.sub(r"\bi\b", "you", what))
         row = self.s.add("reminder", what, at.timestamp(), repeat=rep, planned=at)
@@ -667,7 +667,7 @@ class Commands:
         if REF.fullmatch(wanted) or wanted in ("that event", "that appointment", "it", "that one"):
             f = self.focus()
             if f and f[0] == "event":
-                return self._cancel_item(*f)
+                return self.cancel_item(*f)
             return "Which event? I'm not sure which one you mean."
         wanted_day = when.day(wanted, self.now())
         wanted = re.split(r"\s+\b(on|at|this|next|tomorrow|today)\b", f"{wanted} ")[0].strip()
@@ -680,7 +680,7 @@ class Commands:
             return f"I can't find {wanted} on the calendar."
         if len(picks) > 1:
             return f"There are {len(picks)} of those. Which day?"
-        return self._cancel_item("event", picks[0])
+        return self.cancel_item("event", picks[0])
 
     def _event_query(self, t):
         if not self.cal:

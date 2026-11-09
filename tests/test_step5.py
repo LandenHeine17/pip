@@ -86,7 +86,7 @@ def test_sensitive_memories_wait_for_approval_and_nothing_is_silently_lost(mem):
     pend, _ = mem.add("Jordan's birthday is 3 May", "personal", pending_because="about someone else")
     mem.clock.t += 15 * 86400
     mem.prune()
-    assert mem._row(pend["id"]) is None and mem._row(row["id"]) is not None  # only unapproved suggestions expire
+    assert mem.get(pend["id"]) is None and mem.get(row["id"]) is not None  # only unapproved suggestions expire
 
 
 def test_private_memories_only_for_their_owner_when_sure(mem):

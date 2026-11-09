@@ -8,6 +8,7 @@ import json
 import sqlite3
 import time
 from pathlib import Path
+from ..common.db import connect
 
 # The order a change goes through (docs/HOW-PIP-WORKS.md "How Pip changes himself").
 STATUSES = ("asked", "planning", "questions", "plan_ready", "building", "checking", "ready", "deploying",
@@ -49,10 +50,7 @@ COLUMNS = {"status", "asked_by", "source", "request", "questions", "answers", "p
 class Store:
     def __init__(self, path: Path, clock=time.time):
         self.clock = clock
-        self.db = sqlite3.connect(path, timeout=10)
-        self.db.row_factory = sqlite3.Row
-        self.db.execute("PRAGMA journal_mode=WAL")
-        self.db.execute("PRAGMA busy_timeout=10000")
+        self.db = connect(path)
         self.db.execute(SCHEMA)
         self.db.commit()
 

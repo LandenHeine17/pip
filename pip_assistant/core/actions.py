@@ -142,11 +142,11 @@ def check(cmds, items: list[dict], ctx: dict | None = None) -> list[tuple]:
                     raise Invalid("reminder without text")
                 plan.append((kind, at, label, rep))
             else:
-                plan.append(_module(f"add:{kind}", a, ctx, now))   # e.g. calendar events (modules/calendar)
+                plan.append(check_module_action(f"add:{kind}", a, ctx, now))   # e.g. calendar events (modules/calendar)
         elif do == "look":
-            plan.append(_module(f"look:{a.get('kind')}", a, ctx, now))   # normally handled by Conversation.look_up
+            plan.append(check_module_action(f"look:{a.get('kind')}", a, ctx, now))   # normally handled by Conversation.look_up
         elif do in ("change", "cancel") and not a.get("id") and a.get("kind") not in (None, "", "timer", "alarm", "reminder"):
-            plan.append(_module(f"{do}:{a['kind']}", a, ctx, now))   # e.g. a whole calendar, by name
+            plan.append(check_module_action(f"{do}:{a['kind']}", a, ctx, now))   # e.g. a whole calendar, by name
         elif do in ("change", "cancel"):
             found = cmds.s.find(str(a.get("id") or ""))
             if not found:
@@ -154,7 +154,7 @@ def check(cmds, items: list[dict], ctx: dict | None = None) -> list[tuple]:
                 kind = reg.kind_of(str(a.get("id") or "")) if reg else None
                 if not kind:
                     raise Invalid("unknown id")
-                plan.append(_module(f"{do}:{kind}", a, ctx, now))
+                plan.append(check_module_action(f"{do}:{kind}", a, ctx, now))
                 continue
             if do == "cancel":
                 plan.append(("cancel", *found))
@@ -172,13 +172,13 @@ def check(cmds, items: list[dict], ctx: dict | None = None) -> list[tuple]:
                 raise Invalid("moved into the past")   # (timers stop at "now"; a repeat moves on to its next day)
             plan.append(("change", *found, at, shift, length))
         else:
-            plan.append(_module(str(do), a, ctx, now))   # an action a module added ("add_task", …)
+            plan.append(check_module_action(str(do), a, ctx, now))   # an action a module added ("add_task", …)
     if not plan or len(plan) > 10:
         raise Invalid("too many or no actions")
     return plan
 
 
-def _module(verb: str, a: dict, ctx: dict, now: datetime) -> tuple:
+def check_module_action(verb: str, a: dict, ctx: dict, now: datetime) -> tuple:
     """An action a plugged-in module handles (core/modules.py): checked now, done with the rest."""
     from .modules import Call
     reg = ctx.get("modules")
@@ -330,16 +330,16 @@ def _carry_out(cmds, plan: list[tuple], ctx: dict | None) -> list:
             except Refused:
                 said.append(NO_SECRETS)
         elif kind == "timer":
-            said.append(cmds._make_timer(step[1], step[2]))
+            said.append(cmds.make_timer(step[1], step[2]))
         elif kind == "alarm":
-            said.append(cmds._make_alarm(step[1], step[2], step[3]))
+            said.append(cmds.make_alarm(step[1], step[2], step[3]))
         elif kind == "reminder":
-            said.append(cmds._make_reminder(step[1], step[2], step[3]))
+            said.append(cmds.make_reminder(step[1], step[2], step[3]))
         elif kind == "module":
             _, act, mplan, call = step
             said.append(act.do(mplan, call))
         elif kind == "cancel":
-            said.append(cmds._cancel_item(step[1], step[2]))
+            said.append(cmds.cancel_item(step[1], step[2]))
         elif kind == "change":
             _, table, row, at, shift, length = step
             said.append(cmds.apply_change(table, row, at=at, shift=shift, length=length))

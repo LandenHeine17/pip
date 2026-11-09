@@ -27,7 +27,7 @@ from ..common.modules import enabled
 from ..common.program import make_bus, serve, start
 from ..common.usage import Usage, is_limit_error, paused_until
 from ..common.weather import Weather
-from ..core import when
+from ..common import when
 from .claude import ClaudeCLI
 
 log = logging.getLogger("pip-thinker")
@@ -207,7 +207,7 @@ class Thinker:
     @staticmethod
     def time_now(at: datetime | None = None) -> str:
         """The date and time for Claude. Between midnight and 4 AM nobody has slept yet, so "tomorrow" means
-        the coming day, not the one after (owner, D-114; core/when.py waking_day): Claude is told so."""
+        the coming day, not the one after (owner, D-114; common/when.py waking_day): Claude is told so."""
         at = at or datetime.now()
         out = at.strftime("%A %B %-d %Y, %-I:%M %p")
         if at.hour < when.NIGHT_ENDS:

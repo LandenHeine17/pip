@@ -23,11 +23,11 @@ Memory texts are what people said, so they live only here and in messages' `priv
 import difflib
 import json
 import re
-import sqlite3
 import time
 from pathlib import Path
 
 from ..common.messages import new_id
+from ..common.db import connect
 
 CATEGORIES = {"preference": "Preferences", "household": "Household facts", "rule": "Rules for Pip",
               "personal": "About people", "device": "Devices and places"}
@@ -66,9 +66,7 @@ class Refused(ValueError):
 
 class Memory:
     def __init__(self, path: Path, clock=time.time):
-        self.db = sqlite3.connect(path)
-        self.db.row_factory = sqlite3.Row
-        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db = connect(path)
         self.db.executescript(SCHEMA)
         self.db.commit()
         self.clock = clock
@@ -77,7 +75,7 @@ class Memory:
     def short(mid: str) -> str:
         return "#m" + mid[:6]
 
-    def _row(self, mid: str) -> dict | None:
+    def get(self, mid: str) -> dict | None:
         r = self.db.execute("SELECT * FROM memories WHERE id = ?", (mid,)).fetchone()
         return self._out(r) if r else None
 
@@ -140,7 +138,7 @@ class Memory:
                          "private" if private and owner else "household", status, int(confirmed), int(sensitive),
                          source[:80], pending_because, now, now))
         self.db.commit()
-        row = self._row(mid)
+        row = self.get(mid)
         if not row:
             raise RuntimeError("memory was not saved")
         return row, "pending" if status == "pending" else "saved"
@@ -185,7 +183,7 @@ class Memory:
         allowed["updated"] = self.clock()
         self.db.execute(f"UPDATE memories SET {', '.join(f'{k} = ?' for k in allowed)} WHERE id = ?", (*allowed.values(), mid))
         self.db.commit()
-        row = self._row(mid)
+        row = self.get(mid)
         if not row:
             raise ValueError("No such memory")
         return row

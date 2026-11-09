@@ -18,6 +18,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from . import paths
+from .db import connect
 
 KINDS = ("answer", "join", "mention", "preview", "builder", "other")
 SCHEMA = """CREATE TABLE IF NOT EXISTS usage (
@@ -79,9 +80,7 @@ class Usage:
             db.execute(SCHEMA)
 
     def _db(self) -> sqlite3.Connection:
-        db = sqlite3.connect(self.path, timeout=5)
-        db.execute("PRAGMA busy_timeout=5000")
-        return db
+        return connect(self.path, rows=False)
 
     def record(self, kind: str, cost_usd: float | None = None, error: bool = False, day: date | None = None) -> None:
         """Count one Claude request of this kind (and its cost, if the CLI reported one)."""

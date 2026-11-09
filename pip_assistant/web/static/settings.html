@@ -139,10 +139,6 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const val = k => k in draft ? draft[k] : meta[k].value;
 const num = x => String(x).trim() === "" || isNaN(Number(x)) ? null : Number(x);
 const clone = v => JSON.parse(JSON.stringify(v));
-async function getJSON(url){ const r = await fetch(url, {cache: "no-store"}); return r.json(); }
-async function postJSON(url, body){
-  const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
-  return r.json(); }
 
 // ------------------------------------------------------------------ settings (settings.toml)
 async function load(){

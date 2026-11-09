@@ -306,7 +306,7 @@ Exit codes: **0** live, **1** rolled back (healthy again), **2** stopped before 
 | everything said in the room, and when Pip answers | `core/conversation.py`: `on_room`, `addressed`, `answer` |
 | when he joins in by himself | `core/joining.py` |
 | knowing who's talking | `core/people.py`, `core/peoplecmds.py` |
-| timers, alarms, reminders | `core/schedule.py`, `core/when.py`, `core/commands.py` |
+| timers, alarms, reminders | `core/schedule.py`, `common/when.py`, `core/commands.py` |
 | what Claude is told, and the ACTION lines | `common/personality.py` (his personality, editable on the Settings page), `thinker/main.py` (`RULES`: the fixed part), `core/actions.py` |
 | how a module plugs in | `modules/_template/`, `core/modules.py` |
 | the boxes on the monitor | `modules/screen/` (the layout) and `BOXES` in `tv.html` (drawing them) |

@@ -17,16 +17,15 @@ What pip-ears does in each case (`ears.mic {mode}`):
 
 Both switches are saved in ~/pip-data/pip.db, so a restart doesn't turn listening back on.
 """
-import sqlite3
 from pathlib import Path
+from ..common.db import connect
 
 SCHEMA = "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
 
 
 class MicSwitch:
     def __init__(self, path: Path):
-        self.db = sqlite3.connect(path)
-        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db = connect(path, rows=False)
         self.db.execute(SCHEMA)
         self.db.commit()
         self.dashboard = self._get("mic_dashboard", True)

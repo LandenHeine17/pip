@@ -4,11 +4,11 @@ Only a message's `data` is stored; its `private` part (speech, audio, memory tex
 Writes are batched every couple of seconds to spare the SD card.
 """
 import json
-import sqlite3
 import time
 from pathlib import Path
 
 from ..common.messages import Message
+from ..common.db import connect
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS trace (
@@ -28,8 +28,7 @@ NOT_TRACED = {"heartbeat", "speech.level"}  # health is recorded separately; the
 class Trace:
     def __init__(self, path: Path, keep_hours: float = 48):
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path)
-        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db = connect(path, rows=False)
         self.db.executescript(SCHEMA)
         self.keep_hours = keep_hours
         self.pending: list[tuple] = []

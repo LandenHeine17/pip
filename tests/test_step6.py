@@ -8,7 +8,8 @@ import pytest
 
 from pip_assistant.common.client import BusClient
 from pip_assistant.core.bus import Bus
-from pip_assistant.core.conversation import Conversation, calls_pip, names_pip
+from pip_assistant.core.conversation import Conversation
+from pip_assistant.core.names import calls_pip, names_pip
 from pip_assistant.core.health import Health
 from pip_assistant.core.mic import MicSwitch
 from pip_assistant.core.people import Match, People, sounds_like

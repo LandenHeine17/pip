@@ -1,7 +1,6 @@
 [Unit]
 Description=Pip: pip-core (the conductor: messages, decision trace, watchdog, timers, memory, voices)
 
-
 [Service]
 WorkingDirectory=%h/pip-app/current
 ExecStart=%h/pip-app/current/.venv/bin/pip-core

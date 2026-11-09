@@ -35,6 +35,7 @@ from ..common import paths
 from ..common.messages import Message
 from ..common.modules import ModuleInfo, enabled
 from ..common.secrets import ScopedSecrets
+from ..common.db import connect
 
 log = logging.getLogger(__name__)
 
@@ -96,9 +97,7 @@ class ModuleContext:
 
     def db(self) -> sqlite3.Connection:
         """Its own connection to pip.db. Tables must be named <module>_… (checked)."""
-        con = sqlite3.connect(self._db_path)
-        con.row_factory = sqlite3.Row
-        con.execute("PRAGMA journal_mode=WAL")
+        con = connect(self._db_path)
         prefix = self.name + "_"
 
         def guard(action, table, arg2, *_):

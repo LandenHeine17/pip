@@ -13,7 +13,7 @@ import logging
 import os
 import time
 
-from ..common.messages import READ_LIMIT, BadMessage, Message, lines
+from ..common.messages import READ_LIMIT, BadMessage, Message, lines, new_id
 from .health import Health
 from .trace import Trace
 
@@ -131,6 +131,19 @@ class Bus:
                 fut.set_result(msg)
         else:
             await self._send(asker, msg)
+
+    async def request(self, target: str, msg_type: str, data: dict | None = None, private: dict | None = None,
+                      timeout: float = 30.0) -> Message:
+        """Ask another program from inside pip-core and wait for its reply (asyncio.TimeoutError if none)."""
+        msg = Message("request", msg_type, source="core", target=target, id=new_id(), data=data or {},
+                      private=private or {})
+        fut = asyncio.get_running_loop().create_future()
+        self.core_waiting[msg.id] = fut
+        try:
+            await self.route(msg)
+            return await asyncio.wait_for(fut, timeout)
+        finally:
+            self.core_waiting.pop(msg.id, None)
 
     async def publish(self, msg: Message) -> None:
         """An event raised by core itself."""
