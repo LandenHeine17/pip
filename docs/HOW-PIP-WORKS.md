@@ -91,7 +91,7 @@ flowchart TD
   ev["Something happens<br/>(a wake word, a sentence, the voice stops…)"] --> h["A Conversation method changes a field<br/>(speaking, pending, listen_until…)"]
   h --> r["refresh_state()<br/>core/conversation.py"]
   r --> s["situation()<br/>core/states.py:<br/>the first rule that's true wins"]
-  s -->|"(state, detail) changed?"| p["publish pip.state<br/>{state, detail, words, ends_in}"]
+  s -->|"(state, detail) changed?"| p["publish pip.state<br/>{state, detail, words, ends_in, quiet}"]
   p --> w["pip-web listen() → on_state<br/>web/main.py"]
   w --> d["dashboard: words by the circle<br/>(index.html setState)"]
   w --> tv["monitor stream /api/tv/stream<br/>tv.html handle('state')"]
@@ -292,7 +292,7 @@ Pip runs from a separate live copy, never from `~/pip`. Every update, yours or a
 **`Releases.install`** (in `release.py`):
 
 1. `make`: `git worktree add` the commit into `releases/<id>` (the id is the first 10 characters of the commit), `uv sync --frozen --offline`, write `RELEASE`.
-2. `wait_quiet`: waits while Pip is speaking, listening, thinking or ringing, at most 2 minutes.
+2. `wait_quiet`: waits, at most 2 minutes, until pip-core says it's a quiet moment (`quiet` in `pip.state`, read from `/api/health`). That's `quiet()` in `core/states.py`: idle, mic off or offline, with nothing heard, held, ringing, spoken or being answered. Settings restarts (`core/settingsapi.py`) use the same rule.
 3. `switch`: copies the service files (with `--install-units`), points `current` at the new version, restarts the programs.
 4. `check_health`: up to 2 minutes for every expected program to be `ok` **on this version** (each heartbeat carries `release`, read from `RELEASE` by `common/program.py`), and for `/` and `/api/tv` to answer; then 30 s in which nothing may restart.
 5. Healthy: recorded as live; `prune` keeps the newest 3 plus the current and previous. Not healthy: `_recover` switches back to the version before and checks again. On the very first install, it puts back the old service files that ran Pip from `~/pip`.

@@ -40,7 +40,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-BUSY = {"speaking", "ringing", "listening", "thinking"}   # Pip's states we don't restart during
+# pip-core says whether now is a quiet moment (`quiet` in his state, core/states.py quiet()); BUSY is only
+# the fallback for a version that doesn't say yet.
+BUSY = {"speaking", "ringing", "listening", "thinking", "interrupted"}
 QUIET_WAIT_S = 120      # longest wait for a quiet moment
 HEALTH_WAIT_S = 120     # longest wait for every program to be up on the new version
 SETTLE_S = 30           # then it must stay healthy this long
@@ -258,10 +260,11 @@ class Releases:
                 self.say("Pip's dashboard isn't answering, so not waiting for a quiet moment.")
                 return
             try:
-                state = json.loads(body).get("state", "idle")
-            except ValueError:
-                state = "idle"
-            if state not in BUSY:
+                health = json.loads(body)
+                state, quiet = health.get("state", "idle"), (health.get("state_detail") or {}).get("quiet")
+            except (ValueError, AttributeError):
+                state, quiet = "idle", None
+            if quiet is True or (quiet is None and state not in BUSY):
                 return
             if self.clock() - start >= QUIET_WAIT_S:
                 self.say(f"Pip is still {state} after {QUIET_WAIT_S // 60} minutes; switching anyway.")

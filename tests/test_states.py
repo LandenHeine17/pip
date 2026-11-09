@@ -103,7 +103,7 @@ async def test_listening_switched_off_says_how_to_turn_it_back_on_and_a_new_dash
     seen = watch(conv)
     await conv.on_program_subscribed("web")                          # the dashboard restarted: it's told
     assert [d for t, d, _ in seen if t == "pip.state"] == [{"state": conv.state, "detail": conv.detail,
-                                                           "words": DETAILS[conv.detail], "ends_in": None}]
+                                                           "words": DETAILS[conv.detail], "ends_in": None, "quiet": True}]
     await finish(bus, tasks)
 
 
@@ -121,3 +121,15 @@ async def test_a_dashboard_that_connects_is_sent_the_state_once_it_is_listening(
     await asyncio.sleep(0.3)
     assert seen and seen[-1]["words"] == DETAILS[conv.detail]
     await finish(bus, tasks + [task])
+
+
+def test_a_quiet_moment_means_nothing_would_be_cut_off():
+    """One rule for settings restarts and installs (core/states.py quiet())."""
+    from types import SimpleNamespace
+    from pip_assistant.core.states import quiet
+    calm = dict(state="idle", answer_id=None, pending="", transcribing=False, ringing=False, speaking=False)
+    assert quiet(SimpleNamespace(**calm))
+    assert quiet(SimpleNamespace(**{**calm, "state": "offline"}))
+    assert not quiet(SimpleNamespace(**{**calm, "state": "interrupted"}))
+    assert not quiet(SimpleNamespace(**{**calm, "state": "mic_off", "answer_id": "a1"}))   # still answering (D-114)
+    assert not quiet(SimpleNamespace(**{**calm, "state": "listening", "pending": "what time"}))

@@ -32,7 +32,7 @@ out isn't offline: what's said to him is heard on the Pi and answered by Claude 
 While an alarm rings, the obvious "stop", "okay", "snooze" or Pip's name silence it instantly; anything
 else said to Pip goes to Claude, which can stop or snooze it.
 
-Pip's state is published as `pip.state` {state, detail, words, ends_in} whenever it changes: one of 8 states
+Pip's state is published as `pip.state` {state, detail, words, ends_in, quiet} whenever it changes: one of 8 states
 (idle / listening / thinking / speaking / interrupted / ringing / mic_off / offline), and within it what exactly
 he's doing (waiting to see if you're done, following the conversation, …) (D-108, D-112). The rules are in
 core/states.py; the fields they read are grouped under "What the face shows" in Conversation.__init__, and
@@ -49,6 +49,7 @@ import time
 
 from ..common.messages import Message, new_id
 from .joining import Joining, in_quiet_hours
+from . import states
 from .states import DETAILS, situation
 from .stt import RateLimited
 from .transcript import Transcript
@@ -166,8 +167,9 @@ class Conversation:
         self.last_started = 0.0              # when ears last started capturing someone
         self.schedule = schedule
         self.modules = modules       # plugged-in modules (core/modules.py): calendar, to-dos, …
-        self.commands = Commands(schedule, clock=schedule.clock, calendar=modules.get("calendar") if modules else None) \
-            if schedule is not None else None
+        cal = modules.module("calendar") if modules else None   # offline calendar commands follow its privacy rule
+        self.commands = Commands(schedule, clock=schedule.clock, calendar=cal.api if cal else None,
+                                 may_hear=cal.may_hear if cal else None) if schedule is not None else None
         self.local_stt = local_stt
         c = (cfg or {}).get("conversation", {})
         self.follow_up_s = c.get("follow_up_seconds", 8.0)
@@ -180,6 +182,7 @@ class Conversation:
         # --- What the face shows: core/states.py reads these to work out his state (call refresh_state()
         # after changing one). The *_until fields are time.monotonic() deadlines; 0 = not happening.
         self.state, self.detail = "idle", "quiet"   # what was last published
+        self.quiet = True                            # a good moment to restart his programs (states.quiet)
         self.speaking = False          # his voice is playing (speech.started → speech.finished)
         self.say_reason = ""           # why he's talking: answer / welcome / command / error / … (see say())
         self.voice_kind = "direct"     # the answer he's speaking: direct / mentioned / join
@@ -249,6 +252,7 @@ class Conversation:
         Also sets a timer to look again when the next deadline (listen_until, cut_until, …) passes."""
         now = time.monotonic()
         state, detail, ends_at = self.situation()
+        old = (self.state, self.detail)
         if self._state_timer:
             self._state_timer.cancel()
             self._state_timer = None
@@ -256,8 +260,9 @@ class Conversation:
                            self.room_until) if t > now]
         if nxt and _loop_running():
             self._state_timer = asyncio.get_running_loop().call_later(min(nxt) - now + 0.05, self.refresh_state)
-        if (state, detail) != (self.state, self.detail):
-            self.state, self.detail = state, detail
+        was_quiet, (self.state, self.detail) = self.quiet, (state, detail)
+        self.quiet = states.quiet(self)
+        if (state, detail, self.quiet) != (*old, was_quiet):
             if _loop_running():
                 data = self.state_message(ends_at, now)
                 asyncio.ensure_future(self.bus.publish(Message("event", "pip.state", source="core", data=data)))
@@ -265,8 +270,9 @@ class Conversation:
                     asyncio.ensure_future(self.note("state", **data))
 
     def state_message(self, ends_at: float = 0.0, now: float = 0.0) -> dict:
-        """What `pip.state` carries: {state, detail, words, ends_in (seconds left of a wait, or None)}."""
-        return {"state": self.state, "detail": self.detail, "words": DETAILS.get(self.detail, ""),
+        """What `pip.state` carries: {state, detail, words, ends_in (seconds left of a wait, or None), quiet (a
+        good moment to restart his programs: states.quiet)}."""
+        return {"state": self.state, "detail": self.detail, "words": DETAILS.get(self.detail, ""), "quiet": self.quiet,
                 "ends_in": round(ends_at - now, 1) if ends_at > now else None}
 
     def listening_for(self, seconds: float, why: str = "called") -> None:
@@ -690,7 +696,7 @@ class Conversation:
             # No Claude without the internet: Pip's own fixed-phrasing commands do the basics (D-83, D-94)
             if await self.people_command(text, offline):
                 return
-            if await self.local_command(text):
+            if await self.local_command(text, self.speaker):
                 return
         if offline:
             # Offline and not one of the basics: he stays quiet (no repeated "I'm offline" line, owner D-115).
@@ -700,13 +706,13 @@ class Conversation:
             return
         await self.answer(text, reason)
 
-    async def local_command(self, text: str) -> bool:
-        """Pip's own commands, done on the Pi with no AI. True if it was one."""
+    async def local_command(self, text: str, speaker=None) -> bool:
+        """Pip's own commands, done on the Pi with no AI, as `speaker` (who asked). True if it was one."""
         if not self.commands:
             return False
         t0 = time.perf_counter()
         try:
-            reply = await self.commands.handle(text)
+            reply = await self.commands.handle(text, self._action_ctx(speaker)["call"])
         except Exception as e:
             log.exception("command failed")
             await self.bus.publish(Message("event", "command.failed", data={"error": type(e).__name__}))
@@ -1021,7 +1027,7 @@ class Conversation:
             await self.bus.publish(Message("event", "answer.failed", data={"error": reply.data["error"], "kind": kind}))
             if kind == "direct":
                 # Claude didn't answer: Pip's own commands may still manage it ("timer ten minutes")
-                if text and (await self.people_command(text, asker=asker) or await self.local_command(text)):
+                if text and (await self.people_command(text, asker=asker) or await self.local_command(text, asker[0])):
                     return
                 await self.say(SAYINGS["thinker_failed"], "error")
             return

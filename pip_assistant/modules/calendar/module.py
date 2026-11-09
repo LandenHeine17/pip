@@ -146,6 +146,11 @@ class Calendar(Module):
         acc = accounts.get((cals.get(ev["calendar_id"]) or {}).get("account_id", ""))
         return not acc or acc["sharing"] == "everyone" or acc["person_id"] == call.person_id
 
+    def may_hear(self, ev: dict, call: Call) -> bool:
+        """May the person asking (`call`) hear about, or change, this event? Used for Claude's actions and for
+        Pip's own offline commands (core/commands.py), so both follow the same rule."""
+        return self.visible(ev, call, {c["id"]: c for c in self.store.calendars()}, self._accounts())
+
     def for_the_room(self, ev: dict | None) -> bool:
         """May this event show on the room's monitor? Only if Pip may mention it to anyone (not private, and
         its account shares with everyone): the same rule as telling Claude, for nobody in particular."""
@@ -229,9 +234,10 @@ class Calendar(Module):
         hits = [e for e in self.store.all_events() if e["id"].startswith(ref)]
         return "event" if len(hits) == 1 else None
 
-    def _by_ref(self, ref: str) -> dict:
+    def _by_ref(self, ref: str, call: Call) -> dict:
+        """The event Claude means by its id; only one the person asking may hear about (else "unknown event")."""
         ref = str(ref or "").strip().lstrip("#").lower()
-        hits = [e for e in self.store.all_events() if len(ref) >= 4 and e["id"].startswith(ref)]
+        hits = [e for e in self.store.all_events() if len(ref) >= 4 and e["id"].startswith(ref) and self.may_hear(e, call)]
         if len(hits) != 1:
             raise Invalid("unknown event")
         return hits[0]
@@ -285,7 +291,7 @@ class Calendar(Module):
         return f"Added {ev['title']}, {self.say_when(ev)}{self.on_whose(ev)}."
 
     def check_change(self, a: dict, call: Call) -> dict:
-        ev = self._by_ref(a.get("id"))
+        ev = self._by_ref(a.get("id"), call)
         p = {"ev": ev}
         if a.get("at"):
             p["start"] = self._time(a["at"], call)
@@ -462,7 +468,7 @@ class Calendar(Module):
         return f"Deleted {name}." if cal["owner"] else f"Took {name} off the list."
 
     def check_cancel(self, a: dict, call: Call) -> dict:
-        return self._by_ref(a.get("id"))
+        return self._by_ref(a.get("id"), call)
 
     def do_cancel(self, ev: dict, call: Call) -> str:
         self.store.remove_event(ev["id"])

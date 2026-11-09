@@ -22,6 +22,7 @@ import subprocess
 import time
 
 from ..common import settings, voices
+from . import states
 from ..common.settings import SettingsError
 
 log = logging.getLogger("pip-core")
@@ -166,9 +167,7 @@ class SettingsAPI:
 
     # ---------------------------------------------------------------- restarting when quiet
     def quiet(self) -> bool:
-        c = self.conv
-        return (getattr(c, "state", "idle") == "idle" and not getattr(c, "pending", "")
-                and not getattr(c, "ringing", False) and not getattr(c, "speaking", False))
+        return states.quiet(self.conv)   # the same rule installs use (release.py)
 
     async def apply(self, programs: list[str]) -> None:
         if self.restarter is None:

@@ -77,6 +77,19 @@ SPEAKING = {"answer": "answer", "searching": "answer", "welcome": "welcome", "co
             "enrol": "coaching"}
 
 
+# States where restarting Pip's programs cuts nothing off (with nothing else going on: see quiet()).
+QUIET_STATES = {"idle", "mic_off", "offline"}
+
+
+def quiet(c) -> bool:
+    """Is now a good moment to restart Pip's programs (a settings change, an install)? Nothing he's doing or
+    about to do would be cut off: not talking, ringing, hearing or holding what someone said, and Claude isn't
+    working on anything. The one rule for both: core/settingsapi.py and release.py (via `pip.state`)."""
+    return (getattr(c, "state", "idle") in QUIET_STATES and getattr(c, "answer_id", None) is None
+            and not getattr(c, "pending", "") and not getattr(c, "transcribing", False)
+            and not getattr(c, "ringing", False) and not getattr(c, "speaking", False))
+
+
 def situation(c) -> tuple[str, str, float]:
     """(state, detail, ends_at) for the Conversation `c`. ends_at: when a wait he's in runs out (a
     time.monotonic() value; 0 if he isn't waiting a known time). The face shows it as a countdown."""

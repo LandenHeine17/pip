@@ -167,6 +167,10 @@ class Registry:
         m = self.modules.get(name)
         return m.api if m else None
 
+    def module(self, name: str) -> Module | None:
+        """A loaded module itself (or None)."""
+        return self.modules.get(name)
+
     # ---------------------------------------------------------------- Claude's actions
     def action(self, verb: str) -> Action | None:
         for m in self.modules.values():
