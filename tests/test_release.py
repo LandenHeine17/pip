@@ -337,3 +337,26 @@ def test_the_quiet_moment_is_pip_cores_call(setup):
     t0 = pi.t
     rel.wait_quiet()
     assert pi.t == t0
+
+
+def test_status_json_for_programs(setup):
+    """`status --json` is the one-line, machine-readable answer other programs read; the exit codes and
+    release ids pip-builder relies on come from release.py too."""
+    rel, pi, repo, shas, lines = setup
+    assert rel.install("HEAD", units=True) == R.EXIT_LIVE
+    second = commit(repo, "second")
+    pi.broken.add(R.release_id(second))
+    assert rel.install(second) == R.EXIT_ROLLED_BACK
+    r = subprocess.run(["/usr/bin/python3", "-m", "pip_assistant.release", "status", "--json"],
+                       capture_output=True, text=True, cwd=os.path.dirname(os.path.dirname(R.__file__)),
+                       env={**os.environ, "PIP_APP": str(rel.app), "PIP_REPO": str(repo)})
+    assert r.returncode == 0 and len(r.stdout.strip().splitlines()) == 1
+    st = json.loads(r.stdout)
+    assert st["current"] == R.release_id(shas[0]) == shas[0][:10]
+    assert st["last_problem"]["release"] == R.release_id(second) and st["last"]["result"] == "rolled_back"
+    assert set(st) == {"current", "previous", "running_from", "last", "last_problem"}
+    # how pip-builder reads the same state when an install's exit file is missing
+    state = rel.load_state()
+    assert R.install_outcome(state, R.release_id(second))[0] == R.EXIT_ROLLED_BACK
+    assert R.install_outcome(state, R.release_id(shas[0])) == (R.EXIT_LIVE, "")
+    assert R.install_outcome({}, "abc") == (None, "")

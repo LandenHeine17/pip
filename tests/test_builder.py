@@ -7,9 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from pip_assistant.builder import pipeline
+from pip_assistant.builder import checks
 from pip_assistant.builder.agent import RunResult, StreamParser, parse_plan
-from pip_assistant.builder.pipeline import Builder, commit_message
+from pip_assistant.builder.deploy import commit_message
+from pip_assistant.builder.pipeline import Builder
+from pip_assistant.builder.releasejob import ReleaseRunner
 from pip_assistant.builder.store import Store
 from pip_assistant.common.messages import Message
 
@@ -255,13 +257,13 @@ async def test_forbidden_paths_are_refused(env):
                                   ".claude/settings.json", "uv.lock", "tools/sandbox-test", ".git/hooks/pre-commit",
                                   "setup.py"])
 def test_forbidden_list(path):
-    assert pipeline.forbidden(path)
+    assert checks.forbidden(path)
 
 
 @pytest.mark.parametrize("path", ["pip_assistant/core/main.py", "docs/PIP-SPEC.md", "tests/test_x.py",
                                   "pip_assistant/modules/todos/module.py"])
 def test_allowed_paths(path):
-    assert pipeline.forbidden(path) is None
+    assert checks.forbidden(path) is None
 
 
 async def test_a_secret_in_the_change_is_refused(env):
@@ -313,10 +315,10 @@ async def test_security_changes_need_the_diff_read(env):
 
 
 def test_risk_from_files():
-    assert pipeline.risk_for(["pip_assistant/web/security.py"], "cosmetic") == "security"
-    assert pipeline.risk_for(["deploy/install.sh"], "cosmetic") == "security"
-    assert pipeline.risk_for(["pip_assistant/common/secrets.py"], "data") == "security"
-    assert pipeline.risk_for(["docs/PIP-SPEC.md"], "cosmetic") == "cosmetic"
+    assert checks.risk_for(["pip_assistant/web/security.py"], "cosmetic") == "security"
+    assert checks.risk_for(["deploy/install.sh"], "cosmetic") == "security"
+    assert checks.risk_for(["pip_assistant/common/secrets.py"], "data") == "security"
+    assert checks.risk_for(["docs/PIP-SPEC.md"], "cosmetic") == "cosmetic"
 
 
 # ---------------------------------------------------------------- commit messages
@@ -399,7 +401,7 @@ async def test_restart_during_install_reads_the_release_state(tmp_path, repo):
 
 def test_release_state_file(tmp_path):
     state = tmp_path / "release-state.json"
-    r = pipeline.ReleaseRunner(tmp_path, tmp_path / "rel", state_file=state)
+    r = ReleaseRunner(tmp_path, tmp_path / "rel", app=tmp_path)
     assert r.from_state("abc") == (None, "")
     state.write_text(json.dumps({"current": "abc", "previous": "old", "last_problem": None}))
     assert r.from_state("abc") == (0, "")
