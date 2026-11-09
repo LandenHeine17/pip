@@ -2,7 +2,7 @@
 
 Every decision the owner has made about Pip, numbered `D-nn`. **Decisions override everything else in the docs.** New decisions get the next number and go at the end; a changed decision is edited in place with a note of what changed and when.
 
-114 decisions. Last updated 2026-11-09.
+115 decisions. Last updated 2026-11-09.
 
 | # | Topic | Decision |
 |---|---|---|
@@ -121,6 +121,7 @@ Every decision the owner has made about Pip, numbered `D-nn`. **Decisions overri
 | D-112 | Seeing what Pip is doing (owner, 2026-11-08) | Within his 8 states (and their colours, which stay), Pip now says **what exactly he's doing**: heard his name (go on), working out what you said, waiting to see if you're done (with a countdown), listening for your reply (countdown), learning a voice; thinking, searching the web, looking it up, getting the words out; following the conversation, heard his name mentioned (is it for me?), thinking about joining in; joining in, saying hi. Each has **its own face** on the monitor and **words** under it, and the words show next to the dashboard's state circle. A tickbox (Listening & sounds, off by default) also puts each change in the Conversation as a small bar. Words about Pip only, never what anyone said |
 | D-113 | Nothing blank under the face, and the code made readable (owner, 2026-11-08) | **Every situation has words**, including quiet idle ("Say my name if you need me"), plain answering, ringing ("Say stop or snooze"), interrupted, not listening (which says how to turn him back on: clap twice, or the dashboard), offline, and the monitor's own starting up and dozing. The rules for Pip's states moved into one short file, `core/states.py`, and the owner gets a guide to the code, `docs/HOW-PIP-WORKS.md`, so the owner can read and change the face state machine directly. Example health facts in code and tests use the placeholder "Sam", not a real roommate's name |
 | D-114 | Mic off is just mic off; "tomorrow" after midnight (owner, 2026-11-09) | **Switching listening off only stops Pip hearing anything new.** Something he'd already heard (still being transcribed, or held while he waits for you to finish) is still answered; no special case drops it. Only what needs him to keep listening ends: listening windows and voice learning. **"Tomorrow" means after you next sleep**, like people mean it: until 4 AM it's still the day before, so at 00:30 on Thursday "wake me up tomorrow at 7" is Thursday 7 AM, and Pip says it back as "7 AM tomorrow". Later the same night is just the time ("1:30 AM"). Claude is told this after midnight too |
+| D-115 | No repeated "I'm offline" line; Groq's limit isn't offline (owner, 2026-11-09) | **Pip no longer says "I'm offline, so I can only do the basics…"**: offline, anything beyond the basics gets silence, and his face and the dashboard show he's offline (replaces that part of D-83). Found while looking into it: Pip wasn't offline, **Groq's free speech-to-text limit (2,000 requests a day per model) was used up** by hearing the whole room (~2,400 a day), and Pip mistook "too many requests" for no internet. Now a **second Groq model** (Whisper Large V3, its own 2,000) takes over, and if both are used up Pip stays online: what's said to him is heard on the Pi and Claude answers; room talk waits for the limit to reset |
 
 ## Still open (answered by M0 tests)
 

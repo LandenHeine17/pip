@@ -179,6 +179,9 @@ const EVENTS = {
   alert: e => `${({timer:"Timer",alarm:"Alarm",reminder:"Reminder",event:"Calendar heads-up"})[e.alert]||"Alarm"} ${e.what==="ringing"?"ringing":e.what==="snoozed"?`snoozed${e.minutes?` ${e.minutes} min`:""}`:"stopped"}`,
   offline: () => "Pip went offline (only the basics work)",
   online: () => "Pip is back online",
+  offline_quiet: () => "Offline: that needs the internet, so Pip stayed quiet",
+  stt_limited: () => "Speech-to-text's free daily limit is used up: Pip hears on the Pi for now (slower, more mistakes)",
+  stt_back: () => "Speech-to-text is back to normal",
 };
 function convLine(l){
   const t = new Date(l.ts*1000).toLocaleTimeString([], {hour:"numeric", minute:"2-digit", second:"2-digit"});
