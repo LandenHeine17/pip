@@ -1,7 +1,7 @@
 """What Pip remembers, and the memory inbox (M1a step 5; PIP-NEW-028–032, D-15, D-16, D-54).
 
 Claude asks for changes with memory ACTIONs (core/actions.py); the dashboard's Memory Center
-changes them through core/main.py. Claude sees the memories it may use with each request (for_claude).
+changes them through core/dashapi.py. Claude sees the memories it may use with each request (for_claude).
 
     "Pip, remember the bins go out Tuesday night"   → saved now, confirmed with the exact wording
     "Pip, remember Sam is allergic to peanuts"      → about someone else, and health: waits in the
