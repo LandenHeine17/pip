@@ -265,7 +265,7 @@ flowchart TD
 - It runs as its own systemd job, so the restarts it causes can't cut it off.
 - Alarms survive the switch: they're in the database, and the start-up catch-up re-arms them.
 - The first install moves the services from `~/pip` to `~/pip-app/current`; if that version isn't healthy, the old service files are put back.
-- `~/pip-app/release-state.json` records what's current, what was before, and every install and rollback; `~/pip-app/release.log` has every progress line. `python3 -m pip_assistant.release list | status | rollback` from `~/pip`.
+- `~/pip-app/release-state.json` records what's current, what was before, and every install and rollback; `~/pip-app/release.log` has every progress line. `python3 -m pip_assistant.release list | status [--json] | rollback` from `~/pip`.
 
 ## 11. Testing
 
