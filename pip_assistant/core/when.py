@@ -139,7 +139,7 @@ def _prefer_day_hours(opts: list[datetime]) -> datetime:
 
 
 def repeat(text: str) -> str:
-    """'' (once), 'daily', 'weekdays', 'weekends' or 'weekly:<0-6>'."""
+    """'' (once), 'daily', 'weekdays', 'weekends', 'weekly' or 'weekly:<0-6>' (0 = Monday)."""
     t = text.lower()
     if re.search(r"\b(every ?day|daily|each day|every morning|every night|every evening)\b", t):
         return "daily"
@@ -182,10 +182,6 @@ def first_repeat(rule: str, at: datetime) -> datetime:
 
 
 # ------------------------------------------------------------------ saying things
-def _n(x: float) -> str:
-    return str(int(x)) if x == int(x) else str(x)
-
-
 def say_duration(seconds: float) -> str:
     s = int(round(seconds))
     h, rem = divmod(s, 3600)

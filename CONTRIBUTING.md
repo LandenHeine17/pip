@@ -1,10 +1,10 @@
 # How to change Pip
 
-For anyone making a change, person or AI agent, including Pip's own self-change agent. It's written so you can do a good job **without knowing the whole project**. Start with [`docs/PROJECT-MAP.md`](docs/PROJECT-MAP.md) to find where things are.
+For anyone making a change, person or AI agent, including Pip's own self-change agent. It's written so you can do a good job **without knowing the whole project**. Start with [`docs/PROJECT-MAP.md`](docs/PROJECT-MAP.md) to find where things are. New to the code? Read [`docs/HOW-PIP-WORKS.md`](docs/HOW-PIP-WORKS.md) first: how Pip works, for someone reading the code.
 
 ## 1. Before you change anything
 
-1. **Find out what phase we're in.** See `CLAUDE.md` → "Current phase". In M0 there is no Pip application code. Only the spec, the measurement tools and the dashboard exist.
+1. **Find out what phase we're in.** See `CLAUDE.md` → "Current phase". We're in M1a: Pip is being built, step by step (`docs/ARCHITECTURE.md` §14). The application is `pip_assistant/`; `m0/` holds the measurement tools from M0.
 2. **Find the requirement.** Read the relevant part of `docs/PIP-SPEC.md`, then look it up in `docs/REQUIREMENTS.md` (`PIP-NEW-nnn`, Ziggletron's `FEAT-nnn`, acceptance criteria `AC-*`). **When building a feature, open its Detail link**: the archived proposal holds the exact rules, edge cases and examples. Check REQUIREMENTS §0 (overridden passages) and `docs/DECISIONS.md` first; decisions win.
 3. **Check the owner's decisions** in `docs/DECISIONS.md` (`D-nn`). Decisions override the rest of the spec. If your change contradicts one, **stop and ask the owner**.
 4. **Read only what you need.** The map says which file covers what. You don't need to read everything.
@@ -15,7 +15,7 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
 - **New features are modules** (ARCHITECTURE §7, D-96): copy `pip_assistant/modules/_template/`, rename it, and fill in `module.toml` (permissions, settings, what Claude is told, its dashboard page) and `module.py`. A module keeps to its own tables (`<name>_…`), its own secrets section and the internet hosts it declares; it reaches Pip only through its `ctx`. Put its tests next to it. Don't add a feature by editing pip-core when a module can do it.
 - **Match what's there.** Same style, same patterns, same tools (`uv`; Python).
 - **Keep traceability.** When you change the spec, cite the IDs (FEAT, PIP-NEW, AC, D). New requirements get the next free `PIP-NEW` number and a row in `docs/REQUIREMENTS.md`; new decisions get the next `D-nn` in `docs/DECISIONS.md`.
-- **Keep the docs few.** Update the three living docs (`PIP-SPEC`, `DECISIONS`, `REQUIREMENTS`) instead of adding new spec files. `docs/archive/` is frozen: don't add to it or edit it (except to fix links). If a new decision overrides an archived passage, add a row to REQUIREMENTS §0. In the architecture phase, component pages in `docs/architecture/` will carry the detailed rules forward, so the archive matters less over time.
+- **Keep the docs few.** Update the three living docs (`PIP-SPEC`, `DECISIONS`, `REQUIREMENTS`) instead of adding new spec files. `docs/archive/` is frozen: don't add to it or edit it (except to fix links). If a new decision overrides an archived passage, add a row to REQUIREMENTS §0. How Pip is built lives in one page, `docs/ARCHITECTURE.md`; keep it in step with the code.
 - **Never rewrite history.** `docs/archive/ziggletron-discovery/` is a record of Ziggletron; don't edit it except to fix a proven factual error or a broken link.
 - **Privacy and secrets:**
   - Never put credential values, phone numbers, recordings or what people said into code, commits, logs, tests or the dashboard.
@@ -34,8 +34,8 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
 
 ## 4. After the change
 
-1. **Check it works.** Run it, or its test. Report results honestly, including failures.
-2. **M0 tests: only run a test that settles a specific decision**, and say which one. Write the result to `~/pip-data/m0/results/<id>.json` (fields: `id, ran_at, passed, summary, details`). Update `~/pip-data/m0/status.json`: to-do list, progress and findings in plain language.
+1. **Check it works.** Run it, or its test. Report results honestly, including failures. Run the automated tests under a memory cap, from the repo folder: `systemd-run --user --same-dir -p MemoryMax=4500M --wait --pipe --collect uv run pytest`. Without `--same-dir` (or `--working-directory`), uv starts in your home folder and fails.
+2. **Measurement tests (recordings, sound, speed, wake words): only run one that settles a specific decision**, and say which one. Write the result to `~/pip-data/m0/results/<id>.json` (fields: `id, ran_at, passed, summary, details`). Update `~/pip-data/m0/status.json`: to-do list, progress and findings in plain language.
 3. **Update the map** if you added, moved or removed files or folders.
 4. **Commit and push.** The pre-commit check must pass (`tools/install_hooks.sh` installs it). End commit messages with the attribution line your tool requires.
 

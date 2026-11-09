@@ -4,8 +4,12 @@ Every couple of minutes, and straight after Pip changes something:
 
     1. the account's calendar list → calendar_calendars (new ones ticked on; gone ones removed)
     2. Pip's own changes waiting for this account are sent (add / change / delete)
-    3. each ticked calendar is fetched: the first time 30 days back to 180 ahead, then only what
-       changed (Google's sync token). Repeating events arrive as single occurrences.
+    3. each ticked calendar is fetched: the first time days_back to days_ahead (settings; 30 and 180),
+       then only what changed (Google's sync token). Repeating events arrive as single occurrences.
+
+The first time an account connects, if its main calendar is the household's, Pip's own upcoming
+events move into it (setting upload_on_connect). Pip can also make, rename, recolour and delete
+whole calendars, and move events between calendars (D-103).
 
 Conflicts: Google wins. A change is sent with the event's last known version ("If-Match"); if
 someone changed it in Google meanwhile, Google refuses, Pip drops his change and takes Google's.

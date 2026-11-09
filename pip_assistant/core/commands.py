@@ -1,10 +1,12 @@
-"""Pip's own commands: understood on the Pi, without Claude. **Used only offline** (D-94).
+"""Pip's own commands: understood on the Pi, without Claude. **For speech, used only offline** (D-94).
 
 Online, everything people say goes to Claude in natural language, and Claude acts through ACTION
 lines (core/actions.py). These rules are the fallback when the internet is down (PIP-NEW-044,
-D-83): timers, alarms, reminders, the calendar, "what time is it", "stop". The one thing they still
-do online is `while_ringing`: the obvious "stop", "okay", "snooze" or his name silence a ringing
-alarm instantly; anything else said to Pip while it rings goes to Claude. Replies are short (D-79), and
+D-83): timers, alarms, reminders, the calendar, "what time is it", "stop". What they still do
+online: `while_ringing` (the obvious "stop", "okay", "snooze" or his name silence a ringing alarm
+instantly; anything else said to Pip while it rings goes to Claude), the dashboard's box for typing
+a command, and the code that makes and changes things (`_make_timer`, `apply_change`…), which
+Claude's actions reuse. Replies are short (D-79), and
 Pip only says something is set once it really is (PIP-NEW-039). If a cancel matches nothing he
 says so; if it could mean several, he asks which (FEAT-042).
 
@@ -341,10 +343,10 @@ class Commands:
                            (at.hour * 60 + at.minute)) < 1]
             if len(by_time) == 1:
                 return by_time[0]
-        wanted =" ".join(w for w in re.sub(r"[^\w' ]", " ", label_from(t)).split()
+        wanted = " ".join(w for w in re.sub(r"[^\w' ]", " ", label_from(t)).split()
                           if w not in ("alarm", "reminder", "event", "calendar", "appointment", "move", "change", "push",
                                        "back", "later", "earlier", "make", "actually", "reschedule", "shift", "bump",
-                                       "minute", "hour", "move", "please", "can", "you", "our", "today", "tomorrow")
+                                       "minute", "hour", "please", "can", "you", "our", "today", "tomorrow")
                           and not re.match(rf"^({'|'.join(when.WEEKDAYS)})$", w))
         if wanted:
             scored = [(match_label(self._title(tb, x).lower(), wanted), (tb, x)) for tb, x in everything]
@@ -536,7 +538,7 @@ class Commands:
         rep = when.repeat(t)
         at = self._reminder_time(when_text) or self._reminder_time(rest)
         if not what and not at:
-            return None  # "remind me what the capital of France is": a question, not a reminder
+            return None  # neither what to remind them of nor when: not a reminder
         what = re.sub(r"\b(every ?day|daily|every (week|weekday|monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?)\b", "", what).strip()
         if m.group(1) not in ("me", "us", "everyone", "everybody", "him", "her", "them"):
             what = f"{m.group(1).capitalize()}, {what}" if what else m.group(1).capitalize()

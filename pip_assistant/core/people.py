@@ -1,7 +1,7 @@
 """People and their voices (M1a step 5; PIP-NEW-024, 025, 027, D-77, D-87).
 
-Who lives here is a short list kept in ~/pip-data/pip.db (names, role, whether they've opted out of
-having room speech sent to the cloud). Each person can have a **voice profile**: a few "voiceprints"
+Who lives here is a short list kept in ~/pip-data/pip.db (name and role, admin or member), managed
+on the dashboard. Each person can have a **voice profile**: a few "voiceprints"
 (192 numbers each, from the TitaNet model, computed on the Pi in ~40 ms). Pip compares what it hears
 with the profiles and says how sure it is:
 

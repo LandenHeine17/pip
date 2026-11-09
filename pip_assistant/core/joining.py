@@ -4,7 +4,7 @@ After someone says something that wasn't for Pip, and the room pauses (1.2 s), P
 whether he'd say something right now. Claude answers PASS (stay quiet) or "SAY: …" (only those
 words are spoken). He only asks when all of these hold:
 
-    - he isn't busy (answering, speaking, ringing, learning a voice) and the mic is on
+    - he isn't busy (answering, speaking, ringing, learning a voice), he's listening and online
     - it's a live conversation: the last thing said was 1.2–60 s ago, by a person, and it's new
       since he last considered joining in
     - enough time has passed since he last considered it (mood: quiet 2 min, normal 40 s, chatty 15 s)

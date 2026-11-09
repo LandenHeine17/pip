@@ -1,5 +1,11 @@
-"""The message hub inside pip-core. Every program connects here; every message passes through
-and is logged to the decision trace (docs/ARCHITECTURE.md §3)."""
+"""The message hub inside pip-core (docs/ARCHITECTURE.md §3).
+
+Every program connects to a Unix socket here, says hello with its name, and then sends messages:
+events go to everyone who subscribed to them, commands to one program, and requests get a reply
+(requests addressed to "core" are answered by `core_handlers`, set up in main.py). Every message
+is logged to the decision trace, without its `private` part. Parts of pip-core itself (the
+conversation, for instance) react to events through `core_listen`.
+"""
 import asyncio
 import contextlib
 import fnmatch
@@ -169,6 +175,8 @@ class Bus:
 
     # ---------------------------------------------------------------- housekeeping
     async def housekeeping(self, every: float = 2.0) -> None:
+        """Every 2 s: write the trace to disk, restart stuck programs, publish health. Hourly: forget old
+        trace entries, finished alerts and expired inbox memories."""
         last_prune = 0.0
         while True:
             await asyncio.sleep(every)

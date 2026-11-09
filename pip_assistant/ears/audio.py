@@ -53,7 +53,7 @@ def mic_tone(on: bool, rate: int = 22050) -> np.ndarray:
     return (sound * 32767).astype(np.int16)
 
 
-RINGTONES = ("classic", "kitchen", "chimes", "gentle")
+RINGTONES = ("classic", "kitchen", "chimes", "gentle")  # the names ringtone() knows; any other plays "classic"
 
 
 def ringtone(name: str = "classic", rate: int = 22050) -> np.ndarray:

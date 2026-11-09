@@ -1,4 +1,5 @@
-"""M1a step 3 tests: sentence splitting, utterance cutting, the conversation flow, the Claude reader."""
+"""M1a step 3 tests: sentence splitting, utterance cutting, the conversation flow, the Claude reader,
+and spotting Pip's name in room speech."""
 import asyncio
 import base64
 import json

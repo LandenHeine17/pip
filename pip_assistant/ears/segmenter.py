@@ -1,9 +1,9 @@
 """Cuts what someone says to Pip out of the microphone stream (one "utterance").
 
-A capture starts on a wake word, at the start of speech inside the follow-up window, or when
-someone talks over Pip. It ends after a short pause, or after a maximum length. The wake word can
-be anywhere in the sentence: the last few seconds are always kept, so "what time is it,
-Pippletron?" includes the question that came *before* the name.
+A capture starts on a wake word, at the start of speech inside the follow-up window, when
+someone talks over Pip, or (with transcript_wake on, D-92) whenever anyone in the room speaks.
+It ends after a short pause, or after a maximum length. The wake word can be anywhere
+in the sentence: the last few seconds are always kept, so "what time is it, Pippletron?" includes the question that came *before* the name.
 
 The speakerphone's noise suppression outputs near-silence between words, so loudness alone
 separates speech from quiet well (measured in M0).
@@ -18,7 +18,7 @@ FRAME_S = 0.08
 
 @dataclass
 class Utterance:
-    reason: str            # "wake" | "follow_up" | "barge_in" | "room" (checked for Pip's name)
+    reason: str            # "wake" | "follow_up" | "barge_in" | "room" (anything else said: room transcript, D-92)
     audio: np.ndarray      # int16 at 16 kHz
     had_speech: bool
     word: str = ""
@@ -47,7 +47,7 @@ class Segmenter:
     def is_speech(self, db: float) -> bool:
         return db > self.speech_dbfs
 
-    def start(self, reason: str, word: str = "", lookback: str = "phrase") -> None:
+    def start(self, reason: str, word: str = "", lookback: str | float = "phrase") -> None:
         """Begin capturing. lookback="phrase": include the speech run just before now (wake word
         at the end of a sentence); a number: include that many seconds."""
         past = list(self.history)

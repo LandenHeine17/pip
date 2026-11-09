@@ -40,6 +40,7 @@ class TodoSync:
         self.store, self.google, self.clock = store, google, clock
 
     async def run_once(self) -> dict:
+        """Sync every connected account. Returns {account: error or ''}."""
         out = {}
         if self.google is None:
             return out

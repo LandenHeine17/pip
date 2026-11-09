@@ -31,12 +31,13 @@ right now" (PIP-NEW-044, D-83). They're also the fallback if Claude fails to ans
 While an alarm rings, the obvious "stop", "okay", "snooze" or Pip's name silence it instantly; anything
 else said to Pip goes to Claude, which can stop or snooze it.
 
-Pip's state (idle / listening / thinking / speaking / interrupted / ringing / offline / mic_off) is published as `pip.state`;
-the dashboard's conversation feed gets every line heard (`conversation.line`, words private) and small event bars
-(`conversation.event`: chime, waiting, passed, interrupted, joined, mic_off/mic_on; no words) (D-108).
-Within each state, what exactly he's doing (waiting to see if you're done, following the conversation, …) is
-published with it as `detail` and plain `words` (D-112, DETAILS below), whenever either changes: the dashboard
-and the face show both.
+Pip's state is published as `pip.state` {state, detail, words, ends_in} whenever it changes: one of 8 states
+(idle / listening / thinking / speaking / interrupted / ringing / mic_off / offline), and within it what exactly
+he's doing (waiting to see if you're done, following the conversation, …) (D-108, D-112). The rules are in
+core/states.py; the fields they read are grouped under "What the face shows" in Conversation.__init__, and
+refresh_state() is called whenever one of them changes. The dashboard's conversation feed also gets every line
+heard (`conversation.line`, words private) and small event bars (`conversation.event`: chime, waiting, passed,
+interrupted, joined, mic_off/mic_on, and state changes if switched on; no words).
 """
 import asyncio
 import base64
@@ -47,33 +48,13 @@ import time
 
 from ..common.messages import Message, new_id
 from .joining import Joining, in_quiet_hours
+from .states import DETAILS, situation
 from .transcript import Transcript
 
 log = logging.getLogger(__name__)
 
 PIP_NAMES = re.compile(r"\b(pip|pipp|pips|pippy|pippie|pippletron|pipple ?tron|pippa ?tron|piple ?tron|pipletron)\b", re.I)
 NOT_PIP = re.compile(r"\b(zig+le ?tron|zig+y|zig+)\b", re.I)
-
-
-# What exactly Pip is doing, within each state (D-112): shown under his face, next to the dashboard's state
-# circle, and (if switched on) as bars in the Conversation. Words about Pip only, never what anyone said.
-DETAILS = {
-    "called": "Heard my name: go on",                  # listening: a wake word or his name, waiting for the rest
-    "hearing": "Working out what you said",            # listening: turning what was said to him into words
-    "turn": "Waiting to see if you're done",           # listening: holding your words for the end of your turn
-    "follow_up": "Listening for your reply",           # listening: after answering, in case you reply
-    "learning_voice": "Learning a voice",              # listening: guided voice learning
-    "asking": "Thinking",                              # thinking: Claude is working on an answer
-    "searching": "Searching the web",                  # thinking
-    "looking_up": "Looking it up",                     # thinking: the second round after a look-up
-    "voice": "Getting the words out",                  # thinking: the answer is being turned into speech
-    "following": "Following the conversation",         # idle: people are talking, not to him
-    "mentioned": "Heard my name mentioned: is it for me?",  # idle: Claude decides whether to answer
-    "joining": "Thinking about joining in",            # idle: Claude decides whether to join in
-    "answer": "",                                      # speaking: an answer
-    "joining_in": "Joining in",                        # speaking: joining a conversation nobody asked him into
-    "welcome": "Saying hi",                            # speaking: welcome back
-}
 
 
 FILLER = re.compile(r"\b(hey|hi|ok|okay|so|yo|um+|uh+|hmm+)\b", re.I)
@@ -188,23 +169,27 @@ class Conversation:
         th = (cfg or {}).get("thinker", {})
         self.tone_mode = th.get("thinking_tone", "always")
         self.tone_after = th.get("thinking_tone_after_seconds", 1.5)
-        self.filler_said = None
         st = (cfg or {}).get("stt", {})
         self.voice_check = st.get("voice_check", False) if cfg else False
         self.min_voice = st.get("min_voice_seconds", 0.15)
-        self.state, self.detail = "idle", ""
-        self.speaking = False
-        self.say_reason = ""           # why he's talking: answer / welcome / searching / …
+        # --- What the face shows: core/states.py reads these to work out his state (call refresh_state()
+        # after changing one). The *_until fields are time.monotonic() deadlines; 0 = not happening.
+        self.state, self.detail = "idle", "quiet"   # what was last published
+        self.speaking = False          # his voice is playing (speech.started → speech.finished)
+        self.say_reason = ""           # why he's talking: answer / welcome / command / error / … (see say())
         self.voice_kind = "direct"     # the answer he's speaking: direct / mentioned / join
-        self.listen_why = "called"     # what the listening window is for (see listening_for)
-        self.room_until = 0.0          # people are talking in the room (not to him): he's following along
+        self.say_pending_until = 0.0   # words sent to pip-ears but not playing yet (being turned into speech)
+        self.cut_until = 0.0           # someone talked over him: "interrupted" until then
+        self.transcribing = False      # speech-to-text on something said to him: "listening: hearing"
+        self.listen_until = 0.0        # a listening window (after his name, after answering, learning a voice)
+        self.listen_why = "called"     # what that window is for (see listening_for)
         self.turn_until = 0.0          # when a held turn will be answered, if nobody says more (D-106)
+        self.offline_until = 0.0       # speech-to-text fell back to the Pi: "offline" until then
+        self.room_until = 0.0          # people are talking in the room (not to him): he's following along
         self.looking_up = False        # the second round of an answer, after a look-up
-        self.listen_until = 0.0     # chime / follow-up window: Pip is listening for someone
-        self.offline_until = 0.0
-        self.transcribing = False   # working out what was said: part of "thinking"
-        self.say_pending_until = 0.0  # words sent to pip-ears but not playing yet (being turned into speech)
-        self._state_timer = None
+        self.filler_said = None        # None until his first words of an answer ("searching" if he said so)
+        # (also read: answer_id / answer_kind below, pending below, ringing and mic)
+        self._state_timer = None       # re-checks the state when the next *_until deadline passes
         if schedule is not None:
             schedule.watchers.append(self.refresh_state)
         self.wait_after_name = c.get("wait_after_name_seconds", 5.0)
@@ -215,8 +200,7 @@ class Conversation:
         self.turn_long = c.get("turn_wait_long_seconds", t["long"])
         self.turn_after_cut = c.get("turn_wait_after_interrupt_seconds", t["after_interrupt"])
         self.max_utterance = (cfg or {}).get("listen", {}).get("max_utterance_seconds", 12.0)
-        self.last_cut = -1e9         # when someone last talked over Pip
-        self.cut_until = 0.0         # state "interrupted" until then
+        self.last_cut = -1e9         # when someone last talked over Pip (he waits longer for a minute, D-106)
         self.mic_off_since = None    # for "mic was off for 12 s" on the feed
         self.max_sentences = c.get("max_sentences", 2)
         self.expect_until = 0.0     # Pip was just called: the next speech is for him, name or not
@@ -248,42 +232,12 @@ class Conversation:
 
     # ---------------------------------------------------------------- Pip's state (for the dashboard and the face)
     def situation(self) -> tuple[str, str, float]:
-        """(state, detail, ends_at): the state (its colour on the dashboard and the face) and, within it,
-        what exactly he's doing (D-112, the DETAILS table). ends_at: when a wait he's in runs out (0 if none)."""
-        now = time.monotonic()
-        working = self.answer_id is not None
-        if self.ringing:
-            return "ringing", "", 0.0
-        if self.speaking:
-            detail = "joining_in" if self.say_reason == "answer" and self.voice_kind == "join" else \
-                "welcome" if self.say_reason == "welcome" else "answer"
-            return "speaking", detail, 0.0
-        if self.mic is not None and not self.mic.listening:
-            return "mic_off", "", 0.0
-        if now < self.cut_until:
-            return "interrupted", "", 0.0   # someone just talked over him
-        if working and self.answer_kind == "direct" and self.filler_said in (None, "searching"):   # until his first words
-            return "thinking", "searching" if self.filler_said == "searching" else \
-                "looking_up" if self.looking_up else "asking", 0.0
-        if now < self.say_pending_until:
-            return "thinking", "voice", 0.0
-        if self.transcribing:
-            return "listening", "hearing", 0.0
-        if self.pending:   # what they've said is held until they've finished their turn (D-106)
-            return "listening", "turn", self.turn_until
-        if now < self.listen_until:
-            return "listening", self.listen_why, self.listen_until
-        if now < self.offline_until:
-            return "offline", "", 0.0
-        if working and self.answer_kind == "mentioned":
-            return "idle", "mentioned", 0.0
-        if working and self.answer_kind == "join":
-            return "idle", "joining", 0.0
-        if now < self.room_until:
-            return "idle", "following", 0.0
-        return "idle", "", 0.0
+        """(state, detail, ends_at): what the face and the dashboard show. The rules are in core/states.py."""
+        return situation(self)
 
     def refresh_state(self) -> None:
+        """Work out the state again and, if it changed, tell the dashboard and the face (`pip.state`).
+        Also sets a timer to look again when the next deadline (listen_until, cut_until, …) passes."""
         now = time.monotonic()
         state, detail, ends_at = self.situation()
         if self._state_timer:
@@ -296,11 +250,15 @@ class Conversation:
         if (state, detail) != (self.state, self.detail):
             self.state, self.detail = state, detail
             if _loop_running():
-                data = {"state": state, "detail": detail, "words": DETAILS.get(detail, ""),
-                        "ends_in": round(ends_at - now, 1) if ends_at > now else None}
+                data = self.state_message(ends_at, now)
                 asyncio.ensure_future(self.bus.publish(Message("event", "pip.state", source="core", data=data)))
                 if self.prefs is not None and self.prefs.get("state_bars"):   # the feed's state bars (D-112)
                     asyncio.ensure_future(self.note("state", **data))
+
+    def state_message(self, ends_at: float = 0.0, now: float = 0.0) -> dict:
+        """What `pip.state` carries: {state, detail, words, ends_in (seconds left of a wait, or None)}."""
+        return {"state": self.state, "detail": self.detail, "words": DETAILS.get(self.detail, ""),
+                "ends_in": round(ends_at - now, 1) if ends_at > now else None}
 
     def listening_for(self, seconds: float, why: str = "called") -> None:
         """Listening for someone for a while. why: called (heard his name), follow_up (after answering),
@@ -310,6 +268,8 @@ class Conversation:
         self.refresh_state()
 
     async def say(self, text: str, reason: str) -> None:
+        """Speak `text` through pip-ears. `reason` says why (answer, welcome, command, error, …); the face
+        shows it while he talks (states.SPEAKING)."""
         if text:
             self.say_reason = reason
         if text and not self.speaking:
@@ -451,6 +411,8 @@ class Conversation:
         return self.mic.snapshot()
 
     async def on_program_connected(self, name: str) -> None:
+        if name == "web":   # the dashboard (re)started: tell it what Pip is doing now, or it would show nothing
+            await self.bus.publish(Message("event", "pip.state", source="core", data=self.state_message()))
         if name == "ears":
             await self.apply_mic()
             await self.tell_clap_mic()

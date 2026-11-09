@@ -5,19 +5,19 @@ project, turns on the Calendar and Tasks APIs, and makes a "Desktop app" OAuth c
 secret are pasted into the dashboard and saved in secrets.toml [google].
 
 Connecting someone: People → their row → Connect Google (or this module's page). Google's sign-in
-page opens; afterwards Google sends the browser to http://127.0.0.1:8765/?code=… which won't load
-(that's expected): the person copies that address into the dashboard, and Pip swaps the code for a
-long-lived "refresh token", saved in secrets.toml [google.accounts.<id>]. It never leaves the Pi
-except to Google, and is never shown on the dashboard. Disconnect revokes it at Google.
+page opens; afterwards Google sends the browser to http://127.0.0.1:<redirect_port>/?code=… which
+won't load (that's expected): the person copies that address into the dashboard, and Pip swaps the
+code for a long-lived "refresh token", saved in secrets.toml [google.accounts.<id>]. It never leaves
+the Pi except to Google, and is never shown on the dashboard. Disconnect revokes it at Google.
 
-Other modules (calendar, to-dos) use `ctx.module("google")` → GoogleAccounts.request(account, …),
-which keeps a fresh access token and marks the account "needs reconnecting" if Google refuses.
+Other modules (calendar, to-dos) use `ctx.module("google")` → GoogleAccounts: request(account, …)
+keeps a fresh access token and marks the account "needs reconnecting" (or "missing" permissions) if
+Google refuses; on_connect / on_disconnect let them fetch or forget an account's data.
 """
 import base64
 import hashlib
 import json
 import secrets as pysecrets
-import time
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from pip_assistant.common.messages import new_id
@@ -106,6 +106,7 @@ class GoogleAccounts:
         return dict(r) if r else None
 
     def for_person(self, person_id: str | None) -> dict | None:
+        """That person's first working account, if any."""
         rows = [a for a in self.accounts(person_id) if a["status"] == "ok"] if person_id else []
         return rows[0] if rows else None
 
@@ -225,10 +226,6 @@ class GoogleAccounts:
         self._tokens[aid] = (tok["access_token"], self.ctx.clock() + float(tok.get("expires_in", 3600)) - 60)
         return tok["access_token"]
 
-    def has_scope(self, aid: str, scope: str) -> bool:
-        a = self.account(aid)
-        return bool(a) and scope in a.get("scopes", "").split()
-
     async def request(self, aid: str, method: str, url: str, manage: bool = False, **kw):
         """Call a Google API as this account. Returns the httpx response (any status).
         manage=True: an extra like making a calendar; if that permission is missing only that call fails
@@ -251,6 +248,7 @@ class GoogleAccounts:
         return r
 
     def snapshot(self) -> dict:
+        """What the Google page shows (never a token or the client secret)."""
         names = {p["id"]: p["name"] for p in (self.ctx.people.all() if self.ctx.people else [])}
         return {"configured": self.configured(), "redirect_uri": self.redirect_uri,
                 "accounts": [{**a, "person": names.get(a["person_id"], "?"), "can_manage": CALENDAR in a["scopes"].split()}
@@ -268,6 +266,8 @@ def _email(id_token: str) -> str:
 
 
 class Google(Module):
+    """No actions for Claude: just the Google page and the accounts other modules use (its api)."""
+
     def __init__(self, ctx):
         self.ctx = ctx
         self.api = GoogleAccounts(ctx)

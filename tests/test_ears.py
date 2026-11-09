@@ -1,4 +1,4 @@
-"""M1a step 2 tests: chime, loudness, wake words (on synthetic speech), voice, and the wake → reply flow."""
+"""pip-ears tests: chime, loudness, wake words (on synthetic speech), and that the speaker plays everything and stops on cue."""
 import asyncio
 
 import numpy as np
@@ -8,7 +8,7 @@ from pip_assistant.common import paths
 from pip_assistant.ears.audio import chime, level_dbfs
 
 VOICE = paths.data_dir() / "models" / "voices" / "en_US-lessac-medium.onnx"
-needs_voice = pytest.mark.skipif(not VOICE.exists(), reason="voice model not installed (run deploy/install.sh)")
+needs_voice = pytest.mark.skipif(not VOICE.exists(), reason="voice model not in ~/pip-data/models/voices")
 
 
 def test_chime_and_levels():

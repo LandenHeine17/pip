@@ -10,7 +10,6 @@ Every change is checked first. When something doesn't fit, nothing changes: Pip 
 (PIP-NEW-061). The last UNDO_KEEP screens are kept, so "undo that" puts the last one back exactly.
 """
 import copy
-import json
 import re
 
 from .layout import COLS, FACES, PLACE, ROWS, arrange, clean_face, clean_place
@@ -236,7 +235,7 @@ READY = {n: make(v["label"], v["face"], v["sections"], v.get("dim", False)) for 
 
 
 class Screen:
-    """What's showing and what's kept. `state` is plain data (kept as JSON by the module)."""
+    """What's showing and what's kept. `state` is plain data (module.py keeps it as JSON in pip.db)."""
 
     def __init__(self, state: dict | None = None):
         s = state or {}
@@ -458,7 +457,3 @@ class Screen:
         if self.pending:
             out += f" Waiting for an okay to: {self.pending['words']} (if they agree: {{\"do\": \"screen_fix\"}})."
         return out
-
-
-def dumps(screen: Screen) -> str:
-    return json.dumps(screen.state())

@@ -1,10 +1,12 @@
 """The screen module (step 7, D-111): what's on the monitor, changed by voice or on the dashboard.
 
 The logic is in screen.py (and the grid in layout.py), both ported from Ziggletron. This file plugs
-them into Pip: Claude's actions, the line Claude reads about the screen, the dashboard's Screen section,
-and keeping it all in pip.db. Each change publishes module.screen.changed, which pip-web passes on to
-the monitor; the monitor then fetches what it shows (core/main.py tv_snapshot).
+them into Pip: Claude's actions, the line Claude reads about the screen, the Screen page on the
+dashboard, and keeping it all in pip.db. Each change publishes module.screen.changed (or .options for
+"what can go on the screen?"), which pip-web passes on to the monitor; the monitor then fetches what it
+shows (core/main.py tv_snapshot, which calls for_tv()).
 """
+import asyncio
 import json
 
 from pip_assistant.core.modules import Action, Call, Invalid, Module
@@ -36,8 +38,7 @@ class ScreenModule(Module):
         self.db.commit()
 
     def _changed(self, kind: str = "changed") -> None:
-        """Tell pip-web: the monitor reloads what it shows. Only box kinds travel (no names or notes)."""
-        import asyncio
+        """Save, and tell pip-web: the monitor reloads what it shows. Only box kinds travel (no names or notes)."""
         self._keep()
         data = {"boxes": [s["type"] for s in self.screen.view["sections"]], "room": self.screen.room_talk()}
         try:
@@ -55,7 +56,7 @@ class ScreenModule(Module):
     def check(self, a: dict, call: Call) -> dict:
         """Only that it makes sense; whether it fits is found out when it's done (and a fix offered)."""
         verb = a.get("do")
-        if verb in ("add_box",) and kind_of(a.get("type")) is None:
+        if verb == "add_box" and kind_of(a.get("type")) is None:
             raise Invalid("unknown kind of box")
         if verb in ("remove_box", "move_box", "change_box") and not str(a.get("box") or "").strip():
             raise Invalid("which box")

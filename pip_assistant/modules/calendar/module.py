@@ -5,15 +5,19 @@
     module.py  this file: Claude's event actions, what Claude is told, the dashboard page's requests,
                and the sync loop
 
-Whose calendar? An event Pip adds goes on the calendar of the person named ("put it on Sam's
-calendar"), else the speaker's if Pip is sure who it is and they've connected Google, else the
-household calendar (setting household_calendar).
+Whose calendar? An event Pip adds goes on the calendar named ("Work", or a person: "put it on Sam's
+calendar"), else the speaker's main one if Pip is sure who it is and they've connected Google, else
+the household calendar (picked on an account's Google settings page, or the household_calendar
+setting; see sync.py household()).
 
 What Pip may say: private events never (D-99). Each connected person also chooses (on the Google
 page) whether Pip may talk about their calendar to everyone, or only to them (recognised "sure").
 """
 import asyncio
+import difflib
 import logging
+import re
+import secrets
 from datetime import date, datetime, timedelta
 
 from pip_assistant.core import when
@@ -85,7 +89,6 @@ class Calendar(Module):
     def find_calendar(self, name: str, call: Call, writable: bool = True) -> dict:
         """A calendar from what Claude called it: a calendar's name ("Work", "Landen: Work"), a person ("Sam" =
         their main calendar), or "household". Unknown or ambiguous → Invalid (nothing is done)."""
-        import difflib
         want = " ".join(str(name).lower().replace("’", "'").split())
         if want in ("household", "the household", "house"):
             return self.store.calendar(self.sync.household())
@@ -314,7 +317,6 @@ class Calendar(Module):
         v = str(value).strip().lower()
         if v in self.COLORS:
             return self.COLORS[v]
-        import re
         if re.fullmatch(r"#[0-9a-f]{6}", v):
             return v
         raise Invalid("unknown colour")
@@ -341,7 +343,7 @@ class Calendar(Module):
 
     async def do_new_calendar(self, p: dict, call: Call) -> str:
         if p["acc"] is None:   # nobody has connected Google: one of Pip's own
-            cid = "pip:" + __import__("secrets").token_hex(4)
+            cid = "pip:" + secrets.token_hex(4)
             self.store.upsert_calendar(cid, name=p["name"], color=p["color"] or "#6c5ce7", ticked=1, writable=1, owner=1)
         else:
             try:
@@ -440,13 +442,12 @@ class Calendar(Module):
         return f", on {who}'s {cal['name']} calendar" if who else f", on the {cal['name']} calendar"
 
     # ---------------------------------------------------------------- the dashboard page
-    def occurrences(self, first: date, last: date, include_private: bool = True) -> list[dict]:
+    def occurrences(self, first: date, last: date) -> list[dict]:
+        """Every event happening between those days (private ones too: the dashboard shows them, marked)."""
         cals = {c["id"]: c for c in self.store.calendars()}
         accounts, names = self._accounts(), self._people()
         out = []
         for d, at, ev in self.store.between(first, last):
-            if ev["private"] and not include_private:
-                continue
             c = cals.get(ev["calendar_id"], {})
             out.append({"id": ev["id"], "day": d.isoformat(), "at": at.timestamp(), "start": ev["start"], "end": ev["end"],
                         "all_day": bool(ev["all_day"]), "title": ev["title"], "location": ev["location"], "notes": ev["notes"],

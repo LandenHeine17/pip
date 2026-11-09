@@ -1,5 +1,5 @@
 [Unit]
-Description=Pip: pip-thinker (Claude and the offline fallback)
+Description=Pip: pip-thinker (asks Claude for Pip's answers)
 After=pip-core.service
 Wants=pip-core.service
 

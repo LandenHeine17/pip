@@ -10,6 +10,18 @@ results/
 *.flac
 *.mp3
 *.ogg
+*.m4a
+*.opus
+*.webm
+# Defence in depth: databases, personal settings, logs and a stray data folder
+*.db
+*.sqlite
+*.db-wal
+*.db-shm
+*.db-journal
+settings.toml
+*.log
+pip-data/
 
 # Python
 .venv/

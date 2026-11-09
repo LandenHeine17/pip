@@ -20,7 +20,7 @@ import contextlib
 import logging
 import sqlite3
 import time
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from ..common.messages import Message, new_id
@@ -35,9 +35,9 @@ CREATE TABLE IF NOT EXISTS alerts (
     label    TEXT NOT NULL,       -- what it's for ("pasta", "take the bins out")
     due      REAL NOT NULL,       -- when it rings (Unix time)
     length   REAL,                -- timers: the length asked for, in seconds
-    repeat   TEXT NOT NULL DEFAULT '',   -- '', daily, weekdays, weekends, weekly:<0-6>
+    repeat   TEXT NOT NULL DEFAULT '',   -- '', daily, weekdays, weekends, weekly, weekly:<0-6>
     state    TEXT NOT NULL,       -- waiting / ringing / done / cancelled / missed
-    event_id TEXT,
+    event_id TEXT,                -- heads-ups: the calendar event it belongs to
     created  REAL NOT NULL,
     updated  REAL NOT NULL
 );

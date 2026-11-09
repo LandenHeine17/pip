@@ -1,19 +1,23 @@
 """pip-thinker: turns what someone said into Pip's answer, using Claude (M1a step 3).
 
-Takes:  thinker.ask (request; data.kind = direct / mentioned / join; private.text + private.transcript,
-        the room conversation) → streams answer.sentence events,
-        then replies with the whole answer · thinker.cancel (command)
+Takes:  thinker.ask (request; data.answer_id, data.kind = direct / mentioned / join; private: text, transcript
+        (the room conversation), schedule, people, memories, mood, looked_up: all filled in by pip-core)
+        → streams answer.sentence events, then replies with the whole answer (and any ACTION line, privately)
+        thinker.cancel {answer_id} (command)
 Sends:  answer.sentence {answer_id} (+ private.text) · answer.searching {answer_id}
+Each module's [claude] instructions (module.toml) are added to the system prompt.
 Offline, Pip's own commands (timers, alarms, reminders, calendar) still work in pip-core; the
 offline Qwen fallback for chat (D-75, PIP-NEW-081) is planned for M2.
 """
+import asyncio
 import logging
 import time
 
 from ..common.messages import Message
+from ..common.modules import enabled
 from ..common.program import make_bus, serve, start
-from .claude import ClaudeCLI
 from ..common.weather import Weather
+from .claude import ClaudeCLI
 
 log = logging.getLogger("pip-thinker")
 
@@ -70,8 +74,8 @@ Memory: each message says who's speaking (if Pip recognises the voice), who live
 remember something lasting, reply with ONLY:
 ACTION {{"do": "remember", "text": "Landen likes his coffee black", "category": "preference", "about": ["Landen"], \
 "sensitive": false, "private": false}}
-Write the fact itself in the third person with names (the speaker's name for "I"/"my"): "Caleb is allergic \
-to peanuts", never "Landen says Caleb is allergic to peanuts". A fact about a person is category personal with \
+Write the fact itself in the third person with names (the speaker's name for "I"/"my"): "Sam is allergic \
+to peanuts", never "Landen says Sam is allergic to peanuts". A fact about a person is category personal with \
 "about": [that person]. If it's about "I"/"my" and \
 you don't know who's speaking, don't remember it: ask who they are instead. "about" lists only the people a \
 preference or personal fact is about; household facts and rules have "about": []. Categories: preference, household, rule (how Pip should behave), \
@@ -104,7 +108,6 @@ class Thinker:
         self.bus = bus
         self.location = t["location"]
         # What each plugged-in module adds (modules/<name>/module.toml [claude]): calendar events, to-dos, …
-        from ..common.modules import enabled
         self.module_text = "\n\n".join(m.claude for m in enabled(cfg) if m.claude)
         self.claude = ClaudeCLI(t["model"], t["web_search"], t["timeout_seconds"], t["effort"])
         self.weather = Weather(t["location"])
@@ -179,7 +182,7 @@ class Thinker:
         return {"ok": True}
 
     async def keep_warm(self) -> None:
-        import asyncio
+        """Keep a Claude process started and waiting, so the next answer starts faster."""
         while True:
             try:
                 await self.claude.prepare(await self.system_prompt())

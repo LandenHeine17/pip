@@ -3,7 +3,8 @@
 Two separate switches, and Pip listens only when **both** are on:
 
     dashboard   the Listening switch on the dashboard
-    claps       two claps in a row flip this one
+    claps       two claps in a row flip this one (only when claps are turned on in the
+                dashboard's preferences and a clap microphone is chosen, core/prefs.py)
 
 They're kept apart on purpose: if the dashboard switched him off, clapping can't switch him back on.
 The speakerphone's own mute button works as always, on top of both.

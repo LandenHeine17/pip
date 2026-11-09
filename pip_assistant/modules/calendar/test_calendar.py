@@ -1,6 +1,6 @@
 """The calendar module: Pip's own events, two-way sync with a pretend Google, privacy and sharing."""
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pytest
 

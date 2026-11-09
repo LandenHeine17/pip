@@ -3,11 +3,14 @@
     fake = FakeGoogle()
     transport = fake.transport()          # give it to ModuleContext(transport=…)
     fake.calendars["acct-cal"] = {...}    # what's "in Google"
+    await connect(google_module, fake, person_id, "sam@example.com")   # sign someone in
 """
+import base64
 import json
 import secrets
 import time
-from urllib.parse import parse_qs, unquote
+from datetime import datetime
+from urllib.parse import parse_qs, unquote, urlparse
 
 import httpx
 
@@ -66,7 +69,7 @@ class FakeGoogle:
                         return httpx.Response(400, json={"error": "invalid_grant"})
                     rt = "refresh-" + email
                     self.refresh[rt] = email
-                    payload = __import__("base64").urlsafe_b64encode(json.dumps({"email": email}).encode()).decode().rstrip("=")
+                    payload = base64.urlsafe_b64encode(json.dumps({"email": email}).encode()).decode().rstrip("=")
                     g = "https://www.googleapis.com/auth/"
                     scope = "openid " + g + "userinfo.email" + (
                         "" if self.only_email else
@@ -169,7 +172,6 @@ class FakeGoogle:
             if len(parts) == 4 and method == "GET":
                 items = list(ts.values())
                 if "updatedMin" in q:
-                    from datetime import datetime
                     since = datetime.fromisoformat(q["updatedMin"].replace("Z", "+00:00")).timestamp()
                     items = [t for t in items if t["updated_ts"] > since]
                 return httpx.Response(200, json={"items": items})
@@ -191,12 +193,11 @@ class FakeGoogle:
 
 async def connect(google_module, fake: FakeGoogle, person_id: str, email: str) -> dict:
     """Go through Pip's sign-in for one person, as if they'd pasted Google's address back."""
-    from urllib.parse import parse_qs as _pq, urlparse
     g = google_module.api
     if not g.configured():
         await google_module.dashboard("save_client", {"client_id": "123-abc.apps.googleusercontent.com",
                                                       "client_secret": "GOCSPX-test-secret"})
     url = (await google_module.dashboard("connect", {"person_id": person_id}))["url"]
-    state = _pq(urlparse(url).query)["state"][0]
+    state = parse_qs(urlparse(url).query)["state"][0]
     await google_module.dashboard("finish", {"pasted": f"http://127.0.0.1:8765/?state={state}&code={fake.sign_in_code(email)}"})
     return g.for_person(person_id)

@@ -171,16 +171,22 @@ def test_pip_core_sends_the_screen_and_only_the_lists_on_it(tmp_path):
     assert snap["lists"][""]["items"] == ["milk"]
 
 
-def test_every_detail_has_a_face_and_reaches_the_tv():
-    """D-112: each situation in pip-core's DETAILS has its own expression on the monitor (plain thinking and
-    talking use the state's own face)."""
+def test_every_situation_has_words_and_its_faces_match_and_it_reaches_the_tv():
+    """D-112: every situation in core/states.py has words to show under the face (nothing is ever blank),
+    each expression in tv.html keyed "state:detail" is a real situation, and the busy ones have their own."""
     import asyncio
+    import re
     from pathlib import Path
-    from pip_assistant.core.conversation import DETAILS
+    from pip_assistant.core.states import DETAILS, SITUATIONS
     page = (Path(__file__).parent.parent / "pip_assistant/web/static/tv.html").read_text()
-    for detail in DETAILS:
-        if detail not in ("answer", "asking"):
-            assert f':{detail}"' in page, detail
+    assert all(words for words in DETAILS.values())
+    assert sum(len(d) for d in SITUATIONS.values()) == len(DETAILS)          # no detail name used twice
+    for key in re.findall(r'"(\w+):(\w+)":', page):
+        assert key[1] in SITUATIONS.get(key[0], {}), key
+    for state, detail in [("listening", d) for d in SITUATIONS["listening"]] + [
+            ("thinking", "searching"), ("thinking", "looking_up"), ("thinking", "voice"), ("idle", "following"),
+            ("idle", "mentioned"), ("idle", "joining"), ("speaking", "joining_in"), ("speaking", "welcome")]:
+        assert f'"{state}:{detail}"' in page, detail
     bus, state = FakeBus(), State()
     listen(bus, state)
     q = tv_feed(state)

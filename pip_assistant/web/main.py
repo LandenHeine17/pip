@@ -1,13 +1,21 @@
-"""Start pip-web: the dashboard. Step 1 shows program health and the live decision trace;
-step 4 adds timers, alarms and reminders (with Shut off / Snooze buttons).
+"""Start pip-web: Pip's web pages. It serves
+
+    /          the dashboard (static/index.html): health, the Listening switch, the conversation feed,
+               timers and calendar, people, memory, preferences, the decision trace
+    /tv        the face on the monitor and its boxes (static/tv.html, D-110), with its own data and stream
+    /m/<name>/ each module's own page
+
+pip-web keeps nothing itself: `/api/...` requests are passed to pip-core over the bus, and `listen`
+turns what pip-core publishes into live streams for the pages (`/api/stream`, `/api/tv/stream`).
 
 Modules (pip_assistant/modules/, ARCHITECTURE §7) bring their own pages: pip-web serves a module's
 static/ folder at /m/<name>/ and passes its requests (/api/m/<name>) to pip-core, which hands them
 to the module. Everything in them (event titles, names) travels privately and is never logged;
 secrets never reach pip-web.
 
-Logins and roles arrive in step 8 (PIP-NEW-054). Until then it listens only on the address in
-settings (on the Pi: the Tailscale address), so only the owner's devices can reach it.
+Logins and roles arrive in step 8 (PIP-NEW-054). Until then it listens only on the addresses in
+settings (on the Pi: the Tailscale address, plus 127.0.0.1 for the monitor's own browser), so only
+the owner's devices and the Pi itself can reach it.
 """
 import asyncio
 import collections
@@ -53,8 +61,8 @@ class State:
         self.tv_boxes, self.tv_room = [str(b) for b in boxes], bool(room)
 
     def push_tv(self, kind: str, data: dict) -> None:
-        """Only what the TV shows: state, the mouth level, captions of lines to Pip, "refresh", the layout
-        changing, and room talk only while a conversation box shows it (D-110, D-111)."""
+        """Only what the TV shows: state, the mouth level, captions of lines to and from Pip, "refresh",
+        the screen's options changing, and room talk only while a conversation box shows it (D-110, D-111)."""
         for q in list(self.tv_listeners):
             if q.qsize() < 200:
                 q.put_nowait((kind, data))
@@ -99,8 +107,7 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         args = dict(request.query_params) if request.method == "GET" else await request.json()
         action = str(args.pop("action", "status"))
         try:
-            r = await bus.request("core", "module.request", {"module": name, "action": action},
-                                  {k: v for k, v in args.items()}, timeout=60)
+            r = await bus.request("core", "module.request", {"module": name, "action": action}, args, timeout=60)
         except Exception as e:
             return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
         return JSONResponse(r.private if r.private else r.data)
@@ -180,8 +187,8 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         return JSONResponse(r.data)
 
     async def prefs(request):
-        """GET: the dashboard preferences (chime, clap microphone) and the microphones there are.
-        POST {"key", "value"}: change one (core/prefs.py)."""
+        """GET: the dashboard preferences (core/prefs.py) and the microphones there are.
+        POST {"key", "value"}: change one."""
         data = {}
         if request.method == "POST":
             body = await request.json()
@@ -221,7 +228,9 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         return HTMLResponse(tv_page, headers={"Cache-Control": "no-store"})
 
     async def tv_data(request):
-        """What the TV's boxes show: timers, next events, weather; plus Pip's state."""
+        """Everything the TV page needs when it loads or refreshes: Pip's state, what pip-core sends
+        (timers, events, the screen's layout and its to-do lists: core/main.py tv_snapshot), the weather,
+        and the Pi's health numbers if that box is showing."""
         out = {"state": state.pip_state, "state_detail": state.pip_detail, "online": state.online, "weather": {}}
         try:
             r = await bus.request("core", "core.tv", timeout=3)
@@ -298,8 +307,6 @@ def listen(bus, state: State) -> None:
     async def on_event(msg: Message):
         feed_event(msg.ts, **msg.data)
 
-    bus.subscribe("conversation.event", on_event)
-
     async def on_alert(msg: Message):
         state.push("alerts", {"type": msg.type})
         state.push_tv("refresh", {})
@@ -316,28 +323,17 @@ def listen(bus, state: State) -> None:
     async def on_level(msg: Message):
         state.push_tv("level", {"level": msg.data.get("level", 0)})
 
-    bus.subscribe("speech.level", on_level)
-
-    bus.subscribe("alert.*", on_alert)
-    bus.subscribe("pip.state", on_state)
-
     async def on_voice(msg: Message):
         state.push("people", {"type": msg.type, **msg.data})
 
-    bus.subscribe("voice.*", on_voice)
-
     async def on_mic(msg: Message):
         state.push("mic", msg.data)
-
-    bus.subscribe("mic.changed", on_mic)
 
     async def on_net(msg: Message):
         was, state.online = state.online, bool(msg.data.get("online", True))
         state.push("net", {"online": state.online})
         if was != state.online:
             feed_event(msg.ts, "online" if state.online else "offline")
-
-    bus.subscribe("net.changed", on_net)
 
     async def on_module(msg: Message):
         _, name, kind = (msg.type.split(".", 2) + ["", ""])[:3]
@@ -348,10 +344,17 @@ def listen(bus, state: State) -> None:
             state.screen(msg.data.get("boxes", []), msg.data.get("room", False))
             state.push_tv("options" if kind == "options" else "refresh", {})
 
-    bus.subscribe("module.*", on_module)
-    bus.subscribe("conversation.line", on_line)
     bus.subscribe("health.snapshot", on_health)
     bus.subscribe("trace.entry", on_trace)
+    bus.subscribe("conversation.line", on_line)
+    bus.subscribe("conversation.event", on_event)
+    bus.subscribe("alert.*", on_alert)
+    bus.subscribe("pip.state", on_state)
+    bus.subscribe("speech.level", on_level)
+    bus.subscribe("voice.*", on_voice)
+    bus.subscribe("mic.changed", on_mic)
+    bus.subscribe("net.changed", on_net)
+    bus.subscribe("module.*", on_module)
 
 
 async def main() -> None:

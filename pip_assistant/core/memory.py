@@ -1,4 +1,7 @@
-"""What Pip remembers (M1a step 5; PIP-NEW-028–032, D-15, D-16, D-54).
+"""What Pip remembers, and the memory inbox (M1a step 5; PIP-NEW-028–032, D-15, D-16, D-54).
+
+Claude asks for changes with memory ACTIONs (core/actions.py); the dashboard's Memory Center
+changes them through core/main.py. Claude sees the memories it may use with each request (for_claude).
 
     "Pip, remember the bins go out Tuesday night"   → saved now, confirmed with the exact wording
     "Pip, remember Sam is allergic to peanuts"      → about someone else, and health: waits in the
@@ -133,7 +136,7 @@ class Memory:
         mid = new_id()
         self.db.execute("INSERT INTO memories (id, text, category, about, owner, visibility, status, confirmed, sensitive, "
                         "source, why_pending, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                        (mid, text, category, json.dumps(about or []), owner if private else owner,
+                        (mid, text, category, json.dumps(about or []), owner,
                          "private" if private and owner else "household", status, int(confirmed), int(sensitive),
                          source[:80], pending_because, now, now))
         self.db.commit()
@@ -144,7 +147,7 @@ class Memory:
 
     def is_about(self, row: dict, person_id: str, name: str = "") -> bool:
         """Is this memory about that person? (Listed in "about", or, for older wordings like "Landen says
-        Caleb is…" that didn't list anyone, their name is in it.)"""
+        Sam is…" that didn't list anyone, their name is in it.)"""
         return person_id in row["about"] or bool(name and re.search(rf"\b{re.escape(name)}\b", row["text"], re.I))
 
     def confirm_pending(self, text: str, person_id: str, name: str = "") -> dict | None:
