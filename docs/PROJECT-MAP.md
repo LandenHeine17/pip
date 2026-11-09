@@ -78,3 +78,10 @@ Last reviewed: 2026-11-09 (M1a done; M1b built: self-changes, versioned installs
 | `pip-release-*`, `pip-builder-agent-*`, `pip-builder-check-*` (transient) | An install in progress; a self-change's Claude Code run; its test check | Started by `install.sh` and pip-builder; leave them alone |
 | `pip-tv.service` (system) | **Pip's face on the monitor** (Chromium kiosk on tty1). Installed once by `deploy/install-tv.sh`, which also switches Ziggletron's `ziggletron-tv` off. It runs the kiosk script from `~/pip-app/current`, so it changes only through `install.sh` | `sudo systemctl restart pip-tv` |
 | `pip-*` transient units (`systemd-run`) | Long M0 jobs | **Don't survive a reboot.** Run heavy jobs with a memory cap (`-p MemoryMax=4500M`), because the Pi froze once from running out of memory |
+
+## Known structure debts (structure review, 2026-11-09)
+
+Found in the review and left for later (to-dos on the progress dashboard):
+
+- **Modules aren't fully plug-in yet.** `core/dashapi.py` (`alerts_snapshot`, `tv_snapshot`), `web/main.py` (`on_module`, `tv_data`) and `web/static/tv.html` name the calendar, to-do and screen modules. The calendar and to-do modules hand out their store as `api`. The calendar reaches into Google's code (`NeedsPermission`, the account page), and `ModuleContext` gives modules all of pip-core's `Schedule` and `People`. The offline calendar phrasings are still in `core/commands.py`; they follow the calendar's privacy rule (`Calendar.may_hear`).
+- **Tests are named by build step** (`tests/test_step3.py` … `test_step6.py`, `*_fixes.py`), not by the part they test, and some import helpers from each other. The pretend Google (`modules/google/testing.py`) ships with the product. `core/people.py` reads `m0/phrases.json`.
