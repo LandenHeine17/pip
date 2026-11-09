@@ -93,3 +93,18 @@ async def test_an_ignored_list_is_not_fetched_shown_or_told(env):
     await todos.dashboard("set_list", {"id": work["id"], "ignored": False})
     await todos.sync.run_once()
     assert "file the report" in reg.summary(me(landen))
+
+
+async def test_the_to_do_sync_shows_on_the_google_page_without_hiding_a_calendar_error(env):
+    reg, todos, fake, people = env
+    landen = people.add_person("Landen", "admin")
+    await connect(reg.modules["google"], fake, landen["id"], "landen@example.com")
+    g = reg.get("google")
+    [acc] = g.accounts()
+    assert not acc["last_sync"]
+    g.synced(acc["id"], "ConnectError", "calendar")           # the calendar's last sync failed
+    await todos.sync.run_once()                               # the to-dos sync fine
+    [acc] = g.accounts()
+    assert acc["last_sync"] and acc["error"] == "calendar: ConnectError"
+    g.synced(acc["id"], "", "calendar")
+    assert g.accounts()[0]["error"] == ""

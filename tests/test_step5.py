@@ -420,3 +420,50 @@ def test_household_facts_need_no_approval_but_unknown_voices_personal_facts_do(c
     said, _ = actions.apply(cmds, 'ACTION {"do": "remember", "text": "Someone likes jazz", "category": "preference"}', c)
     [jazz] = [m for m in mem.items() if "jazz" in m["text"]]
     assert said.startswith("I'll remember that once") and jazz["why_pending"] == "I didn't recognise the voice"
+
+
+# ------------------------------------------------------------------ fixes from the review (2026-11-09)
+def test_a_private_memory_waiting_in_the_inbox_is_only_for_its_owner(ctx, mem):
+    cmds, c, alex, sam = ctx
+    actions.apply(cmds, 'ACTION {"do": "remember", "text": "Alex is planning a surprise party for Sam on Saturday", '
+                        '"category": "personal", "about": ["Alex", "Sam"], "private": true}', c)
+    [row] = mem.items()
+    assert row["status"] == "pending" and row["visibility"] == "private"
+    assert "surprise" not in mem.for_claude(sam["id"], "sure", speaker_name="Sam")       # Sam isn't shown it (D-88)
+    s = {**c, "speaker": Match(sam["id"], "Sam", "sure", 0.7)}
+    assert actions.apply(cmds, f'ACTION {{"do": "approve_memory", "id": "{mem.short(row["id"])}"}}', s) == (actions.FAILED, 0)
+    actions.apply(cmds, 'ACTION {"do": "remember", "text": "Alex is planning a surprise party for Sam on Saturday", '
+                        '"category": "personal", "about": ["Sam"]}', s)                  # nor confirms it by saying it
+    assert mem.items("pending")[0]["id"] == row["id"]
+
+
+def test_anything_invalid_means_nothing_is_done(ctx, mem):
+    cmds, c, *_ = ctx
+    said, n = actions.apply(cmds, 'ACTION [{"do":"add","kind":"timer","seconds":600,"label":"pasta"},'
+                                  '{"do":"remember","text":"The wifi code is hunter2","category":"household"}]', c)
+    assert n == 0 and said.startswith("I can't keep passwords") and cmds.s.active() == [] and mem.items() == []
+    r = cmds.s.add("reminder", "call mom", cmds.clock() + 3600)
+    said, n = actions.apply(cmds, f'ACTION [{{"do":"add","kind":"alarm","at":"2026-11-06T07:00"}},'
+                                  f'{{"do":"change","id":"{cmds.s.short(r["id"])}","shift_seconds":-7200}}]', c)
+    assert (said, n) == (actions.FAILED, 0) and [a["kind"] for a in cmds.s.active()] == ["reminder"]
+
+
+def test_a_step_that_fails_while_being_done_is_not_counted(ctx, mem, monkeypatch):
+    cmds, c, *_ = ctx
+
+    def refuse(*a, **k):
+        raise Refused("nothing to remember")
+    monkeypatch.setattr(mem, "add", refuse)
+    said, n = actions.apply(cmds, 'ACTION [{"do":"add","kind":"timer","seconds":600,"label":"pasta"},'
+                                  '{"do":"remember","text":"The bins go out Tuesday","category":"household"}]', c)
+    assert n == 1 and said.endswith("I didn't catch what to remember.")
+
+
+def test_a_memory_about_someone_pip_does_not_know_waits(ctx, mem):
+    cmds, c, *_ = ctx
+    actions.apply(cmds, 'ACTION {"do":"remember","text":"Jordan hates mushrooms","category":"preference","about":["Jordan"]}', c)
+    actions.apply(cmds, 'ACTION {"do":"remember","text":"Alex is dating Jordan","category":"personal",'
+                        '"about":["Alex","Jordan"],"sensitive":true}', c)
+    assert {r["text"]: (r["status"], r["why_pending"]) for r in mem.items()} == {
+        "Jordan hates mushrooms": ("pending", "about someone else"),
+        "Alex is dating Jordan": ("pending", "sensitive")}

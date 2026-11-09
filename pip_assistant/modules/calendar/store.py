@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS calendar_calendars (
     writable    INTEGER NOT NULL DEFAULT 1,
     is_primary  INTEGER NOT NULL DEFAULT 0,
     sync_token  TEXT NOT NULL DEFAULT '',
+    full_at     REAL NOT NULL DEFAULT 0,     -- when everything was last fetched (then only changes; sync.py)
     reminder    REAL,                        -- the calendar's default heads-up, minutes (Google's default reminder)
     owner       INTEGER NOT NULL DEFAULT 1,  -- theirs (can be renamed / deleted), not just shared with them
     ignored     INTEGER NOT NULL DEFAULT 0,  -- set on the Google page: not synced, not shown, never told to Pip (D-104)
@@ -69,7 +70,8 @@ class CalendarStore:
         self.db.executescript(SCHEMA)
         have = {r[1] for r in self.db.execute("PRAGMA table_info(calendar_calendars)")}
         for col in ("owner INTEGER NOT NULL DEFAULT 1", "ignored INTEGER NOT NULL DEFAULT 0",
-                    "in_list INTEGER NOT NULL DEFAULT 1", "heads_up TEXT NOT NULL DEFAULT 'own'"):
+                    "in_list INTEGER NOT NULL DEFAULT 1", "heads_up TEXT NOT NULL DEFAULT 'own'",
+                    "full_at REAL NOT NULL DEFAULT 0"):
             if col.split()[0] not in have:
                 self.db.execute(f"ALTER TABLE calendar_calendars ADD COLUMN {col}")
                 if col.startswith("owner"):   # until the next sync says: read-only ones aren't theirs

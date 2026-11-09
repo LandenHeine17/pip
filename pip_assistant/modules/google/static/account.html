@@ -56,6 +56,9 @@ tr.off .cname{text-decoration:line-through;opacity:.6}
 
 <script src="/pip.js"></script>
 <script>
+// A value inside an onclick="…": the browser turns esc()'s &#39; back into ' before the script runs, so a
+// name with an apostrophe would end a '…' string early. JSON gives a "…" string instead (written without quotes).
+const js = v => esc(JSON.stringify(v ?? ""));
 const account = new URLSearchParams(location.search).get("id");
 const HEADS = [["off","Off"],["own","Only ones you set"],["all","Every event (calendar's reminder)"],["5","5 min before every event"],
   ["10","10 min before"],["15","15 min before"],["30","30 min before"],["60","1 hour before"],["120","2 hours before"],["1440","1 day before"]];
@@ -80,12 +83,12 @@ function render(){
   $("headsups").textContent = cal.heads_ups != null ? `${cal.heads_ups} heads-up${cal.heads_ups===1?"":"s"} waiting (all calendars)` : "";
   $("cals").innerHTML = cal.calendars.map(c => `<tr class="${c.ignored?"off":""}">
     <td><span class="sw" style="background:${esc(c.color)}"></span><span class="cname">${esc(c.primary?"Main calendar":c.name)}</span>${c.writable?"":` <span class="sub">(read-only)</span>`}</td>
-    <td><select onchange="setCal('${esc(c.id)}','ignored', this.value==='ignore')"><option value="use">Use</option><option value="ignore" ${c.ignored?"selected":""}>Ignore</option></select></td>
-    <td class="c"><input type="checkbox" ${c.ticked?"checked":""} ${c.ignored?"disabled":""} onchange="setCal('${esc(c.id)}','ticked', this.checked)"></td>
-    <td class="c hide"><input type="checkbox" ${c.in_list?"checked":""} ${c.ignored?"disabled":""} onchange="setCal('${esc(c.id)}','in_list', this.checked)"></td>
-    <td><select ${c.ignored?"disabled":""} onchange="setCal('${esc(c.id)}','heads_up', this.value)">${HEADS.map(([v,l]) => `<option value="${v}" ${v===c.heads_up?"selected":""}>${l}</option>`).join("")}</select></td></tr>`).join("")
+    <td><select onchange="setCal(${js(c.id)},'ignored', this.value==='ignore')"><option value="use">Use</option><option value="ignore" ${c.ignored?"selected":""}>Ignore</option></select></td>
+    <td class="c"><input type="checkbox" ${c.ticked?"checked":""} ${c.ignored?"disabled":""} onchange="setCal(${js(c.id)},'ticked', this.checked)"></td>
+    <td class="c hide"><input type="checkbox" ${c.in_list?"checked":""} ${c.ignored?"disabled":""} onchange="setCal(${js(c.id)},'in_list', this.checked)"></td>
+    <td><select ${c.ignored?"disabled":""} onchange="setCal(${js(c.id)},'heads_up', this.value)">${HEADS.map(([v,l]) => `<option value="${v}" ${v===c.heads_up?"selected":""}>${l}</option>`).join("")}</select></td></tr>`).join("")
     || `<tr><td colspan="5" class="sub">No calendars yet (they arrive with the next sync).</td></tr>`;
-  $("lists").innerHTML = lists.map(l => `<div class="row"><select onchange="setList('${esc(l.id)}', this.value==='ignore')"><option value="use">Use</option><option value="ignore" ${l.ignored?"selected":""}>Ignore</option></select>
+  $("lists").innerHTML = lists.map(l => `<div class="row"><select onchange="setList(${js(l.id)}, this.value==='ignore')"><option value="use">Use</option><option value="ignore" ${l.ignored?"selected":""}>Ignore</option></select>
     <span style="${l.ignored?"text-decoration:line-through;opacity:.6":""}">${esc(l.name)}</span></div>`).join("") || `<div class="empty">No to-do lists yet.</div>`;
 }
 async function setCal(id, field, value){ const r = await pip.act(pip.post("set_calendar", {id, field, value}, "calendar")); if (r) { cal = r; render(); } }

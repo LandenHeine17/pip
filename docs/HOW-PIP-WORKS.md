@@ -60,7 +60,7 @@ Say someone says **"Hey Pip, what time is it?"** Here's what happens, and where 
 9. When the voice finishes (`speech.finished`), `_maybe_follow_up` opens a short window to reply without saying his name. *Face: listening, "Listening for your reply", with a countdown.*
 10. Nobody replies, so the window runs out. *Face: idle, "Say my name if you need me".*
 
-If Claude replies with an **ACTION** ("set a timer for 10 minutes"), `claude_action` checks it with `core/actions.py`, does it, and says the confirmation (D-84). Room talk that isn't for Pip goes through `Conversation.on_room`. It's kept in the room transcript (`core/transcript.py`) and might lead Pip to join in (`core/joining.py`).
+If Claude replies with an **ACTION** ("set a timer for 10 minutes"), `claude_action` checks all of it with `core/actions.py`, does it (or none of it, if any part is wrong), and says the confirmation (D-84). Each answer keeps **who asked** (`asker`), so if someone else talks while Claude works, the action is still done as the person who asked. Room talk that isn't for Pip goes through `Conversation.on_room`. It's kept in the room transcript (`core/transcript.py`) and might lead Pip to join in (`core/joining.py`).
 
 ## 3. The face state machine
 

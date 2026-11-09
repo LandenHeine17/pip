@@ -114,6 +114,17 @@ async def test_alarms_and_reminders(cmds):
     assert {"take the bins out", "check the oven", "water the plants", "take out the recycling"} <= labels
 
 
+async def test_asking_about_alarms_and_timers_together_answers_both(cmds):
+    c, s, clock = cmds
+    assert await say(c, "what alarms and timers do I have") == "Nothing set: no alarms or timers."
+    await say(c, "wake me up at 7")
+    assert await say(c, "what alarms and timers do I have") == "One alarm, for 7 AM tomorrow. No timers."
+    await say(c, "set a pasta timer for 5 minutes")
+    assert await say(c, "any timers or alarms?") == "Timers: the pasta timer with 5 minutes left. One alarm, for 7 AM tomorrow."
+    assert await say(c, "what timers do I have") == "Pasta has 5 minutes left."        # timers alone: as before
+    assert await say(c, "what reminders do I have") == "No reminders set."
+
+
 async def test_calendar(cmds):
     c, s, clock = cmds
     assert await say(c, "put the dentist on the calendar for Tuesday at 3") == "Added dentist, Tuesday at 3 PM."
@@ -389,3 +400,130 @@ async def test_ringing_obvious_words_are_instant_and_anything_else_goes_to_claud
     await asyncio.sleep(0.3)
     assert not sched.ringing and len([x for x in got if x[0] == "thinker.ask"]) == 1
     await finish(bus, tasks)
+
+
+# ------------------------------------------------------------------ fixes from the review (2026-11-09)
+@pytest.mark.parametrize("text,expect", [
+    ("wake me up tomorrow at 6", "Alarm set for 6 AM tomorrow."),        # an alarm with a day: the morning
+    ("set an alarm for tomorrow at 5:30", "Alarm set for 5:30 AM tomorrow."),
+    ("set an alarm for half past 6 tomorrow", "Alarm set for 6:30 AM tomorrow."),
+    ("set an alarm for seven oh five", "Alarm set for 7:05 AM tomorrow."),
+    ("set an alarm for 730", "Alarm set for 7:30 AM tomorrow."),
+])
+async def test_alarm_wordings(cmds, text, expect):
+    c, s, clock = cmds
+    assert await say(c, text) == expect
+
+
+async def test_reminders_keep_the_daytime_preference_and_tonight_after_midnight(cmds):
+    c, s, clock = cmds
+    assert await say(c, "remind me tomorrow at 3 to call mom") == "Okay, I'll remind you at 3 PM tomorrow."
+    clock.t = datetime(2026, 11, 4, 22, 0).timestamp()
+    assert await say(c, "remind me tonight at 1 to take meds") == "Okay, I'll remind you at 1 AM tomorrow."
+
+
+async def test_in_n_hours_counts_real_time_across_a_clock_change(tmp_path):
+    clock = Clock(datetime(2026, 10, 31, 22, 0))    # the clocks go back an hour at 2 AM on Nov 1
+    s = Schedule(tmp_path / "pip.db", clock=clock)
+    c = Commands(s, clock=clock)
+    assert await say(c, "wake me up in 8 hours") == "Alarm set for 5 AM tomorrow."
+    assert s.active()[0]["due"] - clock() == 8 * 3600
+    clock.t = datetime(2026, 11, 1, 0, 30).timestamp()
+    assert await say(c, "remind me in 2 hours to check the oven") == "Okay, I'll remind you at 1:30 AM."   # the second 1:30
+    assert s.active(("reminder",))[0]["due"] - clock() == 2 * 3600
+
+
+async def test_cancel_an_alarm_by_a_time_it_does_not_have(cmds):
+    c, s, clock = cmds
+    clock.t = datetime(2026, 11, 6, 20, 0).timestamp()   # Friday evening
+    await say(c, "set an alarm for 7 tomorrow")
+    await say(c, "set an alarm for 9 tomorrow")
+    c._focus = None
+    assert await say(c, "cancel the 8 am alarm") == "You don't have an alarm at 8 AM."
+    assert len(s.active()) == 2
+    await say(c, "cancel all alarms")
+    await say(c, "set an alarm for 7 every weekday")    # next rings Monday
+    c._focus = None
+    assert await say(c, "cancel my 7 am alarm") == "Cancelled your 7 AM alarm."
+    assert s.active() == []
+
+
+async def test_moving_a_ringing_alarm_stops_it_and_rings_at_the_new_time(cmds):
+    c, s, clock = cmds
+    clock.t = datetime(2026, 11, 10, 6, 0).timestamp()
+    changed = []
+    s.watchers.append(lambda: changed.append(list(s.ringing)))
+    await say(c, "set an alarm for 7")
+    clock.t = datetime(2026, 11, 10, 7, 0, 1).timestamp()
+    await s._tick()
+    assert s.ringing
+    assert await say(c, "change that alarm to 7:30") == "Moved your alarm to 7:30 AM."
+    assert s.ringing == [] and changed[-1] == []                     # Pip's face leaves "ringing"
+    clock.t = datetime(2026, 11, 10, 7, 30, 1).timestamp()
+    await s._tick()
+    assert s.ringing                                                  # and it rings again at 7:30
+    await s.acknowledge("voice")
+    # A ringing timer given 5 more minutes stops ringing too
+    await say(c, "set a pasta timer for 1 minute")
+    clock.t += 61
+    await s._tick()
+    assert s.ringing
+    await say(c, "add 5 minutes to the pasta timer")
+    assert s.ringing == [] and s.active()[0]["state"] == "waiting"
+
+
+async def test_snoozing_a_repeating_alarm_keeps_its_time(cmds):
+    c, s, clock = cmds
+    clock.t = datetime(2026, 11, 9, 6, 0).timestamp()
+    await say(c, "set an alarm for 7 every weekday")
+    clock.t = datetime(2026, 11, 10, 7, 0, 0).timestamp()
+    await s._tick()
+    clock.t += 13
+    await s.snooze(9)
+    clock.t += 9 * 60 + 1
+    await s._tick()
+    await s.acknowledge("voice")
+    assert datetime.fromtimestamp(s.active()[0]["due"]) == datetime(2026, 11, 11, 7, 0)   # not 7:09
+
+
+async def test_a_repeating_alarm_in_the_skipped_hour_comes_back_to_its_time(tmp_path):
+    clock = Clock(datetime(2027, 3, 13, 22, 0))     # the clocks skip 2–3 AM on Mar 14 2027
+    s = Schedule(tmp_path / "pip.db", clock=clock)
+    c = Commands(s, clock=clock)
+    await say(c, "set an alarm for 2:30 am every day")
+    rang = []
+    for _ in range(2):
+        clock.t = s.active()[0]["due"] + 1
+        await s._tick()
+        rang.append(datetime.fromtimestamp(clock.t - 1).strftime("%d %H:%M"))
+        await s.acknowledge("voice")
+    assert rang == ["14 03:30", "15 02:30"]           # 2:30 didn't exist on the 14th; the next day it's 2:30 again
+
+
+def test_older_databases_get_the_planned_column(tmp_path):
+    import sqlite3
+    db = sqlite3.connect(tmp_path / "pip.db")
+    db.execute("CREATE TABLE alerts (id TEXT PRIMARY KEY, kind TEXT NOT NULL, label TEXT NOT NULL, due REAL NOT NULL, "
+               "length REAL, repeat TEXT NOT NULL DEFAULT '', state TEXT NOT NULL, event_id TEXT, created REAL NOT NULL, "
+               "updated REAL NOT NULL)")
+    db.execute("INSERT INTO alerts VALUES ('a1', 'alarm', 'alarm', ?, NULL, 'daily', 'waiting', NULL, 0, 0)",
+               (datetime(2026, 11, 5, 7, 0).timestamp(),))
+    db.commit()
+    db.close()
+    s = Schedule(tmp_path / "pip.db", clock=Clock())
+    a = s.active()[0]
+    s._finish(a, "done")
+    assert datetime.fromtimestamp(s.active()[0]["due"]) == datetime(2026, 11, 6, 7, 0)
+
+
+async def test_later_while_ringing_is_not_a_snooze(cmds):
+    c, s, clock = cmds
+    await say(c, "set a timer for 1 minute")
+    clock.t += 61
+    await s._tick()
+    assert await c.while_ringing("okay okay I'm up, I'll make coffee later", "room") == ""
+    assert s.ringing == [] and s.active() == []                       # stopped, not snoozed
+    await say(c, "set a timer for 1 minute")
+    clock.t += 61
+    await s._tick()
+    assert await c.while_ringing("okay, five more minutes", "room") == "Snoozed for 5 minutes."

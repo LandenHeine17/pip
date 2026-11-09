@@ -25,6 +25,11 @@ def numbers(text: str) -> str:
     t = re.sub(r"\b(a|an|one) (couple of|couple)\b", "2", t)
     t = re.sub(r"\ba couple( of)?\b", "2", t)
     t = re.sub(r"\ba few\b", "3", t)
+    # "seven oh five" is 7:05: "oh" after an hour is the minutes' leading zero, not a 0 of its own
+    hour_words = "|".join(k for k in ONES if 1 <= ONES[k] <= 12)
+    digit_words = "|".join(k for k in ONES if 1 <= ONES[k] <= 9)
+    t = re.sub(rf"\b({hour_words}|\d{{1,2}}) oh ({digit_words}|\d)\b",
+               lambda m: f"{m.group(1)} 0{ONES.get(m.group(2), m.group(2))}", t)
 
     def tens(m):
         return str(TENS[m.group(1)] + (ONES[m.group(2)] if m.group(2) else 0))
@@ -80,8 +85,9 @@ def day(text: str, now: datetime | None = None) -> date | None:
     return _day(numbers(text), now.date())
 
 
-def clock(text: str, now: datetime | None = None) -> datetime | None:
-    """The clock time mentioned ('at 7', '7:30 pm', 'noon', 'tomorrow at quarter past 6'), or None."""
+def clock(text: str, now: datetime | None = None, alarm: bool = False) -> datetime | None:
+    """The clock time mentioned ('at 7', '7:30 pm', 'noon', 'tomorrow at quarter past 6'), or None.
+    alarm: for a wake-up alarm, a named day without AM/PM means the morning ('tomorrow at 6' = 6 AM)."""
     now = (now or datetime.now()).replace(second=0, microsecond=0)
     t = numbers(text)
     t = re.sub(r"\b(a\.m\.|a\. m\.|a m)(?=\W|$)", "am", t)
@@ -96,16 +102,17 @@ def clock(text: str, now: datetime | None = None) -> datetime | None:
         hour, minute = (h, mins) if m.group(2) in ("past", "after") else ((h - 1) % 12 or 12, 60 - mins)
         half = m.group(4)
     else:
-        for m in re.finditer(r"\b(at|for|by|until|till|from)?\s*(\d{1,2})(?:[:.](\d{2})|\s(\d{2}))?"
+        # "7:30", "7 30" and "730" (speech-to-text often writes it that way)
+        for m in re.finditer(r"\b(at|for|by|until|till|from)?\s*(\d{1,2})(?:[:.](\d{2})|\s(\d{2})|(\d{2}))?"
                              r"\s*(am|pm|o'?clock)?(?=\W|$)", t):
-            prep, h, mm1, mm2, suffix = m.groups()
+            prep, h, mm1, mm2, mm3, suffix = m.groups()
             if re.match(r"\s*(hours?|hrs?|minutes?|mins?|seconds?|secs?|days?|weeks?)\b", t[m.end():]):
                 continue  # "for 10 minutes" is a duration, not a time
             # A bare number only counts when it's clearly a time: "at 6", "6 pm", "7:30", "6 o'clock".
             if not (prep in ("at", "by", "until", "till", "from") or mm1 or suffix or
                     (prep == "for" and re.search(r"\b(alarm|wake)", t))):
                 continue
-            h, mm = int(h), int(mm1 or mm2 or 0)
+            h, mm = int(h), int(mm1 or mm2 or mm3 or 0)
             if h > 23 or mm > 59:
                 continue
             hour, minute, half = h, mm, suffix if suffix in ("am", "pm") else None
@@ -113,7 +120,9 @@ def clock(text: str, now: datetime | None = None) -> datetime | None:
     if hour is None:
         return None
     if half is None and hour < 12:
-        if re.search(r"\b(tonight|evening|afternoon|at night)\b", t):
+        if 1 <= hour <= 4 and re.search(r"\b(tonight|at night)\b", t):
+            half = "am"   # "tonight at 1": after midnight, not 1 PM tomorrow
+        elif re.search(r"\b(tonight|evening|afternoon|at night)\b", t):
             half = "pm"
         elif re.search(r"\bmorning\b", t):
             half = "am"
@@ -124,6 +133,8 @@ def clock(text: str, now: datetime | None = None) -> datetime | None:
     cands = [hour] if half or hour == 0 or hour > 12 else [hour % 12, hour % 12 + 12]
     d = _day(t, now.date())
     if d is not None and d != now.date():
+        if alarm and len(cands) == 2 and cands[0] != 0:
+            cands = cands[:1]   # an alarm "tomorrow at 6" wakes you at 6 AM, not 6 PM
         return _prefer_day_hours([datetime.combine(d, dtime(h, minute)) for h in cands])
     opts = []
     for h in cands:  # today, or tomorrow if it has already passed: whichever comes next

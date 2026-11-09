@@ -29,7 +29,8 @@ POLITE = re.compile(r"\b(please|can you|could you|would you|will you|can u|i wan
 STOP = re.compile(r"^(stop|stop it|stop talking|never ?mind|quiet|be quiet|shut up|hush|cancel that|forget it|that's enough|enough)$")
 ACK = re.compile(r"\b(stop|ok(ay)?|o\.k\.|got it|thanks|thank you|turn (it )?off|shut (it )?off|shut up|i'?m up|i'?m awake|"
                  r"we'?re up|coming|alright|all right|enough|dismiss|quiet|yes|yeah|yep|done|heard you|i hear you)\b")
-SNOOZE = re.compile(r"\b(snooze|(\d+) more minutes?|five more minutes|later)\b")
+# Only clear asks to snooze: a bare "later" ("okay I'm up, I'll make coffee later") is not one.
+SNOOZE = re.compile(r"\b(snooze|(\d+) more minutes?|five more minutes)\b")
 HALLUCINATION = re.compile(r"^(thank you|thanks for watching|you|bye)\W*$")  # what speech-to-text "hears" in noise
 REF = re.compile(r"\b(that|it|this|that one|this one)\b")
 # Changing something that already exists. Rules that *create* things step aside when they see these,
@@ -42,6 +43,7 @@ SHIFT = re.compile(r"\b(add|take|knock)( off)? (another |an? |\d+(\.\d+)? |a cou
 
 KIND_WORDS = {"timer": "timer", "timers": "timer", "alarm": "alarm", "alarms": "alarm",
               "reminder": "reminder", "reminders": "reminder"}
+PASSED = "That time's already passed, so I left it as it was."
 LABEL_JUNK = {"set", "start", "make", "put", "create", "give", "me", "us", "a", "an", "the", "my", "new", "for", "on",
               "timer", "called", "named", "labelled", "labeled", "quick", "another", "one", "up", "to", "and", "of",
               "minute", "minutes", "second", "seconds", "hour", "hours", "min", "mins", "sec", "secs", "half", "quarter",
@@ -189,7 +191,8 @@ class Commands:
         self.awaiting = None
         if a["intent"] == "timer_length" and (secs := when.duration(t)):
             return self._make_timer(secs, a["slots"].get("label") or label_from(t))
-        if a["intent"] == "alarm_time" and (at := when.clock(f"at {t}" if re.match(r"^\d", when.numbers(t)) else t, self.now())):
+        if a["intent"] == "alarm_time" and (at := when.clock(f"at {t}" if re.match(r"^\d", when.numbers(t)) else t, self.now(),
+                                                              alarm=True)):
             return self._make_alarm(at, a["slots"].get("label", ""), a["slots"].get("repeat", ""))
         if a["intent"] == "reminder_time":
             at = self._reminder_time(t)
@@ -236,6 +239,11 @@ class Commands:
                 return k
         return None
 
+    def _kinds_in(self, t) -> list[str]:
+        """Every kind mentioned, in the order said: "alarms and timers" → ["alarm", "timer"]."""
+        found = sorted((m.start(), k) for w, k in KIND_WORDS.items() for m in re.finditer(rf"\b{w}\b", t))
+        return list(dict.fromkeys(k for _, k in found))
+
     def _cancel(self, t):
         if not re.search(r"\b(cancel|delete|remove|clear|kill|turn off|get rid of|stop|end|scrap|drop)\b", t):
             return None
@@ -254,7 +262,10 @@ class Commands:
                         rf"that|this|{kind}s?|for|at|in|on|a|an|please|one)\b", " ", t)
         wanted = re.sub(r"\s+", " ", wanted).strip()
         if kind == "alarm" and (at := when.clock(t, self.now())):
-            picks = [o for o in opts if abs(o["due"] - at.timestamp()) < 60]
+            # By the time of day, like _target: "my 7 AM alarm" is the weekday one even if it next rings Monday.
+            picks = [o for o in opts if datetime.fromtimestamp(o["due"]).strftime("%H:%M") == at.strftime("%H:%M")]
+            if not picks:
+                return f"You don't have an alarm at {when.say_clock(at)}."
         elif wanted and not everything:
             scored = sorted(((match_label(o["label"], wanted), o) for o in opts), key=lambda x: -x[0])
             picks = [o for sc, o in scored if sc >= 0.75]
@@ -431,8 +442,8 @@ class Commands:
             if new.timestamp() <= now_ts:
                 new = when.next_repeat(row["repeat"], new, self.now()) or new
         if new.timestamp() <= now_ts:
-            return "That time's already passed, so I left it as it was."
-        self.s.update(row["id"], due=new.timestamp(), state="waiting")
+            return PASSED
+        self.s.update(row["id"], due=new.timestamp(), planned=new.isoformat(timespec="seconds"), state="waiting")
         if row["kind"] == "alarm":
             r = f" {when.say_repeat(row['repeat'])}" if row["repeat"] else ""
             return f"Moved your alarm to {when.say_clock(new)}{r}." if r else f"Moved your alarm to {when.say_time(new, self.now())}."
@@ -444,6 +455,8 @@ class Commands:
             return None
         if "timer" not in t and not re.search(r"\bleft\b", t):
             return None
+        if len(self._kinds_in(t)) > 1:
+            return None   # "what alarms and timers do I have": _list_alerts answers for each
         timers = self.s.active(("timer",))
         if not timers:
             return "No timers running." if "timer" in t or re.search(r"\bleft\b", t) else None
@@ -481,33 +494,52 @@ class Commands:
                 re.search(r"\b(what|any|which|cancel|delete|remove|turn off)\b", t) or CHANGE_WORDS.search(t):
             return None
         rep = when.repeat(t)
-        at = when.clock(t if re.search(r"\b(at|for|by)\b", t) or re.search(r"\d(:\d\d)?\s*(am|pm)", t) else f"at {t}", self.now())
+        at = when.clock(t if re.search(r"\b(at|for|by)\b", t) or re.search(r"\d(:\d\d)?\s*(am|pm)", t) else f"at {t}", self.now(),
+                        alarm=True)
         if not at:
-            if secs := when.duration(t):  # "wake me up in 20 minutes"
-                return self._make_alarm(self.now() + timedelta(seconds=secs), "", rep)
+            if secs := when.duration(t):  # "wake me up in 20 minutes" (real time, even across a clock change)
+                return self._make_alarm(datetime.fromtimestamp(self.clock() + secs), "", rep)
             return self._ask("For what time?", "alarm_time", label="", repeat=rep)
         return self._make_alarm(at, "", rep)
 
     def _make_alarm(self, at: datetime, label: str, rep: str) -> str:
         at = when.first_repeat(rep, at) if rep else at
-        row = self.s.add("alarm", label or "alarm", at.timestamp(), repeat=rep)
+        row = self.s.add("alarm", label or "alarm", at.timestamp(), repeat=rep, planned=at)
         self.remember("alert", row["id"])
         r = f" {when.say_repeat(rep)}" if rep else ""
         return f"Alarm set for {when.say_clock(at)}{r}." if rep else f"Alarm set for {when.say_time(at, self.now())}."
 
     def _list_alerts(self, t):
-        m = re.search(r"\b(what|which|any|list|tell me( my)?)\b.*\b(alarms|reminders|alarm|reminder)\b", t)
+        """"What alarms do I have?", "any reminders?", "what alarms and timers are set?" (each kind asked about)."""
+        m = re.search(r"\b(what|which|any|list|tell me( my)?)\b.*\b(alarms?|reminders?|timers?)\b", t)
         if not m or re.search(r"\bremind me\b", t):
             return None
-        kind = self._kind_in(t)
+        kinds = self._kinds_in(t)
+        if kinds == ["timer"]:
+            return None   # timers alone: _timer_query answers ("Pasta has 5 minutes left.")
+        said = [x for x in (self._say_kind(k) for k in kinds) if x]
+        if not said:
+            if len(kinds) == 1:
+                return f"No {kinds[0]}s set."
+            return "Nothing set: no " + self._join([f"{k}s" for k in kinds]).replace(" and ", " or ") + "."
+        missing = [f"{k}s" for k in kinds if not self.s.active((k,))]
+        return " ".join(said) + (f" No {self._join(missing).replace(' and ', ' or ')}." if missing else "")
+
+    def _say_kind(self, kind: str) -> str:
+        """One sentence about what's set of one kind, or "" if there's none."""
         rows = self.s.active((kind,))
         if not rows:
-            return f"No {kind}s set."
+            return ""
         now = self.now()
         if kind == "alarm":
             items = [f"{when.say_clock(datetime.fromtimestamp(r['due']))} {when.say_repeat(r['repeat'])}" if r["repeat"]
                      else when.say_time(datetime.fromtimestamp(r["due"]), now) for r in rows[:5]]
             return f"You've got alarms for {self._join(items)}." if len(items) > 1 else f"One alarm, for {items[0]}."
+        if kind == "timer":
+            items = [f"{'a timer' if r['label'] in ('', 'timer') else 'the ' + r['label'] + ' timer'} with "
+                     f"{when.say_left(r['due'] - self.clock())} left" for r in rows[:4]]
+            more = f", plus {len(rows) - 4} more" if len(rows) > 4 else ""
+            return f"Timers: {self._join(items)}{more}."
         items = [f"{r['label']} {at_phrase(datetime.fromtimestamp(r['due']), now, soon=False)}" for r in rows[:4]]
         more = f", plus {len(rows) - 4} more" if len(rows) > 4 else ""
         return f"Reminders: {self._join(items)}{more}."
@@ -515,7 +547,7 @@ class Commands:
     def _reminder_time(self, t: str) -> datetime | None:
         if m := re.search(r"\bin (.+)$", t):
             if secs := when.duration(m.group(1).split(" to ")[0]):
-                return self.now() + timedelta(seconds=secs)
+                return datetime.fromtimestamp(self.clock() + secs)   # real time, even across a clock change
         at = when.clock(t, self.now())
         if not at and when.has_day(t):  # "tomorrow" alone: 9 AM (like an all-day heads-up)
             d = when.day(t, self.now())
@@ -551,7 +583,7 @@ class Commands:
     def _make_reminder(self, at: datetime, what: str, rep: str) -> str:
         at = when.first_repeat(rep, at) if rep else at
         what = re.sub(r"\bmy\b", "your", re.sub(r"\bi\b", "you", what))
-        row = self.s.add("reminder", what, at.timestamp(), repeat=rep)
+        row = self.s.add("reminder", what, at.timestamp(), repeat=rep, planned=at)
         self.remember("alert", row["id"])
         r = f"{when.say_repeat(rep)} at {when.say_clock(at)}" if rep else at_phrase(at, self.now())
         return f"Okay, I'll remind you {r}."
@@ -591,8 +623,10 @@ class Commands:
         else:
             return self._ask(f"What day is {title}?", "event_day", title=title, repeat=rep)
         heads = None
-        if re.search(r"\b(remind|heads up|warn|tell me)\b", combo):
-            heads = when.duration(combo.split("remind")[-1]) or 0.0
+        if asked := list(re.finditer(r"\b(remind|heads up|warn|tell me)\b", combo)):
+            # Only what comes after "remind me" / "heads up" / … is the heads-up time ("…at 3, warn me 10
+            # minutes before"), never the event's own length.
+            heads = when.duration(combo[asked[-1].end():]) or 0.0
         return self._add_event(title, at, all_day=all_day, rep=rep, heads=heads)
 
     def _add_event(self, title: str, at: datetime, all_day: bool = False, rep: str = "", heads: float | None = None) -> str:

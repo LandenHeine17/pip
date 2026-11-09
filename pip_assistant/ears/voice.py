@@ -16,7 +16,7 @@ class PiperVoice:
         from piper.config import SynthesisConfig
         model = paths.data_dir() / "models" / "voices" / f"{name}.onnx"
         if not model.exists():
-            raise FileNotFoundError(f"Voice '{name}' not found: put {name}.onnx and its .json in ~/pip-data/models/voices")
+            raise FileNotFoundError(f"Voice '{name}' not found: run deploy/install.sh to download it into ~/pip-data/models/voices")
         self._voice = _Piper.load(str(model))
         extra = {"noise_scale": 0.0, "noise_w_scale": 0.0} if repeatable else {}  # identical audio every time (tests)
         self._cfg = SynthesisConfig(length_scale=1.0 / max(0.5, min(2.0, speed)), **extra)

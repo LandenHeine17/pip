@@ -150,11 +150,17 @@ class Memory:
         Sam is…" that didn't list anyone, their name is in it.)"""
         return person_id in row["about"] or bool(name and re.search(rf"\b{re.escape(name)}\b", row["text"], re.I))
 
+    @staticmethod
+    def may_see(row: dict, person_id: str | None) -> bool:
+        """A private memory is only for its owner, even while it waits in the inbox (D-88): Sam is never shown,
+        and can't approve, Alex's private note about Sam's surprise party."""
+        return row["visibility"] != "private" or bool(person_id and row["owner"] == person_id)
+
     def confirm_pending(self, text: str, person_id: str, name: str = "") -> dict | None:
         """The person a waiting memory is about says the same thing: approve that one (with their wording)."""
         t = text.lower().strip(" .")
         for r in self.items("pending"):
-            if not self.is_about(r, person_id, name):
+            if not self.is_about(r, person_id, name) or not self.may_see(r, person_id):
                 continue
             old = r["text"].lower().strip(" .")
             if t in old or old in t or difflib.SequenceMatcher(None, t, old).ratio() >= 0.75:
@@ -216,7 +222,7 @@ class Memory:
         out = ("What you remember: " + "; ".join(lines) + ".") if lines else "You don't remember anything yet."
         if speaker_level == "sure" and speaker_id:   # the speaker may approve what's waiting about them (D-107)
             waiting = [f"{self.short(r['id'])} {r['text']}" for r in self.items("pending")
-                       if self.is_about(r, speaker_id, speaker_name)]
+                       if self.is_about(r, speaker_id, speaker_name) and self.may_see(r, speaker_id)]
             if waiting:
                 out += " Waiting in the inbox, about the speaker: " + "; ".join(waiting[:10]) + "."
         return out

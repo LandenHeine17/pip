@@ -2,7 +2,7 @@
 instantly when talked over.
 
 Events it sends:   heard.wake {word, score} · heard.started {reason} · heard.utterance {reason, seconds, had_speech, word} (+ private audio)
-                   speech.started · speech.interrupted · speech.finished {interrupted}
+                   speech.started · speech.interrupted · speech.finished {interrupted, spoken}
                    speech.level {level 0–1} (~10 a second while he talks, for the face's mouth; not traced)
                    ears.status {state}  (listening / speaking / muted_or_quiet / mic_off)
                    mic.clapped   (two claps: pip-core decides what that switches, D-91) · mic.clapped_trial (heard, but
@@ -63,6 +63,7 @@ class Ears:
         self.transcript_wake = li["transcript_wake"]
         self.queue: asyncio.Queue = asyncio.Queue()
         self.speaking = False
+        self.voiced = False          # his voice has played in the current run of sounds (speech.started sent)
         self.loud_frames = 0
         self.follow_until = 0.0
         self.silent_since = None
@@ -180,15 +181,16 @@ class Ears:
                 continue
             if audio is None or not len(audio):
                 continue
-            first = not self.speaking
             self.speaking = True
-            if first and kind == "speech":
+            if kind == "speech" and not self.voiced:   # his voice starts (even right after a chime or tone)
+                self.voiced = True
                 await self.bus.emit("speech.started", {})
             finished = await self.speaker.play(audio, self.voice.rate,
                                                on_level=self._mouth if kind == "speech" else None)
             if not finished or self.queue.empty():
-                self.speaking = False
-                await self.bus.emit("speech.finished", {"interrupted": not finished})
+                # spoken: whether his voice played in this run, or only sounds (a chime, a tone)
+                spoken, self.speaking, self.voiced = self.voiced, False, False
+                await self.bus.emit("speech.finished", {"interrupted": not finished, "spoken": spoken})
                 if not finished:
                     self._clear_queue()
 

@@ -82,6 +82,7 @@ flowchart LR
 - Saves things **when you ask** ("Pip, remember the bins go out Tuesday night"). **Never** saves overheard conversation. Never deletes old memories by itself (D-54). *Later:* Pip asking first ("Want me to remember that?").
 - New memories are visible to the household by default; one can be made private, and then it's only used when its owner's voice is recognised for sure. Admins can read all memories (D-15, D-16).
 - A **Memory Center** on the dashboard: an inbox to approve or reject, search, add, edit, make private, archive (kept but not used) and delete. Ziggletron's memories will be imported for review in step 8 (D-07).
+- A **private** memory waiting in the inbox is only ever shown to, or approvable by, the person who made it, even if it mentions someone else. A memory about someone Pip doesn't know (not on the household list) also waits in the inbox.
 - No conversation transcripts or recordings are kept as logs. Your test recordings and voice-trained models stay on the Pi (D-72).
 
 | Say | Pip |
@@ -153,7 +154,7 @@ Examples (any similar wording works; tested with real Claude, test `natural-lang
 | While ringing: "okay" / "stop" / "snooze" / his name | Instant, no Claude needed |
 | While ringing: "ugh, five more" · "I'm awake, kill it" | Claude: snoozes 5 minutes / turns it off |
 
-A time with no AM/PM means the next one coming ("at 6" in the afternoon is 6 PM). A time already past means tomorrow. Repeats keep their clock time across daylight saving.
+A time with no AM/PM means the next one coming ("at 6" in the afternoon is 6 PM), except an **alarm for a named day** is the morning ("wake me up tomorrow at 6" is 6 AM). "Tonight at 1" means after midnight. A time already past means tomorrow. "In 8 hours" is 8 real hours, even across a clock change. Repeats keep their clock time across daylight saving, and **snoozing a repeating alarm doesn't move it** (tomorrow's is still at its usual time). Moving something that's ringing stops it and it rings again at the new time. A bare "later" while ringing doesn't snooze ("okay, I'll do it later" stops it). If a request has several parts and one is wrong, **none** of it is done.
 
 ```mermaid
 flowchart LR
@@ -177,7 +178,8 @@ The calendar, to-dos and Google accounts are **modules** that plug into Pip (D-9
 - **Settings for each account** (D-109): Google page → **Settings** (or "Google settings" next to the person on Pip's dashboard). Per calendar: use or ignore it, show it on the calendar page, list it in the dashboard's two weeks, and **heads-ups**: off / **only ones you set** (default: events where you added a reminder in Google yourself, so classes stay quiet) / every event / a fixed time. Per account: no heads-ups at night (on), the household calendar, who Pip may mention it to. To-do lists: use or ignore. The timers list shows only the next 24 hours of heads-ups.
 - **Two-way calendar** (D-98): your Google events show on Pip's calendar and he knows about them ("what have I got tomorrow?"); events added by voice or on the dashboard appear in Google within a couple of minutes, and changes on your phone reach Pip the same way. If both sides changed the same event, Google's version wins. Offline, Pip's changes wait and go when he's back.
 - **Whose calendar?** "Put it on Sam's calendar" → Sam's. Otherwise the speaker's (if Pip is sure who it is and they're connected), else the **household calendar** (the first admin's).
-- **Who may hear about it:** each person chooses on the Google page whether Pip mentions their events and to-dos **to everyone** (default) or **only to them**.
+- **Who may hear about it:** each person chooses on the Google page whether Pip mentions their events and to-dos **to everyone** (default) or **only to them**. "Only to them" also keeps their events and heads-ups **off the room's monitor**.
+- **Keeping in step with Google:** once a week Pip fetches the whole calendar again, so events far ahead arrive as they come into his 6-month window. If Google refuses one change (say a heads-up longer than its 4-week limit, or a calendar Pip may no longer write to), only that change is dropped (a new event stays on Pip) and the rest keeps syncing. An event running past midnight is listed once, at its start, and told to Claude with its days ("Sun 9:00–Tue 17:00").
 - **Private events** (D-99): mark an event private (in Google, by saying "make it private", or the Private box on the page) and Pip **ignores it**: never mentioned, no heads-up. It still shows on the calendar page, marked private.
 - **The Calendar page** (D-101, the Calendar button): month grid with a colour per calendar, tap a day to see its events, add / edit / delete, tick calendars on or off.
 - **Which calendar** (D-103): Pip knows each event's calendar ("Landen: Work"). "Put it on my Work calendar", "move standup to my main calendar", "make a Gym calendar, green", "rename Gym to Fitness", "hide the Family calendar", "delete the Gym calendar" (he asks first; main calendars can't be deleted). The Calendar page's **Calendars** button does the same. Making, renaming and deleting need Google's full calendar permission: press Connect Google again and tick Select all (the Google page says so if it's missing).

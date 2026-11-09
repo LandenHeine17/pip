@@ -77,7 +77,7 @@ textarea{font:inherit;font-size:.9rem;padding:8px 12px;border-radius:12px;border
 <dialog id="cals"><div style="display:flex;flex-direction:column;gap:6px">
   <h2>Calendars</h2>
   <div class="sub">Rename, recolour or delete calendars (in Google too). To hide one from Pip completely, use
-    <a href="/m/google/">Ignore on the Google page</a>.</div>
+    Ignore in that account's <b>Settings</b> on the <a href="/m/google/">Google page</a>.</div>
   <div id="calList"></div>
   <form id="newCal" style="display:flex;gap:8px;align-items:center;margin-top:8px">
     <input name="name" placeholder="New calendar name" required maxlength="60" style="flex:1;min-width:0">
@@ -88,6 +88,9 @@ textarea{font:inherit;font-size:.9rem;padding:8px 12px;border-radius:12px;border
 
 <script src="/pip.js"></script>
 <script>
+// A value inside an onclick="…": the browser turns esc()'s &#39; back into ' before the script runs, so a
+// name with an apostrophe would end a '…' string early. JSON gives a "…" string instead (written without quotes).
+const js = v => esc(JSON.stringify(v ?? ""));
 const DOW = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const clock = ts => new Date(ts*1000).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
@@ -116,7 +119,7 @@ function render(){
     d.setDate(d.getDate()+1);
   }
   $("cal").innerHTML = html;
-  $("legend").innerHTML = data.calendars.map(c => `<label><input type="checkbox" ${c.ticked?"checked":""} onchange="tick('${c.id}',this.checked)">
+  $("legend").innerHTML = data.calendars.map(c => `<label><input type="checkbox" ${c.ticked?"checked":""} onchange="tick(${js(c.id)},this.checked)">
      <i style="--c:${c.color}"></i>${esc(c.label)}${c.household?" <span class='sub'>(household)</span>":""}</label>`).join("");
   $("note").textContent = data.calendars.some(c => c.id.startsWith("g:")) ? "Synced with Google every couple of minutes; Pip's changes go straight away."
     : "Only Pip's own calendar so far. Connect Google to see yours here.";
@@ -127,7 +130,7 @@ function render(){
      <div style="flex:1;min-width:0"><b>${esc(e.title)}</b>${e.private?` <span class="pill" style="background:var(--soft2,var(--line))">private</span>`:""}${e.repeat?` <span class="sub">· repeats</span>`:""}
      <div class="sub">${[e.location, e.whose?e.whose+"'s calendar":e.calendar, e.pending?"sending to Google…":""].filter(Boolean).map(esc).join(" · ")}</div>
      ${e.notes?`<div class="sub">${esc(e.notes)}</div>`:""}</div>
-     ${e.writable?`<button class="ghost" onclick="openForm(null,'${e.id}')">Edit</button>`:""}</div>`).join("")
+     ${e.writable?`<button class="ghost" onclick="openForm(null,${js(e.id)})">Edit</button>`:""}</div>`).join("")
     || `<div class="empty">Nothing on this day.</div>`;
 }
 function pick(day){ sel = day; render(); }
@@ -166,10 +169,10 @@ function openCals(){ renderCals(); calsDlg.showModal(); }
 function renderCals(){
   $("calList").innerHTML = data.calendars.map(c => {
     const own = c.owner && !c.primary, google = c.id.startsWith("g:");
-    return `<div class="calrow"><input type="color" value="${c.color}" ${c.writable||google?"":"disabled"} onchange="editCal('${c.id}', {color: this.value})">
-      ${own ? `<input type="text" value="${esc(c.name)}" maxlength="60" onchange="editCal('${c.id}', {name: this.value})">`
+    return `<div class="calrow"><input type="color" value="${c.color}" ${c.writable||google?"":"disabled"} onchange="editCal(${js(c.id)}, {color: this.value})">
+      ${own ? `<input type="text" value="${esc(c.name)}" maxlength="60" onchange="editCal(${js(c.id)}, {name: this.value})">`
             : `<span style="flex:1">${esc(c.label)}${c.primary?" <span class='sub'>(main)</span>":""}${!c.writable?" <span class='sub'>(read-only)</span>":""}</span>`}
-      ${c.primary ? "" : `<button class="ghost" onclick="delCal('${c.id}')">${c.owner?"Delete":"Remove"}</button>`}</div>`;
+      ${c.primary ? "" : `<button class="ghost" onclick="delCal(${js(c.id)})">${c.owner?"Delete":"Remove"}</button>`}</div>`;
   }).join("");
   const accs = [...new Map(data.calendars.filter(c => c.account_id).map(c => [c.account_id, c.whose || "Google"])).entries()];
   $("newCalAcc").innerHTML = accs.length ? accs.map(([id, who]) => `<option value="${id}">${esc(who)}'s Google</option>`).join("")

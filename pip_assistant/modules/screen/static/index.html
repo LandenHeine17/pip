@@ -52,6 +52,9 @@
 
 <script src="/pip.js"></script>
 <script>
+// A value inside an onclick="…": the browser turns esc()'s &#39; back into ' before the script runs, so a
+// name with an apostrophe would end a '…' string early. JSON gives a "…" string instead (written without quotes).
+const js = v => esc(JSON.stringify(v ?? ""));
 const NAMES = {clock:"Clock", weather:"Weather", timers:"Timers", calendar:"Calendar", todos:"To-do list", notes:"Notes", health:"Pi health", conversation:"Conversation"};
 let st = null;
 const label = s => s.type === "notes" && s.title ? s.title : s.type === "todos" && s.list ? `${s.list} list` : NAMES[s.type] || s.type;
@@ -65,9 +68,9 @@ function render(){
     v.sections.map(s => { const c = s.color ? (st.palette[s.color] || s.color) : "";
       return `<div style="grid-area:${s.y+1}/${s.x+1}/span ${s.h}/span ${s.w};${c?`border-color:${esc(c)};color:${esc(c)}`:""}">${esc(label(s))}</div>`; }).join("");
   $("screens").innerHTML = st.screens.map(x => `<span style="display:inline-flex;gap:4px;align-items:center">
-    <button class="${x.showing?"primary on":""}" onclick="go('show', '${esc(x.name)}')">${esc(x.label)}</button>
-    ${!x.built_in ? `<button class="ghost" title="Delete" onclick="if(confirm('Delete the ${esc(x.label)} screen?')) go('delete', '${esc(x.name)}')">✕</button>`
-      : x.changed ? `<button class="ghost" title="Put it back the way it was" onclick="go('delete', '${esc(x.name)}')">↺</button>` : ""}</span>`).join("");
+    <button class="${x.showing?"primary on":""}" onclick="go('show', ${js(x.name)})">${esc(x.label)}</button>
+    ${!x.built_in ? `<button class="ghost" title="Delete" onclick="if(confirm(${js(`Delete the ${x.label} screen?`)})) go('delete', ${js(x.name)})">✕</button>`
+      : x.changed ? `<button class="ghost" title="Put it back the way it was" onclick="go('delete', ${js(x.name)})">↺</button>` : ""}</span>`).join("");
 }
 async function load(){ const r = await pip.act(pip.get("status")); if (r) { st = r; render(); } }
 async function go(action, name){ const r = await pip.act(pip.post(action, name ? {name} : {})); if (r) { st = r; render(); } }
