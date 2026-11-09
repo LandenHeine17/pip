@@ -10,6 +10,8 @@ import shutil
 
 import numpy as np
 
+from ..common import messages
+
 RATE = 16000
 FRAME = 1280  # 80 ms at 16 kHz: the size openWakeWord expects
 
@@ -53,7 +55,8 @@ def mic_tone(on: bool, rate: int = 22050) -> np.ndarray:
     return (sound * 32767).astype(np.int16)
 
 
-RINGTONES = ("classic", "kitchen", "chimes", "gentle")  # the names ringtone() knows; any other plays "classic"
+# The names ringtone() knows (any other plays "classic"); the list lives in common/messages.py
+RINGTONES = messages.RINGTONES
 
 
 def ringtone(name: str = "classic", rate: int = 22050) -> np.ndarray:

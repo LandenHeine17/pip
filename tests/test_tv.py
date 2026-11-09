@@ -84,7 +84,7 @@ def test_the_tv_page_and_its_snapshot(monkeypatch):
 def test_pip_core_sends_the_tv_no_private_events_and_only_soon_heads_ups(tmp_path):
     from datetime import datetime, timedelta
 
-    from pip_assistant.core.main import tv_snapshot
+    from pip_assistant.core.dashapi import tv_snapshot
     from pip_assistant.core.schedule import Schedule
     from modhelp import registry
     sched = Schedule(tmp_path / "pip.db")
@@ -158,7 +158,7 @@ def test_pi_health_only_while_its_box_is_up():
 
 
 def test_pip_core_sends_the_screen_and_only_the_lists_on_it(tmp_path):
-    from pip_assistant.core.main import tv_snapshot
+    from pip_assistant.core.dashapi import tv_snapshot
     from pip_assistant.core.schedule import Schedule
     from modhelp import registry
     sched = Schedule(tmp_path / "pip.db")

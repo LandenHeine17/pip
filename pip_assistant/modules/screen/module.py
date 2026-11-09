@@ -4,7 +4,7 @@ The logic is in screen.py (and the grid in layout.py), both ported from Ziggletr
 them into Pip: Claude's actions, the line Claude reads about the screen, the Screen page on the
 dashboard, and keeping it all in pip.db. Each change publishes module.screen.changed (or .options for
 "what can go on the screen?"), which pip-web passes on to the monitor; the monitor then fetches what it
-shows (core/main.py tv_snapshot, which calls for_tv()).
+shows (core/dashapi.py tv_snapshot, which calls for_tv()).
 """
 import asyncio
 import json
