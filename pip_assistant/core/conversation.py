@@ -228,6 +228,7 @@ class Conversation:
         bus.core_listen("mic.clapped", self.on_clapped)
         bus.core_listen("mic.clapped_trial", self.on_clapped_trial)
         bus.on_connect.append(self.on_program_connected)
+        bus.on_subscribe.append(self.on_program_subscribed)
 
     # ---------------------------------------------------------------- helpers
     async def command(self, target, msg_type, data=None, private=None):
@@ -427,9 +428,11 @@ class Conversation:
         await self.apply_mic(None if was == self.mic.listening else "mic_on" if self.mic.listening else "mic_off", how="dashboard")
         return self.mic.snapshot()
 
-    async def on_program_connected(self, name: str) -> None:
-        if name == "web":   # the dashboard (re)started: tell it what Pip is doing now, or it would show nothing
+    async def on_program_subscribed(self, name: str) -> None:
+        if name == "web":   # the dashboard (re)started and is listening: tell it what Pip is doing now
             await self.bus.publish(Message("event", "pip.state", source="core", data=self.state_message()))
+
+    async def on_program_connected(self, name: str) -> None:
         if name == "ears":
             await self.apply_mic()
             await self.tell_clap_mic()

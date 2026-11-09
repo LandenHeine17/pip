@@ -101,7 +101,23 @@ async def test_listening_switched_off_says_how_to_turn_it_back_on_and_a_new_dash
     assert conv.situation()[:2] == ("mic_off", "switched_off")
     conv.mic = None
     seen = watch(conv)
-    await conv.on_program_connected("web")                           # the dashboard restarted: it's told
+    await conv.on_program_subscribed("web")                          # the dashboard restarted: it's told
     assert [d for t, d, _ in seen if t == "pip.state"] == [{"state": conv.state, "detail": conv.detail,
                                                            "words": DETAILS[conv.detail], "ends_in": None}]
     await finish(bus, tasks)
+
+
+async def test_a_dashboard_that_connects_is_sent_the_state_once_it_is_listening(tmp_path):
+    """Over a real connection: the state is sent after the dashboard has subscribed, not before (it'd be missed)."""
+    from pip_assistant.common.client import BusClient
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path)
+    web, seen = BusClient("web", socket_path=tmp_path / "core.sock"), []
+
+    async def on_state(msg):
+        seen.append(msg.data)
+    web.subscribe("pip.state", on_state)
+    task = asyncio.create_task(web.run())
+    await asyncio.wait_for(web.connected.wait(), 3)
+    await asyncio.sleep(0.3)
+    assert seen and seen[-1]["words"] == DETAILS[conv.detail]
+    await finish(bus, tasks + [task])
