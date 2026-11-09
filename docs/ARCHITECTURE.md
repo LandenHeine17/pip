@@ -254,7 +254,7 @@ flowchart TD
     S["An approved self-change<br/>(committed on its own branch)"] --> C
     B -- "yes" --> X["Stop (or --allow-dirty:<br/>install the last commit anyway)"]
     B -- "no" --> C["Make the version:<br/>~/pip-app/releases/(id)<br/>(git worktree + its own .venv)"]
-    C --> D["Wait for a quiet moment<br/>(not while he talks, listens or rings; ≤ 2 min)"]
+    C --> D["Wait for a quiet moment<br/>(core/states.py quiet(): not while he talks, listens, answers or rings; ≤ 2 min)"]
     D --> E["Point ~/pip-app/current at it,<br/>restart Pip"]
     E --> F{"Healthy within 2 min,<br/>and for 30 s after?"}
     F -- "yes" --> G["Live. Keep the newest 3<br/>(+ current and previous)"]

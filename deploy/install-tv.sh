@@ -6,7 +6,10 @@
 #            (and, to give the screen back to Ziggletron:  sudo systemctl enable --now ziggletron-tv)
 set -eu
 cd "$(dirname "$0")/.."
-repo="$PWD"
+# The kiosk script runs from the installed version (~/pip-app/current, D-118), never from this working copy,
+# so an edit here only reaches the monitor through deploy/install.sh (with its health check and rollback).
+repo="$HOME/pip-app/current"
+[ -x "$repo/deploy/tv/tv-kiosk.sh" ] || { echo "Install Pip first (sh deploy/install.sh): $repo isn't there yet."; exit 1; }
 
 for tool in cage chromium curl; do
     command -v "$tool" >/dev/null || { echo "Missing $tool: it was installed for Ziggletron's screen; ask before installing packages."; exit 1; }

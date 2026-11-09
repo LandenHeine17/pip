@@ -39,6 +39,7 @@ class FakePi:
         self.running = "dev"
         self.broken: set[str] = set()
         self.state = "idle"
+        self.quiet = None      # what pip-core says in his state (None: an older version that doesn't say)
         self.web_up = True
         self.restarts = 0
 
@@ -62,7 +63,8 @@ class FakePi:
             bad = self.running in self.broken
             progs = {p: {"state": "missing" if bad and p == "ears" else "ok", "release": self.running,
                          "uptime_s": self.t} for p in ("core", "ears", "web")}
-            return 200, json.dumps({"state": self.state, "programs": progs}).encode()
+            detail = {} if self.quiet is None else {"quiet": self.quiet}
+            return 200, json.dumps({"state": self.state, "state_detail": detail, "programs": progs}).encode()
         return (200, b"") if self.running not in self.broken else (500, b"")
 
 
@@ -321,3 +323,17 @@ def test_prune_never_removes_current_or_previous(setup):
     rel.save_state({"previous": made[1]})
     rel.prune()
     assert sorted(f.name for f in rel.releases.iterdir()) == sorted([made[0], made[1], *made[-3:]])
+
+
+def test_the_quiet_moment_is_pip_cores_call(setup):
+    """pip-core says when it's quiet (core/states.py quiet(), also used for settings restarts): idle but with
+    Claude still working on an answer isn't quiet; the state names are only the fallback for older versions."""
+    rel, pi, repo, shas, lines = setup
+    pi.state, pi.quiet = "idle", False
+    t0 = pi.t
+    rel.wait_quiet()
+    assert pi.t - t0 >= R.QUIET_WAIT_S
+    pi.state, pi.quiet = "mic_off", True
+    t0 = pi.t
+    rel.wait_quiet()
+    assert pi.t == t0

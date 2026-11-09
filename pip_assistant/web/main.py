@@ -49,6 +49,7 @@ class State:
         self.online = True       # D-95: the dashboard's small offline indicator
         self.pip_state = "idle"  # idle / listening / thinking / speaking / interrupted / ringing / offline / mic_off
         self.pip_detail: dict = {}   # what exactly he's doing within it: {detail, words, ends_in} (D-112)
+        self.pip_quiet = None        # pip-core's "a good moment to restart" (core/states.py quiet())
         self.tv_listeners: set[asyncio.Queue] = set()   # the TV page's own, narrower stream (D-110)
         self.tv_boxes: list[str] = []   # the kinds of box on the monitor now (D-111)
         self.tv_room = False            # a conversation box showing room talk is up: room lines go to the TV too
@@ -128,7 +129,8 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
 
     async def health(request):
         return JSONResponse({"version": __version__, "connected": bus.connected.is_set(), "programs": state.health,
-                             "state": state.pip_state, "state_detail": state.pip_detail, "online": state.online})
+                             "state": state.pip_state, "state_detail": {**state.pip_detail, "quiet": state.pip_quiet},
+                             "online": state.online})
 
     async def trace(request):
         if not state.trace and bus.connected.is_set():
@@ -362,6 +364,7 @@ def listen(bus, state: State) -> None:
     async def on_state(msg: Message):
         state.pip_state = msg.data.get("state", "idle")
         state.pip_detail = {k: msg.data.get(k) for k in ("detail", "words", "ends_in")}
+        state.pip_quiet = msg.data.get("quiet")   # for installs' quiet moment (release.py), in /api/health only
         state.push("state", {"state": state.pip_state, **state.pip_detail})
         state.push_tv("state", {"state": state.pip_state, **state.pip_detail})
 

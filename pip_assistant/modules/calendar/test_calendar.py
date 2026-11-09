@@ -531,3 +531,27 @@ async def test_moving_by_a_day_over_the_clock_change_keeps_the_clock_time(env):
     for bad in ("1e12", "nan", "inf", "soon"):
         with pytest.raises(Invalid):
             say(reg, "change:event", {"id": ev["id"][:6], "shift_seconds": bad}, c)
+
+
+async def test_offline_an_only_me_calendar_is_heard_and_changed_only_by_its_owner(env):
+    """Pip's own offline commands (core/commands.py) follow the calendar's privacy rule, like Claude's actions."""
+    from pip_assistant.core.commands import Commands
+    reg, cal, fake, people, sched, clock = env
+    landen, sam = people.add_person("Landen", "admin"), people.add_person("Sam")
+    fake.calendars["sam@example.com"] = {"summary": "Sam", "primary": True, "accessRole": "owner", "owner": "sam@example.com"}
+    fake.add_event("sam@example.com", summary="interview", start={"dateTime": "2026-11-07T15:00:00-06:00"},
+                   end={"dateTime": "2026-11-07T16:00:00-06:00"})
+    acc = await connect(reg.modules["google"], fake, sam["id"], "sam@example.com")
+    await cal.sync.run_once()
+    await reg.modules["google"].dashboard("sharing", {"id": acc["id"], "value": "me"})
+    cmds = Commands(sched, clock=clock, calendar=cal.api, may_hear=cal.may_hear)
+    assert "interview" not in await cmds.handle("what's on the calendar today", me(landen))
+    assert "interview" not in await cmds.handle("what's on the calendar today", Call(now=NOW))   # an unknown voice
+    assert "can't find" in await cmds.handle("delete interview from the calendar", me(landen))
+    ev = next(iter(cal.store.all_events()))
+    with pytest.raises(Invalid):                                   # Claude can't act on it for Landen either
+        say(reg, "cancel:event", {"id": ev["id"]}, me(landen))
+    assert "interview" in await cmds.handle("what's on the calendar today", me(sam))
+    assert "interview" in await cmds.handle("what's on the calendar today")                   # the dashboard
+    await cmds.handle("delete interview from the calendar", me(sam))
+    assert not list(cal.store.all_events())

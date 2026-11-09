@@ -103,9 +103,13 @@ def match_label(label: str, wanted: str) -> float:
 
 
 class Commands:
-    def __init__(self, schedule: Schedule, clock=time.time, calendar=None):
+    def __init__(self, schedule: Schedule, clock=time.time, calendar=None, may_hear=None):
         self.s = schedule
         self.cal = calendar   # the calendar module's events (modules/calendar/store.py), or None if it's off
+        # The calendar module's privacy rule (Calendar.may_hear): may the person asking hear about, or change,
+        # this event? "Only me" accounts' events are theirs alone, private ones nobody's (by voice).
+        self.may_hear = may_hear
+        self.call = None   # who's asking (core/modules.Call) during handle(); None = the dashboard, sees everything
         self.clock = clock
         self.awaiting: dict | None = None   # Pip asked a question ("For how long?") and waits for the answer
         self._focus: tuple[str, str, float] | None = None  # ("alert"/"event", id, when): what "that" and "it" mean
@@ -127,9 +131,16 @@ class Commands:
                 row = self.s._row(item_id)
                 if row and row["state"] in ("waiting", "ringing"):
                     return "alert", row
-            elif self.cal and (ev := self.cal.event(item_id)):
+            elif self.cal and (ev := self.cal.event(item_id)) and self._sees(ev):
                 return "event", ev
         return None
+
+    def _sees(self, ev: dict) -> bool:
+        """May whoever is asking hear about (and change) this calendar event? The calendar module decides."""
+        return self.call is None or self.may_hear is None or self.may_hear(ev, self.call)
+
+    def _events(self) -> list[dict]:
+        return [e for e in self.cal.all_events() if self._sees(e)] if self.cal else []
 
     @staticmethod
     def _kind_of(table: str, row: dict) -> str:
@@ -158,8 +169,17 @@ class Commands:
             return None  # said to Pip, but not an obvious stop/snooze: Claude works out what they want (D-94)
         return ""  # TV or chatter: recorded, but the alarm keeps ringing (FEAT-037)
 
-    async def handle(self, text: str) -> str | None:
-        """A request for Pip. Returns what to say, "" for nothing, or None if it's not a command."""
+    async def handle(self, text: str, call=None) -> str | None:
+        """A request for Pip. Returns what to say, "" for nothing, or None if it's not a command.
+        `call`: who's asking (core/modules.Call), so calendar events they mayn't hear about are left out;
+        None (the dashboard's typed commands) sees every event."""
+        self.call = call
+        try:
+            return await self._handle(text)
+        finally:
+            self.call = None
+
+    async def _handle(self, text: str) -> str | None:
         t = clean(text)
         if not t:
             return None
@@ -345,7 +365,7 @@ class Commands:
     def _target(self, t: str, kind: str | None):
         """What they want to change: (table, row), a list to choose from, a reply ("You don't have..."), or None."""
         alerts = [("alert", a) for a in self.s.active(("timer", "alarm", "reminder")) if not kind or a["kind"] == kind]
-        events = [("event", e) for e in self.cal.all_events()] if kind in (None, "event") and self.cal else []
+        events = [("event", e) for e in self._events()] if kind in (None, "event") else []
         everything = alerts + events
         if kind != "timer" and (at := when.clock(t, self.now())):  # "the 6 AM alarm", "the dentist at 2"
             by_time = [(tb, x) for tb, x in everything if
@@ -651,7 +671,7 @@ class Commands:
             return "Which event? I'm not sure which one you mean."
         wanted_day = when.day(wanted, self.now())
         wanted = re.split(r"\s+\b(on|at|this|next|tomorrow|today)\b", f"{wanted} ")[0].strip()
-        evs = self.cal.all_events()
+        evs = self._events()
         scored = sorted(((match_label(e["title"].lower(), wanted), e) for e in evs), key=lambda x: -x[0])
         picks = [e for sc, e in scored if sc >= 0.75]
         if wanted_day:
@@ -674,7 +694,8 @@ class Commands:
             days = [now.date() + timedelta(days=i) for i in range(7)]
         else:
             days = [when.day(t, now) or now.date()]
-        found = [(d, at, ev) for d in days for at, ev in self.cal.events_on(d) if not ev["private"]]
+        found = [(d, at, ev) for d in days for at, ev in self.cal.events_on(d)
+                 if not ev["private"] and self._sees(ev)]
         if not found:
             label = "this week" if len(days) > 1 else when.say_day(days[0], now)
             return f"Nothing on the calendar {label}."
