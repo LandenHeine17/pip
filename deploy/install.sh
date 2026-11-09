@@ -11,17 +11,8 @@ if [ ! -f "$SPK" ]; then
   curl -sSfL -o "$SPK.part" https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_small.onnx && mv "$SPK.part" "$SPK"
 fi
 # Pip's voice (Piper, D-73): the one chosen in settings ([ears] voice), downloaded once from the Piper
-# voices collection. A name like en_US-lessac-medium lives at en/en_US/lessac/medium/ there.
-VOICE=$(~/.local/bin/uv run -q python -c 'from pip_assistant.common import settings; print(settings.load()["ears"]["voice"])')
-VDIR=~/pip-data/models/voices
-if [ ! -f "$VDIR/$VOICE.onnx" ] || [ ! -f "$VDIR/$VOICE.onnx.json" ]; then
-  mkdir -p "$VDIR"
-  LANG_REGION=${VOICE%%-*}; REST=${VOICE#*-}; NAME=${REST%-*}; QUALITY=${REST##*-}
-  URL="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/${LANG_REGION%%_*}/$LANG_REGION/$NAME/$QUALITY/$VOICE"
-  for f in "$VOICE.onnx" "$VOICE.onnx.json"; do
-    curl -sSfL -o "$VDIR/$f.part" "$URL${f#$VOICE}" && mv "$VDIR/$f.part" "$VDIR/$f"
-  done
-fi
+# voices collection into ~/pip-data/models/voices (common/voices.py, the same code the Settings page uses).
+~/.local/bin/uv run -q python -c 'from pip_assistant.common import settings, voices; print("Voice:", voices.ensure_voice(settings.load()["ears"]["voice"]).name)'
 mkdir -p ~/.config/systemd/user
 cp deploy/systemd/pip-*.service ~/.config/systemd/user/
 systemctl --user daemon-reload

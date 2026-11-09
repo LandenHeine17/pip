@@ -49,7 +49,7 @@ flowchart TB
 | **pip-ears** | Listens all the time: echo-cancelled audio from the speakerphone, speech detection, both wake words ("Pippletron", "Hey Pip"), talking over Pip (stops him instantly), mute detection; and a second plain USB microphone used only for the two-clap switch (D-91). Also plays everything Pip says (Piper voice) and alarm sounds, and turns Pip down when someone talks over him | Must react in milliseconds and never wait for the internet or the AI | 600 MB |
 | **pip-core** | The conductor. Decides what to do with each thing heard; runs conversations, timers, reminders and alarms; holds memory, people and settings; runs actions; keeps the log of everything that happens; watches the other programs' health; recognises voices (TitaNet, step 5) | Everything goes through one place, so it's easy to follow and log | 700 MB (was 400; voice model + offline Whisper, D-87) |
 | **pip-thinker** | Talks to Claude through the Claude Code CLI (one fresh session per request, fixing Ziggletron's collision bug P-01). *Not built yet:* the offline Qwen fallback when Claude is unavailable (planned for M2, D-75) and tracking Pro-plan usage (PIP-NEW-089) | Slow and memory-hungry; must never hold up the conductor | 2.0 GB (Qwen needs ~1.3 GB while loaded) |
-| **pip-web** | The dashboard (phone/PC over Tailscale) and the TV page for the face, which gets only what it shows (D-110). Today it's plain http on the Tailscale address, plus 127.0.0.1 for the monitor. *Not built yet (step 8):* HTTPS, logins and roles | Keeps network-facing code away from the core and from secrets | 300 MB |
+| **pip-web** | The dashboard (phone/PC over Tailscale) and the TV page for the face, which gets only what it shows (D-110). Plain http on the Tailscale address, https at the Pi's Tailscale name (`tailscale serve`), and 127.0.0.1 for the monitor. No logins (D-116); a same-site check (`web/security.py`) stops other websites from changing Pip | Keeps network-facing code away from the core and from secrets | 300 MB |
 | **pip-builder** *(not built yet, M1b)* | Self-changes: writes and tests code changes in a sandbox (the systemd sandbox that passed in M0) and hands the result to you for approval | Untrusted code must be fenced off from your data | 2.0 GB, only while running |
 | *Screen browser* | Chromium in kiosk mode on the monitor (system service `pip-tv`, `deploy/tv/`), showing the TV page `/tv` from pip-web's local address | How Ziggletron's face worked; Pip's replaces it (D-110) | (existing) |
 
@@ -223,8 +223,12 @@ The voice engine is a setting: `voice_engine` under `[ears]` in `defaults.toml` 
 
 ## 9. Security
 
-- **Dashboard:** reached only over Tailscale. Today it's plain http on the Pi's Tailscale address (plus 127.0.0.1 for the monitor), with no logins. *Planned for step 8:* HTTPS from `tailscale serve`, the same way Ziggletron's works; viewing the feed needs no login (D-53); admin actions need a login with 2-factor (D-35, PIP-NEW-054).
-- **Roles** *(step 8)*: Admin, Member, Viewer. Voice alone is never enough for admin actions (PIP-NEW-027).
+- **Dashboard: no logins or accounts** (D-116). It's reached only on the owner's Tailscale devices: https at `https://ziggletronshome.tail3ae254.ts.net` (from `tailscale serve`, set up by `deploy/install-https.sh`, the same way Ziggletron's was), or plain http on the Pi's Tailscale address; the monitor uses `http://127.0.0.1:8790/tv` on the Pi itself.
+- **Same-site check** (`web/security.py`, FEAT-072, kept from Ziggletron). Without a login, this is what stops a website open on the owner's phone from changing Pip:
+  - Pip answers only to its own names (its IP addresses, localhost, the machine's name and its Tailscale name). Another website can't borrow Pip's address under its own name.
+  - Anything that changes something must be sent as JSON, and from Pip's own pages (the browser says which page sent it). Browsers won't let another site do that.
+  - A module's page may only *read* with a plain link (GET); its changes must be sent the other way (POST).
+- **Voice alone is never enough** for admin things (settings, approving changes): those need the dashboard (PIP-NEW-027).
 - **Secrets:** only pip-core reads them; pip-web and pip-thinker never see them.
 - **Self-changes** *(not built yet, M1b)*: pip-builder runs in the systemd sandbox (no access to your home folder, data or network beyond what's allowed; tested in M0). You approve the plan and then the actual change; it's installed alongside the current version and rolled back automatically if the health checks fail (PIP-NEW-069–076).
 - **Prompt safety:** device names, web results and calendar text are treated as data, never as instructions.
@@ -274,7 +278,7 @@ pip/                          (the repo)
 │   ├── common/               shared bits: messages, settings, secrets, paths (SQLite code lives in core/ and the modules)
 │   └── modules/              plug-in features: google, calendar, todos, screen (+ _template/)
 ├── models/                   generic, public-safe models
-├── deploy/                   systemd service files (deploy/systemd/), install.sh; the monitor's kiosk (deploy/tv/, install-tv.sh)
+├── deploy/                   systemd service files (deploy/systemd/), install.sh; the monitor's kiosk (deploy/tv/, install-tv.sh); https (install-https.sh)
 ├── tests/                    cross-program and replay tests
 ├── docs/                     PIP-SPEC, HOW-PIP-WORKS, ARCHITECTURE, DECISIONS, REQUIREMENTS, PROJECT-MAP
 └── m0/                       measurement tools (kept for re-runs)
@@ -295,7 +299,7 @@ Built in small steps. Each step ends with something you can try.
 | 6b. Modules (D-96) with Google accounts per person, Google Calendar both ways, to-dos with Google Tasks, and a calendar page. **Built 2026-11-07; installed and tested 2026-11-08** (D-96–D-101) | See and change everyone's calendar and to-dos by voice or on the dashboard |
 | 6c. After the owner's tests (2026-11-07/08): a short calendar summary with look-ups (D-102), managing calendars (D-103), ignored calendars (D-104), quiet means quiet and a chime switch (D-105), waiting until you're done (D-106), approving your own memory by voice (D-107), a full conversation feed and coloured state circle (D-108), per-account Google settings with heads-up rules (D-109), claps on their own mic, tuned (D-91). **Installed** | Everything above, as you use it |
 | 7. Screen: face, widgets, layouts. **First part built 2026-11-08 (D-110):** Ziggletron's face brought over with Pip's states and colours and a voice-driven mouth; clock, weather, timers, next events and captions in a fixed layout; the TV's own narrow feed; Pip's kiosk (`pip-tv`) replaces Ziggletron's. **Rest built 2026-11-08 (D-111):** the screen by voice (`modules/screen`): boxes added, moved, resized and coloured, ready-made and saved screens, fixes offered when something won't fit, undo, a Screen page on the dashboard; new boxes: to-do list, Notes, Pi health, Conversation (room talk only while it's up). What Pip is doing within each state, as a face and words (D-112). **Installed 2026-11-08**; the owner is trying it | The face on the monitor; "Pip, show the morning screen" |
-| 8. Settings page, accounts, migration from Ziggletron. **Next** | Switch Pip on side by side with Ziggletron |
+| 8. Settings page, personality, import from Ziggletron. **Built 2026-11-09 (D-116, D-117):** every setting on a Settings page, applied by restarting only the part that needs it when Pip is quiet; an editable personality with versions and a "try it" preview; Ziggletron's memories (to the inbox) and personality brought over read-only; no logins (D-116), a same-site check and https over Tailscale | Change any setting and Pip's personality on the dashboard |
 
 Then **M1b** adds the safe self-change pipeline, and you switch over from Ziggletron.
 

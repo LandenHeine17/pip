@@ -11,7 +11,7 @@
 <header>
   <div class="brand"><div class="logo">P</div>
     <div><h1>Pip</h1><div class="sub">Listens to the room and joins in · timers, calendar, to-dos, memory, voices</div></div></div>
-  <div class="status"><span id="modlinks" style="display:flex;gap:6px"></span><button id="mic" class="micbtn" onclick="toggleMic()" title="Switch listening off or on.">Listening…</button>
+  <div class="status"><span id="modlinks" style="display:flex;gap:6px"></span><a href="/settings"><button>Settings</button></a><button id="mic" class="micbtn" onclick="toggleMic()" title="Switch listening off or on.">Listening…</button>
     <span class="face" id="state" title="Pip's state: grey idle · green listening · purple thinking · blue speaking · orange interrupted · red ringing · dark mic off"><span class="orb"></span><span id="statetext">…</span></span>
     <span class="netoff" id="netoff" hidden title="Pip can't reach the internet: only timers, alarms and other basics work until it's back">offline</span>
     <span class="sub" id="conn">Connecting…</span></div>
@@ -62,22 +62,11 @@
     <select id="prole"><option value="member">Member</option><option value="admin">Admin</option></select><button class="primary">Add person</button></form>
   <div class="sub" style="margin-top:8px"><b>Teaching Pip your voice:</b> once your name is on this list, just say <b>"Pip, I'm</b> <i>your name</i><b>"</b> (or "Pip, learn my voice"). Pip says hi, beeps, and five short sentences appear here: read each one out loud after the beep. It takes about a minute. Check with "Pip, who am I?".<br>
   <b>Use my M0 recordings</b> (owner only): uses 8 recordings you already made in the M0 tests instead; nothing to read.<br>
-  Voiceprints stay on the Pi. Pip hears everyone in the room; to stop him listening, use the <b>Listening</b> switch at the top (or clap twice, once a clap microphone is set up below). Visitors who say "Pip, I'm Sam" are remembered for that visit only; if they live here, press <b>Add to household</b>.</div>
+  Voiceprints stay on the Pi. Pip hears everyone in the room; to stop him listening, use the <b>Listening</b> switch at the top (or clap twice, once a clap microphone is chosen in <a href="/settings">Settings</a>). Visitors who say "Pip, I'm Sam" are remembered for that visit only; if they live here, press <b>Add to household</b>.</div>
 </section>
 <section>
-  <div class="head"><h2>Listening &amp; sounds</h2></div>
-  <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="chime" onchange="setPref('chime', this.checked)">
-    Chime when he hears his name <span class="sub">(a short beep: "I heard you")</span></label>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">Clap microphone
-    <select id="clapmic" onchange="setPref('clap_mic', this.value)"><option value="">…</option></select>
-    <span class="sub" id="clapnote"></span></div>
-  <label style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" id="claps" onchange="setPref('claps', this.checked)">
-    Two claps switch listening <span class="sub">(while it's off, two claps just show up in the Conversation as a trial)</span></label>
-  <div class="sub" style="margin-top:6px">Two claps switch listening off and on. The speakerphone's own noise filter removes claps,
-    so they're heard on a second, plain USB microphone (any cheap one that isn't "noise-cancelling"). Choosing the
-    microphone doesn't switch claps on: tick the box for that. Tuned on your Session F recordings from the JLab mic.</div>
-  <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" id="state_bars" onchange="setPref('state_bars', this.checked)">
-    Show what Pip is doing in the Conversation <span class="sub">(a small bar each time it changes: "Waiting to see if you're done", "Following the conversation"…; for understanding him)</span></label>
+  <div class="head"><h2>Settings</h2></div>
+  <div class="sub">Sounds, claps and everything else: <a href="/settings">Settings</a> (voice, ringtones, wake words, joining in, personality…).</div>
 </section>
 </div>
 
@@ -117,19 +106,6 @@ function renderMic(m){ if(!m || m.dashboard === undefined) return; micState = m;
   b.innerHTML = m.listening ? "Listening" : !m.dashboard ? "Mic off <small>· press to turn on</small>" : "Mic off <small>(clapped) · clap twice or press</small>"; }
 async function toggleMic(){ const on = !(micState && micState.listening);
   try{ renderMic(await (await fetch("/api/mic",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({value:on})})).json()); }catch(e){ alert("Couldn't reach Pip"); } }
-// Listening & sounds (core/prefs.py): the chime, and which microphone hears the two-clap switch (D-91, D-105)
-async function loadPrefs(){ try{ renderPrefs(await (await fetch("/api/prefs",{cache:"no-store"})).json()); }catch(e){} }
-function renderPrefs(p){ if(!p || p.error) return;
-  $("chime").checked = !!p.chime; $("state_bars").checked = !!p.state_bars; $("claps").checked = !!p.claps; $("claps").disabled = !p.clap_mic;
-  const others = (p.mics||[]).filter(m => m.name !== p.speakerphone);
-  $("clapmic").innerHTML = `<option value="">None: claps do nothing</option>` + others.map(m =>
-    `<option value="${esc(m.name)}" ${m.name===p.clap_mic?"selected":""}>${esc(m.label)}</option>`).join("")
-    + (p.clap_mic && !others.some(m => m.name===p.clap_mic) ? `<option value="${esc(p.clap_mic)}" selected>(unplugged) ${esc(p.clap_mic)}</option>` : "");
-  $("clapnote").textContent = others.length ? "" : "No second microphone plugged in yet.";
-}
-async function setPref(key, value){
-  try{ const r = await (await fetch("/api/prefs",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key,value})})).json();
-    if(r.error) alert(r.error); renderPrefs(r); }catch(e){ alert("Couldn't reach Pip"); } }
 async function loadMic(){ try{ renderMic(await (await fetch("/api/mic",{cache:"no-store"})).json()); }catch(e){} }
 // Pip's state, and within it what exactly he's doing (D-112), with a countdown while he waits a known time
 let stateTick = null;
@@ -332,7 +308,7 @@ let mods = [];
 async function loadModules(){ try{ mods = await (await fetch("/api/modules",{cache:"no-store"})).json();
   $("modlinks").innerHTML = mods.map(m => `<a href="${m.page}"><button>${esc(m.label)}</button></a>`).join("");
   $("calLink").hidden = !mods.some(m => m.name === "calendar"); renderPeople(); }catch(e){} }
-loadModules(); loadSched(); loadConv(); loadTrace(); loadHealth(); loadMemory(); loadPeople(); loadMic(); loadPrefs(); if(!location.search.includes("nolive")) live();
+loadModules(); loadSched(); loadConv(); loadTrace(); loadHealth(); loadMemory(); loadPeople(); loadMic(); if(!location.search.includes("nolive")) live();
 </script>
 </body>
 </html>

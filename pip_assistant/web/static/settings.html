@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Settings</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+main{max-width:920px;padding-bottom:110px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:9px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row .what{min-width:15em;font-weight:600}
+.row .explain{flex-basis:100%;margin-top:-4px}
+.row .err{flex-basis:100%;color:var(--bad);font-size:.86rem;font-weight:600}
+.row .err:empty{display:none}
+.row.changed .what::after{content:" •";color:var(--accent)}
+.row.bad input,.row.bad select{border-color:var(--bad)}
+.items2{display:flex;flex-direction:column;gap:6px}
+.item2{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.item2 .nm{min-width:7em;color:var(--muted);font-size:.9rem}
+.checks{display:flex;gap:14px;flex-wrap:wrap}
+.checks label{display:flex;gap:6px;align-items:center}
+.subhead{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:16px 0 2px}
+.pref{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:9px 0;border-top:1px solid var(--line)}
+.live{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--good);margin-left:6px}
+textarea{font:inherit;font-size:.9rem;width:100%;min-height:22em;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);resize:vertical}
+textarea:focus{border-color:var(--accent);outline:none}
+.versions{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.version{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 12px;border-radius:12px;background:var(--soft)}
+.version .when{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.86rem;min-width:11em}
+.answer{white-space:pre-wrap;padding:10px 13px;border-radius:14px;background:var(--accentbg);margin-top:8px}
+.answer:empty{display:none}
+.counts{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0}
+.counts .card{min-width:9em}
+.counts .big{font-size:1.3rem;font-weight:700;font-variant-numeric:tabular-nums}
+#bar{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);width:min(880px,calc(100% - 24px));display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;
+  padding:12px 16px;border-radius:16px;background:var(--card);box-shadow:var(--shadow);border:1px solid var(--line);z-index:10}
+#bar[hidden]{display:none}
+#barmsg{font-weight:600}
+#barmsg.good{color:var(--good)} #barmsg.bad{color:var(--bad)}
+details.adv>summary h2::before{content:"▸ ";color:var(--muted)}
+details.adv[open]>summary h2::before{content:"▾ "}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+    <div><h1>Settings</h1><div class="sub"><a href="/">← dashboard</a> · changes apply when Pip is quiet; ones marked <span class="live" style="margin:0">instant</span> apply straight away</div></div></div>
+</header>
+<div id="loaderr" class="empty" hidden></div>
+
+<section>
+  <div class="head"><h2>Voice &amp; sounds</h2></div>
+  <div id="g-voice"></div>
+  <label class="pref"><input type="checkbox" id="chime" data-pref="chime"> <span class="what" style="font-weight:600">Chime when he hears his name</span><span class="live">instant</span>
+    <span class="sub" style="flex-basis:100%">A short beep: "I heard you".</span></label>
+</section>
+
+<section>
+  <div class="head"><h2>Listening</h2></div>
+  <div id="g-listen"></div>
+  <div class="pref"><span style="font-weight:600;min-width:15em">Clap microphone</span>
+    <select id="clapmic" data-pref="clap_mic"><option value="">…</option></select><span class="live">instant</span>
+    <span class="sub" id="clapnote"></span>
+    <span class="sub" style="flex-basis:100%">Two claps switch listening off and on. The speakerphone's own noise filter removes claps,
+    so they're heard on a second, plain USB microphone (any cheap one that isn't "noise-cancelling"). Choosing the
+    microphone doesn't switch claps on: tick the box below for that.</span></div>
+  <label class="pref"><input type="checkbox" id="claps" data-pref="claps"> <span style="font-weight:600">Two claps switch listening</span><span class="live">instant</span>
+    <span class="sub" style="flex-basis:100%">While it's off, two claps just show up in the dashboard's Conversation as a trial.</span></label>
+  <label class="pref"><input type="checkbox" id="state_bars" data-pref="state_bars"> <span style="font-weight:600">Show what Pip is doing in the Conversation</span><span class="live">instant</span>
+    <span class="sub" style="flex-basis:100%">A small bar each time it changes ("Waiting to see if you're done", "Following the conversation"…), for understanding him.</span></label>
+</section>
+
+<section>
+  <div class="head"><h2>Conversation &amp; joining in</h2></div>
+  <div id="g-conv"></div>
+</section>
+
+<section>
+  <div class="head"><h2>Location &amp; weather</h2></div>
+  <div id="g-where"></div>
+</section>
+
+<section>
+  <div class="head"><h2>Brain</h2><span class="sub">Claude, which answers for Pip</span></div>
+  <div id="g-brain"></div>
+</section>
+
+<section>
+  <div class="head"><h2>Personality</h2><span class="sub" id="pstate"></span></div>
+  <div id="g-personality"></div>
+  <div class="sub" style="margin:10px 0 8px">How Pip talks and behaves: who he is, his style, how he joins in. <b>{name}</b> and <b>{location}</b> are filled in for you.
+    His rules (what he may do, timers, memory, privacy) are fixed and always added after this text, so the personality can't change them.
+    It applies to his next answer; no restart needed.</div>
+  <textarea id="ptext" spellcheck="true" aria-label="Pip's personality"></textarea>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px">
+    <button class="primary" id="psave">Save personality</button><span class="sub" id="pmsg"></span></div>
+  <div class="label" style="margin-top:16px">Try it</div>
+  <form id="ptry" style="margin-top:0"><input id="pq" placeholder="Ask something, e.g. what should I cook tonight?" maxlength="300" style="flex:1;min-width:12em" required>
+    <button>Try with this text</button></form>
+  <div class="sub" style="margin-top:4px">Uses the text in the box above (saved or not). Pip answers here as text: nothing is said out loud or remembered.</div>
+  <div class="answer" id="panswer"></div>
+  <div class="label" style="margin-top:16px">Versions</div>
+  <div class="versions" id="pversions"></div>
+</section>
+
+<section>
+  <div class="head"><h2>Bring over from Ziggletron</h2></div>
+  <div id="migrate"><div class="empty">Checking…</div></div>
+</section>
+
+<section>
+  <div class="head"><h2 id="modtitle">Calendar · To-dos · Google</h2><span class="sub">features that plug into Pip</span></div>
+  <div id="g-modules"></div>
+</section>
+
+<section>
+  <details class="adv">
+    <summary><h2>Advanced</h2><span class="sub">speech-to-text, voice recognition, clap tuning, programs, trace, dashboard</span></summary>
+    <div class="sub" style="margin-bottom:6px">Fine-tuning. The defaults were measured on the Pi; change these only with a reason.</div>
+    <div id="g-advanced"></div>
+  </details>
+</section>
+</main>
+
+<div id="bar" hidden><span id="barmsg"></span>
+  <span style="display:flex;gap:8px"><button class="ghost" id="discard">Discard</button><button class="primary" id="save">Save</button></span></div>
+
+<script src="/pip.js"></script>
+<script>
+const GROUPS = {"Voice & sounds": "g-voice", "Listening": "g-listen", "Conversation & joining in": "g-conv",
+  "Location & weather": "g-where", "Brain": "g-brain", "Personality": "g-personality", "Advanced": "g-advanced"};
+const SECTIONS = {pip: "Pip", ears: "Voice and wake words", listen: "Hearing speech", stt: "Speech-to-text",
+  voices: "Recognising voices", social: "Joining in", alarms: "Timers and alarms", mic: "Clap tuning",
+  conversation: "Conversation", thinker: "Brain", programs: "Programs", trace: "Decision trace", web: "Dashboard"};
+let S = null, meta = {}, draft = {}, errors = {}, status = {text: "", cls: ""};
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const val = k => k in draft ? draft[k] : meta[k].value;
+const num = x => String(x).trim() === "" || isNaN(Number(x)) ? null : Number(x);
+const clone = v => JSON.parse(JSON.stringify(v));
+async function getJSON(url){ const r = await fetch(url, {cache: "no-store"}); return r.json(); }
+async function postJSON(url, body){
+  const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  return r.json(); }
+
+// ------------------------------------------------------------------ settings (settings.toml)
+async function load(){
+  try { S = await getJSON("/api/settings"); } catch (e) { S = {error: "Couldn't reach Pip"}; }
+  if (!S || S.error) { $("loaderr").hidden = false; $("loaderr").textContent = (S && S.error) || "Couldn't load the settings."; return; }
+  $("loaderr").hidden = true;
+  meta = {};
+  for (const g of S.groups) for (const s of g.settings) meta[s.key] = s;
+  for (const m of S.modules) for (const s of m.settings) meta[s.key] = s;
+  for (const k of Object.keys(draft)) if (!(k in meta) || same(draft[k], meta[k].value)) delete draft[k];
+  render();
+  renderPrefs(S.prefs);
+  return S;
+}
+
+function render(){
+  for (const id of Object.values(GROUPS)) $(id).innerHTML = "";
+  for (const g of S.groups) {
+    const id = GROUPS[g.name]; if (!id) continue;
+    if (g.name === "Advanced") {
+      let html = "", last = "";
+      for (const s of g.settings) { const sec = s.key.split(".")[0];
+        if (sec !== last) { html += `<div class="subhead">${esc(SECTIONS[sec] || sec)}</div>`; last = sec; }
+        html += rowHTML(s); }
+      $(id).innerHTML = html;
+    } else $(id).innerHTML = g.settings.map(rowHTML).join("");
+  }
+  $("g-modules").innerHTML = S.modules.map(m => `<div class="subhead">${esc(m.name)}</div>
+    ${m.summary ? `<div class="sub">${esc(m.summary)}</div>` : ""}${m.settings.map(rowHTML).join("")}`).join("")
+    || `<div class="empty">No module settings.</div>`;
+  $("modtitle").textContent = S.modules.map(m => m.name).join(" · ") || "Modules";
+  updateBar();
+}
+
+function rowHTML(s){
+  const k = esc(s.key), changed = s.key in draft, bad = s.key in errors;
+  const showReset = !same(val(s.key), s.default);
+  return `<div class="row${changed ? " changed" : ""}${bad ? " bad" : ""}" data-row="${k}">
+    <span class="what">${esc(s.label)}</span>${control(s)}
+    <button class="ghost" data-reset="${k}" title="Back to ${esc(fmt(s.default))}" ${showReset ? "" : "hidden"}>↺ default</button>
+    ${extra(s)}
+    <span class="sub explain">${esc(s.explain)}</span>
+    <span class="err">${esc(errors[s.key] || "")}</span></div>`;
+}
+function fmt(v){ if (Array.isArray(v)) return v.join(", ") || "(none)";
+  if (v && typeof v === "object") return Object.entries(v).map(([a, b]) => `${a} ${b}`).join(", ");
+  if (typeof v === "boolean") return v ? "on" : "off"; return v === "" ? "(empty)" : String(v); }
+
+function control(s){
+  const v = val(s.key), k = esc(s.key);
+  const nattrs = (lo, hi, step) => `${lo != null ? `min="${esc(lo)}"` : ""} ${hi != null ? `max="${esc(hi)}"` : ""} step="${step}"`;
+  if (s.type === "bool") return `<input type="checkbox" data-key="${k}" ${v ? "checked" : ""}>`;
+  if (s.type === "int" || s.type === "float")
+    return `<input type="number" data-key="${k}" value="${esc(v ?? "")}" ${nattrs(s.min, s.max, s.type === "int" ? 1 : "any")} style="width:8em">`;
+  if (s.type === "str" && s.choices) {
+    const opts = s.choices.includes(v) ? s.choices : [...s.choices, v];
+    return `<select data-key="${k}">${opts.map(c => `<option value="${esc(c)}" ${c === v ? "selected" : ""}>${esc(choiceLabel(s, c))}</option>`).join("")}</select>`;
+  }
+  if (s.type === "str") {
+    const wide = s.key === "stt.word_list";
+    return `<input type="text" data-key="${k}" value="${esc(v)}" ${s.max ? `maxlength="${esc(s.max)}"` : ""} style="${wide ? "flex:1;min-width:16em" : "min-width:14em"}">`;
+  }
+  if (s.type === "list" && s.choices) {
+    const opts = [...s.choices, ...v.filter(x => !s.choices.includes(x))];
+    return `<span class="checks">${opts.map(c => `<label><input type="checkbox" data-key="${k}" data-item="${esc(c)}" ${v.includes(c) ? "checked" : ""}> ${esc(c)}</label>`).join("")}</span>`;
+  }
+  if (s.type === "list")
+    return `<input type="text" data-key="${k}" value="${esc(v.join(", "))}" placeholder="comma, separated" style="min-width:16em">`;
+  if (s.type === "map") {
+    return `<span class="items2">${Object.entries(v).map(([name, x]) => `<span class="item2"><span class="nm">${esc(name)}</span>
+      ${s.choices ? `<select data-key="${k}" data-item="${esc(name)}">${s.choices.map(c => `<option value="${esc(c)}" ${c === x ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>`
+                  : `<input type="number" data-key="${k}" data-item="${esc(name)}" value="${esc(x ?? "")}" ${nattrs(s.min, s.max, 0.05)} style="width:7em">`}
+      ${s.key === "alarms.ringtones" ? `<button class="ghost" data-try-ring="${esc(name)}" title="Play it for 3 seconds">▶ Try</button>` : ""}</span>`).join("")}</span>`;
+  }
+  return `<span class="sub">(can't be changed here)</span>`;
+}
+function choiceLabel(s, c){
+  if (s.key === "ears.voice") { const name = (s.choice_labels || {})[c] || c;
+    return (s.installed || []).includes(c) ? name : `${name} (downloads when saved)`; }
+  return c === "" ? "(none)" : c;
+}
+function extra(s){
+  if (s.key === "ears.voice") return `<button class="ghost" id="tryvoice" title="Say a sample sentence">▶ Try the current voice</button>`;
+  return "";
+}
+
+function readInput(el){
+  const s = meta[el.dataset.key], item = el.dataset.item;
+  if (s.type === "map") { const m = clone(val(s.key));
+    m[item] = typeof s.default[item] === "number" ? num(el.value) : el.value; return m; }
+  if (s.type === "list" && s.choices) { const cur = val(s.key);
+    const all = [...s.choices, ...cur.filter(x => !s.choices.includes(x))];
+    return all.filter(c => c === item ? el.checked : cur.includes(c)); }
+  if (s.type === "list") return el.value.split(",").map(x => x.trim()).filter(Boolean);
+  if (s.type === "bool") return el.checked;
+  if (s.type === "int" || s.type === "float") return num(el.value);
+  return el.value;
+}
+function setDraft(key, value, rerender){
+  if (same(value, meta[key].value)) delete draft[key]; else draft[key] = value;
+  delete errors[key];
+  if (status.cls !== "pending") status = {text: "", cls: ""};
+  const row = document.querySelector(`[data-row="${CSS.escape(key)}"]`);
+  if (row) {
+    if (rerender) row.outerHTML = rowHTML(meta[key]);
+    else { row.classList.toggle("changed", key in draft); row.classList.remove("bad");
+      row.querySelector(".err").textContent = "";
+      row.querySelector("[data-reset]").hidden = same(val(key), meta[key].default); }
+  }
+  updateBar();
+}
+function onEdit(ev){ const el = ev.target; if (!el.dataset || !el.dataset.key || !(el.dataset.key in meta)) return;
+  setDraft(el.dataset.key, readInput(el), false); }
+document.addEventListener("input", onEdit);
+document.addEventListener("change", onEdit);
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("button"); if (!b) return;
+  if (b.dataset.reset) { const k = b.dataset.reset; setDraft(k, clone(meta[k].default), true); }
+  else if (b.dataset.tryRing) tryRing(b.dataset.tryRing);
+  else if (b.id === "tryvoice") tryVoice();
+  else if (b.dataset.use) useVersion(b.dataset.use);
+});
+
+function updateBar(){
+  const n = Object.keys(draft).length;
+  $("bar").hidden = !n && !status.text;
+  $("save").hidden = $("discard").hidden = !n;
+  $("barmsg").className = status.cls === "pending" ? "" : status.cls;
+  $("barmsg").textContent = status.text || `${n} unsaved change${n === 1 ? "" : "s"}`;
+}
+$("discard").onclick = () => { draft = {}; errors = {}; status = {text: "", cls: ""}; render(); };
+$("save").onclick = save;
+async function save(){
+  const changes = clone(draft);
+  status = {text: "ears.voice" in changes ? "Saving… (downloading the new voice can take a minute)" : "Saving…", cls: "pending"};
+  updateBar(); $("save").disabled = true;
+  let r;
+  try { r = await postJSON("/api/settings", {action: "set", changes}); }
+  catch (e) { r = {error: "Couldn't reach Pip"}; }
+  finally { $("save").disabled = false; }
+  if (r.errors) {
+    errors = r.errors; status = {text: "Some settings need fixing (shown in red). Nothing was saved.", cls: "bad"}; render();
+    const first = document.querySelector(".row.bad"); if (first) first.scrollIntoView({behavior: "smooth", block: "center"});
+    return;
+  }
+  if (r.error) { status = {text: r.error, cls: "bad"}; updateBar(); return; }
+  draft = {}; errors = {};
+  await load();
+  showApplying(r);
+}
+let pollTimer = null;
+function showApplying(r){
+  if (r.applying && r.applying.length) {
+    status = {text: `Saved: applying when Pip is quiet (restarting: ${r.applying.join(", ")})`, cls: "pending"};
+    if (!pollTimer) { let tries = 0;
+      pollTimer = setInterval(async () => {
+        tries++;
+        try { const g = await getJSON("/api/settings");
+          if (g && !g.error && !(g.applying || []).length) { clearInterval(pollTimer); pollTimer = null;
+            status = {text: "Applied.", cls: "good"}; await load(); setTimeout(() => { if (status.text === "Applied.") { status = {text: "", cls: ""}; updateBar(); } }, 6000); }
+        } catch (e) { /* the dashboard itself may be restarting */ }
+        if (tries > 120 && pollTimer) { clearInterval(pollTimer); pollTimer = null;
+          status = {text: "Still not applied after 4 minutes: check the dashboard's Programs.", cls: "bad"}; }
+        updateBar();
+      }, 2000); }
+  } else if (r.restart_needed && r.restart_needed.length) {
+    status = {text: `Saved. Pip isn't running as a service here: restart ${r.restart_needed.map(p => "pip-" + p).join(", ")} to apply.`, cls: "bad"};
+  } else if (r.ok) status = {text: "Saved.", cls: "good"};
+  updateBar();
+}
+window.addEventListener("beforeunload", ev => { if (Object.keys(draft).length) { ev.preventDefault(); ev.returnValue = ""; } });
+
+async function tryRing(name){
+  const tone = val("alarms.ringtones")[name];
+  try { const r = await postJSON("/api/settings", {action: "try_ringtone", tone}); if (r.error) alert(r.error); }
+  catch (e) { alert("Couldn't reach Pip"); }
+}
+async function tryVoice(){
+  try { const r = await postJSON("/api/settings", {action: "try_voice"});
+    if (r.error) alert(r.error);
+    else if ("ears.voice" in draft || (S.applying || []).includes("ears")) {
+      status = {text: r.note || "That's the voice Pip uses now.", cls: ""}; updateBar(); } }
+  catch (e) { alert("Couldn't reach Pip"); }
+}
+
+// ------------------------------------------------------------------ live preferences (core/prefs.py): instant
+function renderPrefs(p){ if (!p || p.error) return;
+  $("chime").checked = !!p.chime; $("state_bars").checked = !!p.state_bars; $("claps").checked = !!p.claps; $("claps").disabled = !p.clap_mic;
+  const others = (p.mics || []).filter(m => m.name !== p.speakerphone);
+  $("clapmic").innerHTML = `<option value="">None: claps do nothing</option>` + others.map(m =>
+    `<option value="${esc(m.name)}" ${m.name === p.clap_mic ? "selected" : ""}>${esc(m.label)}</option>`).join("")
+    + (p.clap_mic && !others.some(m => m.name === p.clap_mic) ? `<option value="${esc(p.clap_mic)}" selected>(unplugged) ${esc(p.clap_mic)}</option>` : "");
+  $("clapnote").textContent = others.length ? "" : "No second microphone plugged in yet.";
+}
+async function loadPrefs(){ try { renderPrefs(await getJSON("/api/prefs")); } catch (e) {} }
+async function setPref(key, value){
+  try { const r = await postJSON("/api/prefs", {key, value}); if (r.error) alert(r.error); renderPrefs(r); }
+  catch (e) { alert("Couldn't reach Pip"); } }
+for (const el of document.querySelectorAll("[data-pref]"))
+  el.addEventListener("change", ev => { ev.stopPropagation(); setPref(el.dataset.pref, el.type === "checkbox" ? el.checked : el.value); });
+
+// ------------------------------------------------------------------ personality (editable, with versions)
+let P = null, pDirty = false;
+function renderPersonality(p){
+  if (!p) return;
+  if (p.error) { $("pmsg").textContent = p.error; return; }
+  P = p;
+  if (!pDirty) $("ptext").value = p.text || "";
+  $("pstate").textContent = p.builtin ? "Pip's built-in personality" : "your own version";
+  const hist = p.history || [];
+  $("pversions").innerHTML = hist.map(h => `<div class="version"><span class="when">${esc(new Date(h.at * 1000).toLocaleString())}</span>
+      <span style="flex:1">${esc(h.label || "")}</span>
+      ${h.active ? `<span class="pill ok">in use</span>` : `<button data-use="${esc(h.id)}">Use this one</button>`}</div>`).join("")
+    || `<div class="empty">No saved versions yet: Pip uses his built-in personality.</div>`;
+}
+async function loadPersonality(){ try { renderPersonality(await getJSON("/api/personality")); } catch (e) { $("pmsg").textContent = "Couldn't load the personality."; } }
+$("ptext").addEventListener("input", () => { pDirty = true; $("pmsg").textContent = "Unsaved changes"; });
+$("psave").onclick = async () => {
+  $("pmsg").textContent = "Saving…";
+  try { const r = await postJSON("/api/personality", {action: "save", text: $("ptext").value});
+    if (r.error) { $("pmsg").textContent = r.error; return; }
+    pDirty = false; renderPersonality(r); $("pmsg").textContent = "Saved: Pip uses it from his next answer."; }
+  catch (e) { $("pmsg").textContent = "Couldn't reach Pip"; }
+};
+async function useVersion(id){
+  if (pDirty && !confirm("Switch versions? Your unsaved edits in the box will be lost.")) return;
+  try { const r = await postJSON("/api/personality", {action: "use", id});
+    if (r.error) { alert(r.error); return; }
+    pDirty = false; renderPersonality(r); $("pmsg").textContent = "Switched: Pip uses it from his next answer."; }
+  catch (e) { alert("Couldn't reach Pip"); }
+}
+$("ptry").onsubmit = async ev => {
+  ev.preventDefault();
+  $("panswer").textContent = "Thinking…";
+  try { const r = await postJSON("/api/personality", {action: "preview", text: $("ptext").value, question: $("pq").value});
+    $("panswer").textContent = r.error ? `Couldn't try it: ${r.error}` : (r.answer || "(no answer)"); }
+  catch (e) { $("panswer").textContent = "Couldn't reach Pip"; }
+};
+
+// ------------------------------------------------------------------ bring over from Ziggletron (read-only there)
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+async function loadMigrate(){
+  let m;
+  try { m = await getJSON("/api/migrate"); } catch (e) { m = {error: "Couldn't reach Pip"}; }
+  renderMigrate(m);
+}
+function renderMigrate(m, report){
+  const box = $("migrate");
+  if (!m || m.error) { box.innerHTML = `<div class="empty">${esc((m && m.error) || "Couldn't check.")}</div>`; return; }
+  if (!m.available) { box.innerHTML = `<div class="empty">Ziggletron's data wasn't found on this Pi, so there's nothing to bring over.</div>`; return; }
+  const c = m.memories || {};
+  box.innerHTML = `<div class="sub">Pip can copy two things from Ziggletron: his <b>memories</b> and his <b>personality</b>. Ziggletron's files are only read, never changed.</div>
+    <div class="counts">
+      <div class="card"><div class="big">${esc(c.new ?? 0)}</div><div class="sub">new memories to bring over</div></div>
+      <div class="card"><div class="big">${esc(c.duplicate ?? 0)}</div><div class="sub">already in Pip's memory</div></div>
+      <div class="card"><div class="big">${esc(c.refused ?? 0)}</div><div class="sub">left out (look like passwords or codes)</div></div>
+      <div class="card"><div class="big">${m.personality ? "Yes" : "No"}</div><div class="sub">personality found</div></div>
+    </div>
+    <div class="sub">Of ${esc(plural(c.total ?? 0, "memory", "memories"))} in Ziggletron. <b>Memories</b> go to the <a href="/">memory inbox</a>, waiting for you to approve each one; nothing is used until you do.
+      <b>The personality</b> replaces Pip's current one; his current text stays in the version list above, so "Use this one" undoes it.</div>
+    ${m.done_at ? `<div class="sub" style="margin-top:6px">Last imported ${esc(new Date(m.done_at * 1000).toLocaleString())}. Importing again skips what's already here.</div>` : ""}
+    <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="primary" id="mimport">Import from Ziggletron</button><span class="sub" id="mmsg"></span></div>
+    ${report ? reportHTML(report) : ""}`;
+  $("mimport").onclick = doImport;
+}
+function reportHTML(r){
+  const mm = r.memories || {};
+  return `<div class="card" style="margin-top:12px"><div class="name">Imported</div>
+    <div>${esc(plural(mm.imported ?? 0, "memory", "memories"))} added to the memory inbox · ${esc(mm.duplicate ?? 0)} already here · ${esc(mm.refused ?? 0)} left out</div>
+    <div>Personality: ${r.personality === "imported" ? "imported and now in use (undo: use the previous version above)" : "skipped"}</div>
+    ${r.error ? `<div style="color:var(--bad)">${esc(r.error)}</div>` : ""}</div>`;
+}
+async function doImport(){
+  if (!confirm("Bring over Ziggletron's memories (to the memory inbox, for you to approve) and his personality (it replaces Pip's current one, which stays in the version list)?")) return;
+  $("mimport").disabled = true; $("mmsg").textContent = "Importing…";
+  let r;
+  try { r = await postJSON("/api/migrate", {action: "import"}); } catch (e) { r = {error: "Couldn't reach Pip"}; }
+  let m; try { m = await getJSON("/api/migrate"); } catch (e) { m = null; }
+  if (m && !m.error) renderMigrate(m, r);
+  else $("migrate").innerHTML = reportHTML(r);
+  pDirty = false; loadPersonality();
+}
+
+load().then(s => { if (s && s.applying && s.applying.length) showApplying(s); });
+loadPersonality(); loadMigrate();
+</script>
+</body>
+</html>
