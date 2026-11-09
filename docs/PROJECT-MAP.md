@@ -2,7 +2,7 @@
 
 Where everything is, what it's for, and whether you may change it. **Keep this file up to date**: any change that adds, moves or removes a folder or important file must update this map in the same commit.
 
-Last reviewed: 2026-11-04 (phase M0; docs condensed into three living files + archive).
+Last reviewed: 2026-11-08 (phase M1a; step 7 installed, step 8 next).
 
 ## In this repository (`~/pip`, GitHub: private repo `pip`)
 
@@ -12,8 +12,9 @@ Last reviewed: 2026-11-04 (phase M0; docs condensed into three living files + ar
 | `CLAUDE.md` | Read-first rules for Claude Code (loaded automatically) | Yes, carefully: keep it short; detail goes in `CONTRIBUTING.md` |
 | `CONTRIBUTING.md` | How to make a change, for people and AI agents | Yes |
 | `docs/PROJECT-MAP.md` | This file | Yes, whenever the layout changes |
+| `docs/HOW-PIP-WORKS.md` | **How Pip works, for someone reading the code**: the programs, a request's path through them, the face state machine. Start here before reading code | Yes: keep in step with the code |
 | `docs/PIP-SPEC.md` | **What Pip does**, in plain language, plus M0 findings. The living spec | Yes: keep it short and current |
-| `docs/ARCHITECTURE.md` | **How Pip is built**: the five programs, messages, modules, data, security, tech choices, build plan. Plain language + diagrams (D-71) | Yes: keep in step with the code |
+| `docs/ARCHITECTURE.md` | **How Pip is built**: the programs (four today: ears, core, thinker, web; pip-builder comes in M1b), messages, modules, data, security, tech choices, build plan. Plain language + diagrams (D-71) | Yes: keep in step with the code |
 | `docs/DECISIONS.md` | Every owner decision (`D-nn`); overrides everything | Add new ones at the end; never silently change one |
 | `docs/REQUIREMENTS.md` | Lookup tables: `PIP-NEW` requirements, Ziggletron `FEAT` dispositions, `AC` acceptance criteria | Yes, with IDs |
 | `docs/archive/` | **Frozen detailed reference**: `ziggletron-discovery/` (what Ziggletron did; for parity) and `pip-v2-proposals-2026-11/` (the full behaviour rules for every requirement, linked from REQUIREMENTS' Detail column). Decisions override it (REQUIREMENTS §0) | **No**, except fixing broken links |
@@ -27,27 +28,33 @@ Last reviewed: 2026-11-04 (phase M0; docs condensed into three living files + ar
 | `m0/sandbox_test.py`, `load_test.py` | Self-change sandbox test (systemd user sandbox) and Pi load test | Yes |
 | `m0/patches/` | Patches applied to third-party tools we run (e.g. openWakeWord low-memory fix) | Yes; document why in the patch commit |
 | `m0/pyproject.toml`, `uv.lock` | M0 Python environment (uv; only releases ≥2 weeks old) | Yes, via `uv` |
-| `tools/check_secrets.py`, `install_hooks.sh` | Commit check blocking secrets and phone numbers | Yes, but never weaken it |
-| `pip_assistant/` | **The Pip application** (M1a). `common/` (messages, settings, bus client, `modules.py` finds and checks modules, `secrets.py` reads secrets and gives each module only its own section, `weather.py` the forecast and what the face wears, `vitals.py` the Pi's health for the monitor), `core/` (hub, decision trace, watchdog, conversation, speech-to-text incl. offline Whisper, `schedule.py` timers/alarms/reminders, ringing and calendar heads-ups, `commands.py` Pip's own fixed-phrasing commands (offline only, plus instant stop/snooze while ringing, D-94), `actions.py` checks and carries out Claude's actions (timers, alarms, reminders, memory, and hands modules' actions to them; stop/snooze and learn_voice are done in `conversation.py`), `voicecheck.py` drops sounds without a voice, `memory.py` what Pip remembers and the inbox, `people.py` people and voice recognition, `peoplecmds.py` people and voices without Claude (offline; also does the work for Claude's learn_voice action), `net.py` the online check behind the dashboard's offline label (D-95), `transcript.py` the room conversation Claude sees (RAM only), `joining.py` when Pip joins in, `mic.py` the Listening switches (dashboard + claps), `prefs.py` dashboard preferences (chime on/off, which microphone hears claps), `when.py` understanding times, `modules.py` plugs modules in: their context, actions, summaries, dashboard requests, background jobs), `ears/` (incl. `clap.py`, the two-clap detector, which listens on its own USB microphone), `thinker/`, `web/` (dashboard; `static/tv.html` the face on the monitor and its boxes, Ziggletron's face and layout brought over; `static/pip.css` and `pip.js` are shared with module pages), `defaults.toml` (every setting, explained) | Yes: follow ARCHITECTURE.md; tests in `tests/` |
+| `tools/check_secrets.py`, `check_map.py`, `install_hooks.sh` | The pre-commit check (installed by `install_hooks.sh`): `check_secrets.py` blocks secrets and phone numbers; `check_map.py` fails if a top-level file or folder isn't in this map | Yes, but never weaken them |
+| `pip_assistant/` | **The Pip application** (M1a), four programs plus shared code (rows below). `defaults.toml`: every setting, explained | Yes: follow ARCHITECTURE.md; tests in `tests/` |
+| `pip_assistant/common/` | Shared by all programs: `messages.py` (the messages), `client.py` (connecting to pip-core, heartbeats), `program.py` (shared start-up and clean stop), `paths.py` (where data lives: `~/pip-data`, the socket folder), `settings.py` (defaults + your settings, checked), `modules.py` (finds and checks modules), `secrets.py` (reads secrets; each module gets only its own section), `weather.py` (the forecast and what the face wears), `vitals.py` (the Pi's health for the monitor) | Yes |
+| `pip_assistant/core/` | **pip-core**, the conductor: `main.py` (builds and connects everything), `bus.py` (message hub), `trace.py` (decision trace), `health.py` (watchdog), `conversation.py` (what Pip does with what he hears), `states.py` (Pip's states and the words for each: the face state machine), `stt.py` (speech-to-text, incl. offline Whisper), `schedule.py` (timers, alarms, reminders, ringing, calendar heads-ups), `commands.py` (Pip's own fixed phrasings: offline only, plus instant stop/snooze while ringing, D-94), `actions.py` (checks and carries out Claude's actions; hands modules' actions to them), `voicecheck.py` (drops sounds without a voice), `memory.py` (memories and the inbox), `people.py` (people and voice recognition), `peoplecmds.py` (people and voices without Claude), `net.py` (online check, D-95), `transcript.py` (the room conversation Claude sees, RAM only), `joining.py` (when Pip joins in), `mic.py` (the Listening switches), `prefs.py` (dashboard preferences), `when.py` (understanding times), `modules.py` (plugs modules in) | Yes |
+| `pip_assistant/ears/` | **pip-ears**: `main.py` (the program), `audio.py` (microphone in, speaker out, through PipeWire), `segmenter.py` (cuts each thing said out of the sound), `wake.py` (wake words), `voice.py` (Pip's voice; engines are swappable, only Piper today), `clap.py` (the two-clap detector on its own USB microphone) | Yes |
+| `pip_assistant/thinker/` | **pip-thinker**: `main.py` (turns what was said into an answer), `claude.py` (Claude through the Claude Code CLI) | Yes |
+| `pip_assistant/web/` | **pip-web**, the dashboard: `main.py` (pages and live streams), `static/index.html` (the dashboard), `static/tv.html` (the face on the monitor and its boxes, from Ziggletron's), `static/pip.css` and `pip.js` (shared with module pages) | Yes |
 | `pip_assistant/modules/` | **Plug-in features** (ARCHITECTURE §7, D-96), one folder each with `module.toml`, `module.py`, `static/` (its dashboard page) and its tests: `google/` (accounts per person, sign-in; `static/account.html` each account's settings page: calendars, heads-ups, to-do lists; `testing.py` is a pretend Google for tests), `calendar/` (`store.py` events on the Pi, `sync.py` two-way Google Calendar), `todos/` (`store.py`, `sync.py` Google Tasks), `screen/` (what's on the monitor: `screen.py` boxes, screens, fixes and undo; `layout.py` the 12×8 grid, both ported from Ziggletron; `static/index.html` the Screen page), `_template/` (copy this to add a feature) | Yes: copy `_template/`; each module's tests run with the rest |
 | `models/` | Public-safe models shipped with Pip: wake words trained on synthetic voices only, plus openWakeWord's feature models (see `models/README.md`) | Only add models with no household data |
-| `tests/` | Automated tests for the application (`uv run pytest`) | Yes: add tests with every change |
+| `tests/` | Automated tests for the application (`uv run pytest`; on the Pi run it memory-capped, see CONTRIBUTING §4). `conftest.py` shared setup; `modhelp.py` plugs the real modules into a test | Yes: add tests with every change |
 | `deploy/` | systemd service files (`deploy/systemd/`) and `install.sh`, which installs/updates and restarts Pip's services; `tv/` and `install-tv.sh`: the monitor's kiosk (`pip-tv`, a system service, installed once with sudo) | Yes |
 | `pyproject.toml`, `uv.lock` | The application's Python project and pinned packages (uv; releases ≥ 2 weeks old) | Via `uv` |
-| *(future)* `docs/architecture/` | Architecture overview, diagrams, component pages, design decisions | Created in the architecture phase |
 
 ## Outside the repository (never commit these)
 
 | Path | What it is | Notes |
 |---|---|---|
 | `~/pip-data/settings.toml` | Your Pip settings (override `pip_assistant/defaults.toml`) | Edit freely; unknown or wrong settings are reported at start-up |
-| `~/pip-data/pip.db` | Pip's database: decision trace, timers/alarms/reminders, calendar, memories (with inbox), people and their voiceprints, the Listening switches | Private. Voiceprints never leave the Pi |
+| `~/pip-data/pip.db` | Pip's database: decision trace (`trace`), timers/alarms/reminders (`alerts`), memories with inbox (`memories`), people and voiceprints (`people`, `voices`), the Listening switches and preferences (`settings`), and each module's own tables: calendar (`calendar_events`, `calendar_calendars`, `calendar_prefs`), to-dos (`todos_lists`, `todos_items`), Google accounts (`google_accounts`), the screen (`screen_state`) | Private. Voiceprints never leave the Pi |
 | `~/pip-data/models/speaker/` | Voice recognition model (TitaNet small; downloaded by `deploy/install.sh`) | Large; not in git |
+| `~/pip-data/models/voices/` | Pip's Piper voice | Large; not in git |
+| `~/pip-data/run/` | pip-core's connection socket (`core.sock`; see `common/paths.py`) | Made at start-up |
 | `~/pip-data/secrets.toml` | API keys, plus a section per module (`[google]`: the Google client and each person's sign-in key) (mode 600) | **Never read into logs, prompts, commits or the dashboard** |
-| `~/pip-data/m0/recordings/` | The owner's consented test recordings | Private. Deleted after 30 days. Never commit or upload except to the STT provider under test |
+| `~/pip-data/m0/recordings/` | The owner's consented test recordings | Private. Kept on the Pi and usable for training (D-72). Never commit or upload except to the STT provider under test |
 | `~/pip-data/m0/results/*.json` | One result file per M0 test | The dashboard reads these |
 | `~/pip-data/m0/status.json` | Dashboard to-do list, progress, findings, test list | Update after each M0 step |
-| `~/pip-data/m0/questions.json` | Questions for the owner and their answers | Read answers; record decisions in `17-OPEN-QUESTIONS.md` |
+| `~/pip-data/m0/questions.json` | Questions for the owner and their answers | Read answers; record decisions in `docs/DECISIONS.md` |
 | `~/pip-data/m0/tasks/*.json` | Progress of long-running jobs (shown under "Running now") | Long jobs should write one |
 | `~/pip-data/m0/models/`, `wake-train/`, `tts/`, `llm/` | Downloaded models, training data and outputs | Large; not in git |
 | `~/pip-dashboard/` | The M0 dashboard (Python stdlib server + pages), Tailscale only (`http://100.118.171.118:8780`) | Runs as `pip-dashboard.service` (systemd user unit) |

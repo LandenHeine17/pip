@@ -95,7 +95,7 @@ def test_a_ten_minute_timer_is_not_a_timer_timer(tmp_path):
 # ---------------------------------------------------------------- D-107: approving your own memory by voice
 def test_the_person_a_memory_is_about_can_approve_it(tmp_path):
     people = People(tmp_path / "pip.db", embedder=FakeEmbedder())
-    landen, caleb = people.add_person("Landen", "admin"), people.add_person("Caleb")
+    landen, sam = people.add_person("Landen", "admin"), people.add_person("Sam")
     mem = Memory(tmp_path / "pip.db")
 
     class Cmds:
@@ -110,21 +110,21 @@ def test_the_person_a_memory_is_about_can_approve_it(tmp_path):
             return datetime.now()
     sure = lambda p: Match(p["id"], p["name"], "sure", 0.9)
     ctx = lambda sp: {"memory": mem, "people": people, "speaker": sp}
-    raw = ('ACTION {"do": "remember", "text": "Caleb is allergic to peanuts", "category": "personal", '
-           '"about": ["Caleb"], "sensitive": true}')
+    raw = ('ACTION {"do": "remember", "text": "Sam is allergic to peanuts", "category": "personal", '
+           '"about": ["Sam"], "sensitive": true}')
     said, _ = actions.apply(Cmds, raw, ctx(sure(landen)))
     assert "memory inbox" in said
     [row] = mem.items("pending")
     # Someone else saying it again: it's waiting, not "already known"
     assert actions.apply(Cmds, raw, ctx(sure(landen)))[0] == "That's waiting in the memory inbox."
-    # Claude sees it only when it's Caleb speaking, and only Caleb may approve it
-    assert "allergic" in mem.for_claude(caleb["id"], "sure") and "allergic" not in mem.for_claude(landen["id"], "sure")
+    # Claude sees it only when it's Sam speaking, and only Sam may approve it
+    assert "allergic" in mem.for_claude(sam["id"], "sure") and "allergic" not in mem.for_claude(landen["id"], "sure")
     ref = mem.short(row["id"])
     approve = f'ACTION {{"do": "approve_memory", "id": "{ref}"}}'
     assert actions.apply(Cmds, approve, ctx(sure(landen))) == (actions.FAILED, 0)
-    assert actions.apply(Cmds, approve, ctx(Match(caleb["id"], "Caleb", "probably", 0.6))) == (actions.FAILED, 0)
-    assert actions.apply(Cmds, approve, ctx(sure(caleb)))[0] == "Saved: Caleb is allergic to peanuts."
-    assert mem.items("pending") == [] and mem.items("active")[0]["text"] == "Caleb is allergic to peanuts"
+    assert actions.apply(Cmds, approve, ctx(Match(sam["id"], "Sam", "probably", 0.6))) == (actions.FAILED, 0)
+    assert actions.apply(Cmds, approve, ctx(sure(sam)))[0] == "Saved: Sam is allergic to peanuts."
+    assert mem.items("pending") == [] and mem.items("active")[0]["text"] == "Sam is allergic to peanuts"
 
 
 # ---------------------------------------------------------------- D-91: claps on their own microphone
@@ -197,9 +197,9 @@ async def test_ears_hears_claps_only_on_the_clap_microphone(monkeypatch):
 
 
 def test_what_the_owner_saw_one_memory_not_two(tmp_path):
-    """Test 8: Landen's wording "Landen says Caleb is…" (no 'about'), then Caleb saying it himself."""
+    """Test 8: Landen's wording "Landen says Sam is…" (no 'about'), then Sam saying it himself."""
     people = People(tmp_path / "pip.db", embedder=FakeEmbedder())
-    landen, caleb = people.add_person("Landen", "admin"), people.add_person("Caleb")
+    landen, sam = people.add_person("Landen", "admin"), people.add_person("Sam")
     mem = Memory(tmp_path / "pip.db")
 
     class Cmds:
@@ -208,20 +208,20 @@ def test_what_the_owner_saw_one_memory_not_two(tmp_path):
         now = staticmethod(__import__("datetime").datetime.now)
     sure = lambda p: Match(p["id"], p["name"], "sure", 0.9)
     ctx = lambda sp: {"memory": mem, "people": people, "speaker": sp}
-    actions.apply(Cmds, 'ACTION {"do": "remember", "text": "Landen says Caleb is allergic to peanuts", '
+    actions.apply(Cmds, 'ACTION {"do": "remember", "text": "Landen says Sam is allergic to peanuts", '
                         '"category": "household", "sensitive": true}', ctx(sure(landen)))
     assert len(mem.items("pending")) == 1
-    assert "allergic" in mem.for_claude(caleb["id"], "sure", speaker_name="Caleb")      # Caleb is asked about it
-    said, _ = actions.apply(Cmds, 'ACTION {"do": "remember", "text": "Caleb is allergic to peanuts", "category": "personal", '
-                                  '"about": ["Caleb"], "sensitive": true}', ctx(sure(caleb)))
-    assert said == "Saved: Caleb is allergic to peanuts."
-    assert mem.items("pending") == [] and [r["text"] for r in mem.items("active")] == ["Caleb is allergic to peanuts"]
+    assert "allergic" in mem.for_claude(sam["id"], "sure", speaker_name="Sam")      # Sam is asked about it
+    said, _ = actions.apply(Cmds, 'ACTION {"do": "remember", "text": "Sam is allergic to peanuts", "category": "personal", '
+                                  '"about": ["Sam"], "sensitive": true}', ctx(sure(sam)))
+    assert said == "Saved: Sam is allergic to peanuts."
+    assert mem.items("pending") == [] and [r["text"] for r in mem.items("active")] == ["Sam is allergic to peanuts"]
 
 
 def test_your_own_sensitive_fact_is_saved_straight_away(tmp_path):
     """D-88 changed by the owner: about yourself, Pip sure it's you → saved; about someone else → inbox."""
     people = People(tmp_path / "pip.db", embedder=FakeEmbedder())
-    landen, caleb = people.add_person("Landen", "admin"), people.add_person("Caleb")
+    landen, sam = people.add_person("Landen", "admin"), people.add_person("Sam")
     mem = Memory(tmp_path / "pip.db")
 
     class Cmds:
@@ -231,7 +231,7 @@ def test_your_own_sensitive_fact_is_saved_straight_away(tmp_path):
     ctx = lambda sp: {"memory": mem, "people": people, "speaker": sp}
     own = 'ACTION {"do": "remember", "text": "Landen has asthma", "category": "personal", "about": ["Landen"], "sensitive": true}'
     assert actions.apply(Cmds, own, ctx(Match(landen["id"], "Landen", "sure", 0.9)))[0] == "Saved: Landen has asthma."
-    other = 'ACTION {"do": "remember", "text": "Caleb has asthma", "category": "personal", "about": ["Caleb"], "sensitive": true}'
+    other = 'ACTION {"do": "remember", "text": "Sam has asthma", "category": "personal", "about": ["Sam"], "sensitive": true}'
     assert "memory inbox" in actions.apply(Cmds, other, ctx(Match(landen["id"], "Landen", "sure", 0.9)))[0]
     unsure = 'ACTION {"do": "remember", "text": "Landen hates hospitals", "category": "personal", "about": ["Landen"], "sensitive": true}'
     assert "memory inbox" in actions.apply(Cmds, unsure, ctx(Match(landen["id"], "Landen", "probably", 0.6)))[0]

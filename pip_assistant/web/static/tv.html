@@ -219,7 +219,8 @@ const FACES = {
   offline:     { open: .8, slant: .4, smile: -.2, mouth: .7, lookY: .2 },   // no internet: just the basics
   lost:        { open: .5, slant: .9, smile: -.75, mouth: .7, lookY: .5 },
   dozing:      { open: .3, slant: .25, lookY: .35, smile: .15, mouth: .7 },
-  // What exactly he's doing within a state (D-112; the words come from pip-core's DETAILS table):
+  // What exactly he's doing within a state (D-112; the details and their words are in core/states.py).
+  // A detail with no entry here uses its state's face.
   "listening:called":         { h: 1.15, lean: .08, smile: .45, mouth: .85, gape: .08 },          // heard his name: go on
   "listening:hearing":        { h: 1.08, lean: .06, slant: -.12, smile: .15, mouth: .7 },           // working out what you said
   "listening:turn":           { open: .9, smile: .3, mouth: .75, lookY: .1 },                       // patient, nodding
@@ -243,11 +244,14 @@ const COLORS = {
   interrupted: "#ffa64d", ringing: "#ff6b5e", mic_off: "#6b7280", offline: "#8c96a8", lost: "#ff6b5e",
   dozing: "#7fb2dc", pleased: "#6ea8ff", perked: "#5fe0b0",
 };
+// The big word for each state. The smaller words under it come from pip-core (core/states.py), except for
+// the screen's own three states, which have theirs here.
 const WORDS = {
-  loading: "Starting up", idle: "", listening: "Listening", thinking: "Thinking", speaking: "Talking",
-  interrupted: "Interrupted", ringing: "Ringing", mic_off: "Not listening", offline: "Offline: just the basics",
-  lost: "Can't reach Pip", dozing: "",
+  loading: "Starting up", idle: "Idle", listening: "Listening", thinking: "Thinking", speaking: "Talking",
+  interrupted: "Interrupted", ringing: "Ringing", mic_off: "Not listening", offline: "Offline",
+  lost: "Can't reach Pip", dozing: "Dozing",
 };
+const SCREEN_WORDS = { loading: "Connecting to Pip…", lost: "Trying again…", dozing: "Quiet for a while: say my name" };
 
 // --- "Six seven" ------------------------------------------------------------------------------
 // A joke kept from Ziggletron (D-35): when someone says "six seven" to him, he freaks out for a few
@@ -660,7 +664,7 @@ function showState() {
   document.body.classList.toggle("offline", state === "lost");
   document.body.classList.toggle("resting", state === "dozing");
   $("word").textContent = WORDS[state] ?? "";
-  $("detail").textContent = state === "lost" ? "trying again…" : live.state === state ? live.words || "" : "";
+  $("detail").textContent = SCREEN_WORDS[state] ?? (live.state === state ? live.words : "");
 }
 
 function showCaption(who, text, speaker) {

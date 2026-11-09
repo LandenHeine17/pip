@@ -5,11 +5,12 @@
     module.py  this file: Claude's to-do actions, what Claude is told, the dashboard page, the sync loop
 
 Whose list: the person named ("add it to Sam's list"), else the speaker's if Pip is sure who it is
-and they've connected Google, else the household's (the household Google account's main list, or
-Pip's own "Household" list). Sharing follows each person's setting on the Google page, like the calendar.
+and they've connected Google, else the household's (the first list of a connected account, admins'
+first, or Pip's own "Household" list). Sharing follows each person's setting on the Google page, like
+the calendar. core/main.py asks screen_list() for the to-do boxes on the monitor.
 """
 import asyncio
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 from pip_assistant.core import when
 from pip_assistant.core.modules import Action, Call, Invalid, Module
@@ -52,12 +53,15 @@ class Todos(Module):
         return names.get(acc["person_id"], "") if acc else ""
 
     def household(self) -> str:
+        """The household's list: an admin's (else anyone's) connected Google account's first list, or Pip's own."""
         for a in (self.google.household_accounts() if self.google else []):
             if lid := self.sync.default_list(a["id"]):
                 return lid
         return "pip"
 
     def target(self, name: str, call: Call) -> str:
+        """The list a new to-do goes on: that person's (Invalid if they haven't connected Google), else the
+        speaker's, else the household's."""
         person = None
         if name:
             p = self.ctx.people.by_name(name) if self.ctx.people else None
@@ -73,6 +77,7 @@ class Todos(Module):
         return self.household()
 
     def visible(self, t: dict, call: Call, lists: dict, accounts: dict) -> bool:
+        """May Pip mention this to-do to whoever is asking?"""
         acc = accounts.get((lists.get(t["list_id"]) or {}).get("account_id", ""))
         return not acc or acc["sharing"] == "everyone" or acc["person_id"] == call.person_id
 

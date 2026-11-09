@@ -3,21 +3,23 @@
 
 name = "_template"                  # ← must match the folder's name
 kind = "skill"                      # skill / widget / provider / device / plugin
-summary = "Rolls dice and flips coins."
-says_examples = ["Pip, roll a die", "flip a coin"]
+summary = "Rolls dice."
+says_examples = ["Pip, roll a die", "roll a twenty-sided die"]
 offline = true                      # works without the internet
 permissions = []                    # e.g. ["network:example.com"] to reach a website
 needs = []                          # other modules it uses, e.g. ["google"]
 
 [settings.sides]                    # every setting: a default and a plain-language explanation
+                                    # (changed in ~/pip-data/settings.toml under [modules.<name>])
 default = 6
 explain = "How many sides a die has unless you say otherwise."
 
-[claude]                            # told to Claude, so it knows it can use this module's actions
+[claude]                            # added to what Claude is told, so it knows it can use this module's actions
 instructions = """
 Dice: to roll, reply with ONLY: ACTION {"do": "roll", "sides": 6} (sides optional).
 """
 
-# [dashboard]                       # a page on Pip's dashboard (put it in static/), with a button
+# [dashboard]                       # a page on Pip's dashboard (put it in static/), with a button;
+#                                   # it is served at /m/<name>/ and its requests reach module.py's dashboard()
 # page = "index.html"
 # label = "Dice"

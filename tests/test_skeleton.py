@@ -1,4 +1,5 @@
-"""M1a step 1 tests: messages, settings, trace privacy, routing, requests, health."""
+"""M1a step 1 tests: messages, settings, trace privacy, the watchdog, and the hub over real sockets
+(routing, requests, no impersonation, reconnecting, big replies)."""
 import asyncio
 import json
 

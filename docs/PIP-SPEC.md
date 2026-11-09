@@ -4,7 +4,7 @@ The short, living description of Pip 2.0. Read this first.
 
 **How the docs fit together (for building):** this page says *what* Pip does → [REQUIREMENTS.md](REQUIREMENTS.md) lists every requirement, and its **Detail** link opens the exact behaviour rules in the archived proposal ([archive/pip-v2-proposals-2026-11/](archive/pip-v2-proposals-2026-11/README.md)) → [DECISIONS.md](DECISIONS.md) (`D-nn`) **overrides** anything older, and REQUIREMENTS §0 lists the archived passages that have been overridden. What Ziggletron did (for parity) is in [archive/ziggletron-discovery/](archive/ziggletron-discovery/PRODUCT-OVERVIEW.md).
 
-*Last updated 2026-11-08 · Phase: M1a building. Steps 1–6 done, installed and tested by the owner: hearing, answers, timers/alarms, memory, people and voices, listening to the room like Ziggletron, everything in natural language, the calendar / to-dos / Google modules with per-account settings, the two-clap switch on its own mic. Step 7 built: the face on the monitor and changing the screen by voice (waiting for install). Dashboard: `http://100.118.171.118:8790`.*
+*Last updated 2026-11-08 · Phase: M1a building. Steps 1–6 done, installed and tested by the owner: hearing, answers, timers/alarms, memory, people and voices, listening to the room like Ziggletron, everything in natural language, the calendar / to-dos / Google modules with per-account settings, the two-clap switch on its own mic. Step 7 built and installed: the face on the monitor, changing the screen by voice, and seeing what Pip is doing (D-110–D-113); the owner is trying it. Next: step 8. How the code works: [HOW-PIP-WORKS.md](HOW-PIP-WORKS.md). Dashboard: `http://100.118.171.118:8790`.*
 
 ## 1. In one paragraph
 
@@ -69,13 +69,13 @@ flowchart LR
     J -- yes --> C["Claude: join in (SAY) or PASS"]
     J -- no --> N["Just listens"]
 ```
-- **Privacy is the mic switch** (D-90, D-91): a **Listening** switch on the dashboard. **Two claps** do the same (a falling tone, and he stops listening; clap twice again for a rising tone), heard on a **second USB microphone** (Ziggletron's old JLab mic) chosen on the dashboard (Listening & sounds), because the speakerphone's noise filter erases claps. Tuned on your Session F recordings and switched on by you; with "Two claps switch listening" unticked, claps only show on the conversation feed as a trial. The two are separate: if the dashboard switched him off, claps can't turn him on. Clapped off, he ignores the speakerphone completely and only the clap mic listens; switched off on the dashboard, nothing at all. The speakerphone's mute button works too. "Leave me out" was removed. Pip's notice to new people uses your wording (D-61). You tell your roommate yourself (D-67).
+- **Privacy is the mic switch** (D-90, D-91): a **Listening** switch on the dashboard. **Two claps** do the same (a falling tone, and he stops listening; clap twice again for a rising tone), heard on a **second USB microphone** (Ziggletron's old JLab mic) chosen on the dashboard (Listening & sounds), because the speakerphone's noise filter erases claps. Tuned on your Session F recordings and switched on by you; with "Two claps switch listening" unticked, claps only show on the conversation feed as a trial. The two are separate: if the dashboard switched him off, claps can't turn him on. Clapped off, he ignores the speakerphone completely and only the clap mic listens; switched off on the dashboard, nothing at all. The speakerphone's mute button works too. "Leave me out" was removed. Pip's notice to new people will use your wording (D-61; not built yet). You tell your roommate yourself (D-67).
 - Quiet hours 23:00–07:00: no joining in or welcome-backs; alarms still ring (D-66).
 - **Welcome back:** after the room was quiet for 20 minutes, someone he recognises gets "Hey Landen, welcome back." (once an hour).
 
 ### Personality and voice
 - **Personality like Ziggletron's** (D-92): part of the household, warm and a bit cheeky, with opinions; mostly a few words, reacts like a person ("oh nice", "ugh, Mondays"). Short answers (D-79), "he" (D-55–D-59).
-- Voice: Piper "lessac" for now. The voice engine is **swappable** in Settings (PIP-NEW-097, D-73).
+- Voice: Piper "lessac" for now. The voice engine is **swappable** (PIP-NEW-097, D-73): the code allows other engines, but Piper is the only one so far, and choosing it in Settings comes with the settings page (step 8).
 - He says what actually happened ("Timer's on" only once the timer exists), asks one short question when unsure, and says so when he doesn't know.
 
 ### Memory (built in step 5)
@@ -193,52 +193,60 @@ flowchart LR
     P --> S["What Claude is told:<br/>today + tomorrow, counts for the week,<br/>calendar names; looks up the rest<br/>(never private events)"]
 ```
 
-### Pip's state (what the face will show)
-Pip is always in one of seven states, shown on the dashboard and used by the face in step 7 (D-86, D-91). When a question goes to Claude, a **soft thinking tone** plays straight away (instead of "One sec."); it can be set to always, only-if-slow, or off.
+### Pip's state (what the face shows)
+Pip is always in **one of 8 states**, each with its own colour, shown by the face on the monitor and the circle on the dashboard (D-86, D-91, D-108). When a question goes to Claude, a **soft thinking tone** plays straight away (instead of "One sec."); it can be set to always, only-if-slow, or off.
 
 ```mermaid
 stateDiagram-v2
     [*] --> Idle
-    Idle --> Listening: wake word (chime)
-    Listening --> Thinking: you stop talking (thinking tone)
+    Idle --> Listening: wake word or his name (chime)
+    Listening --> Thinking: you've finished (thinking tone)
     Thinking --> Speaking: first words
     Speaking --> Listening: follow-up window (8 s)
     Listening --> Idle: nothing more said
+    Speaking --> Interrupted: someone talks over him
+    Interrupted --> Listening: he listens instead
     Idle --> Ringing: timer or alarm due
-    Ringing --> Idle: "okay" / snooze / Shut off
+    Ringing --> Idle: "stop" / snooze / Shut off
     Idle --> Offline: no internet (only the basics work)
     Idle --> MicOff: two claps or the dashboard switch
     MicOff --> Idle: two claps / switch on
 ```
 
-**What exactly he's doing** (D-112). Within each state he shows a situation, with its own face on the monitor and words under it (also next to the dashboard's circle, and as Conversation bars if you tick the box under Listening & sounds):
+**What exactly he's doing** (D-112, D-113). Within each state he's in a situation, with words under his face (also next to the dashboard's circle, and as Conversation bars if you tick the box under Listening & sounds). The busier ones have their own face too. Nothing is ever blank:
 
-| State | Situations |
+| State (colour) | Situations: the words shown |
 |---|---|
-| Listening | heard my name: go on (counts down) · working out what you said · waiting to see if you're done (counts down) · listening for your reply (counts down) · learning a voice |
-| Thinking | thinking (Claude) · searching the web · looking it up · getting the words out |
-| Idle | quiet · following the conversation · heard my name mentioned: is it for me? · thinking about joining in |
-| Speaking | talking · joining in · saying hi |
+| Idle (grey) | Say my name if you need me · Following the conversation · Heard my name mentioned: is it for me? · Thinking about joining in |
+| Listening (green) | Heard my name: go on (counts down) · Working out what you said · Waiting to see if you're done (counts down) · Listening for your reply (counts down) · Learning a voice |
+| Thinking (purple) | Working on an answer · Searching the web · Looking it up · Getting the words out |
+| Speaking (blue) | Answering · Joining in · Saying hi · Saying what I did · Saying something went wrong · Guiding voice learning |
+| Interrupted (orange) | Someone talked over me |
+| Ringing (red) | Say "stop" or "snooze" |
+| Not listening (dark grey) | Clap twice to turn me back on · Switched off on the dashboard |
+| Offline (slate) | No internet: timers and alarms still work |
+
+The monitor has three of its own: **Starting up** (connecting to Pip), **Can't reach Pip** (trying again), and **Dozing** after 10 quiet minutes. How it all works in the code, and how to change it: [HOW-PIP-WORKS.md §3](HOW-PIP-WORKS.md#3-the-face-state-machine).
 
 Sounds without a human voice in them (a click, a cough, a hiss) are dropped before speech-to-text, so Pip no longer "hears" a phantom "Thank you." (D-85).
 
 ### Screen and dashboard
-- **What Pip hears and does** (D-108): the Conversation box shows everything heard (grey = not for Pip, green = to Pip, "mentioned Pip"), his replies, and small bars for what happened (chimed, waiting for you to finish, stayed quiet, interrupted, mic off/on and for how long, timers ringing, offline). Live only, never saved. The **coloured circle** at the top shows his state: grey idle, green listening, purple thinking, blue speaking, orange interrupted, red ringing, dark mic off. The face on the monitor uses the same colours.
-- **The face on the monitor** (D-110, built 2026-11-08): Ziggletron's face, with Pip's colours (grey idle, green listening, purple thinking, blue speaking, orange interrupted, red ringing, dark mic off), weather clothing (Santa hat in the holidays, umbrella in rain, sunglasses when it's sunny and warm), reactions (six-seven, pleased when thanked) and a mouth that moves with his voice. He dozes after 10 quiet minutes. Next to it: the clock, the weather, timers and alarms with countdowns, and today's and tomorrow's events (never private ones). Captions under the face show what was said to Pip and his reply for a minute (only those). A ringing alarm shows a banner. The screen drifts slightly so nothing burns in. Six seven is only for what people say, at most every 30 seconds.
+- **What Pip hears and does** (D-108): the Conversation box shows everything heard (grey = not for Pip, green = to Pip, "mentioned Pip"), his replies, and small bars for what happened (chimed, waiting for you to finish, stayed quiet, interrupted, mic off/on and for how long, timers ringing, offline). Live only, never saved. The **coloured circle** at the top shows his state: grey idle, green listening, purple thinking, blue speaking, orange interrupted, red ringing, dark grey mic off, slate offline, with what exactly he's doing next to it. The face on the monitor uses the same colours.
+- **The face on the monitor** (D-110, built 2026-11-08): Ziggletron's face, with Pip's state colours and a face and words for each situation (see Pip's state above), weather clothing (Santa hat in the holidays, umbrella in rain, sunglasses when it's sunny and warm), reactions (six-seven, pleased when thanked) and a mouth that moves with his voice. He dozes after 10 quiet minutes. Next to it: the clock, the weather, timers and alarms with countdowns, and today's and tomorrow's events (never private ones). Captions under the face show what was said to Pip and his reply for a minute (only those). A ringing alarm shows a banner. The screen drifts slightly so nothing burns in. Six seven is only for what people say, at most every 30 seconds.
 - **Changing the screen by voice** (D-111, built 2026-11-08): "show the morning screen", "put the weather up", "take the calendar off", "make the clock bigger", "make your face small", "colour the clock blue", "put the shopping list up", "put a note up called Hall of Fame with …", "save this as the study screen", "undo that", "what can go on the screen?". Ready-made screens: **Default** (big face; clock, weather, timers, calendar), **Morning** (clock, weather, calendar, to-do list), **Focus** (big clock and timers), **Night** (dimmed, clock only). Boxes: clock, weather, timers & alarms, calendar, a to-do list (only lists Pip may mention to everyone), Notes, Pi health, and Conversation (what's said to Pip and his replies, plus **room talk in grey**, unless you ask for it without; room talk reaches the monitor only while that box is up, and is never saved). Pip moves other boxes out of the way himself; if something still won't fit he offers a fix and waits for "okay". "Undo that" goes back one change (up to 10). Pip's dashboard has a **Screen** page with a preview, the screens to pick from, and Undo.
-- The dashboard works from your phone over Tailscale. Admin actions need a login with 2-factor; the conversation feed doesn't (D-10, D-35, D-53).
+- The dashboard works from your phone over Tailscale. Logins come in step 8: admin actions will need a login with 2-factor; the conversation feed won't (D-10, D-35, D-53). Until then only devices on your Tailscale network can open it.
 
-### Explaining himself
+### Explaining himself (later, M2)
 - Answers "how does your memory work?" from an up-to-date feature list, the docs and his own code (read-only), and says when the docs and code disagree (PIP-NEW-064–067).
 - Answers "why didn't you answer me?" from a 48-hour record of what he decided and why, never by guessing (PIP-NEW-066).
 
-### Changing himself
+### Changing himself (later, M1b)
 - You can ask by voice. He clarifies, writes a plan, codes it in a **sandbox**, tests it, and shows you the plan and then the actual change on the dashboard. **You approve twice**, and it goes live with automatic rollback if anything breaks (D-09, PIP-NEW-069–076).
 - He can suggest improvements from recurring problems, but never acts on them himself (M4).
 
 ### Reliability
-- Alarms and "stop" can never be blocked by slower work. A watchdog restarts stuck parts. Updates can be rolled back.
-- Brain: your **Claude Pro subscription** via Claude Code, plus a small local model when Claude is unavailable (if the M0 speed test says it's usable). When usage runs low, he stops joining in and pauses self-changes first (D-05, D-17, D-65, D-69).
+- Alarms and "stop" can never be blocked by slower work. A watchdog restarts stuck parts. (Rolling back updates comes with self-changes, M1b.)
+- Brain: your **Claude Pro subscription** via Claude Code, plus, later (M2), a small local model when Claude is unavailable (D-75); for now his own offline commands do the basics. Later, when usage runs low, he'll stop joining in and pause self-changes first (D-05, D-17, D-65, D-69).
 - Heavy jobs run under a memory cap (lesson from the M0 freeze).
 
 ### Devices (later, M3)
@@ -259,7 +267,7 @@ flowchart LR
     G --> F["Pip's code checks it<br/>and creates the timer"]
     L --> F
     F --> I["Piper voice: 'Laundry timer's on, 10 minutes.'"]
-    F --> J["Dashboard (and later the face) update"]
+    F --> J["Dashboard and the face update"]
 ```
 
 ### What Claude sees
@@ -272,7 +280,7 @@ Each time Pip asks Claude something (an answer, a mention, or whether to join in
 
 ## 5. Building it
 
-- **Milestones:** M0 measure (now) → architecture design (you review) → **M1a** groundwork + Ziggletron's features → **M1b** safe self-changes (switch over from Ziggletron) → **M2** smarter conversation and self-knowledge → **M3** devices, lists, calendar, music → **M4** self-improvement suggestions (D-08, D-29).
+- **Milestones:** M0 measure (done) → architecture design (approved, D-78) → **M1a** groundwork + Ziggletron's features (now) → **M1b** safe self-changes (switch over from Ziggletron) → **M2** smarter conversation and self-knowledge → **M3** devices, lists, calendar, music → **M4** self-improvement suggestions (D-08, D-29).
 - **Made to be understood and extended** (D-70, D-71): plain-language docs and diagrams for every part; module templates so a new feature (a command, a widget, a device type) is fill-in-the-blanks; swappable speech, voice and AI services; a fresh clone of the repo works without anyone's personal data (PIP-NEW-091–097).
 - **May be open-sourced later:** nothing personal ever goes to GitHub, enforced by a commit check.
 - **How it's built:** [ARCHITECTURE.md](ARCHITECTURE.md) (approved, D-78).

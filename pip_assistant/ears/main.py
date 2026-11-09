@@ -1,14 +1,14 @@
 """pip-ears: listens all the time, hears the wake words, captures what's said, speaks, and stops
 instantly when talked over.
 
-Events it sends:   heard.wake {word, score} · heard.started {reason} · heard.utterance {reason, seconds, had_speech} (+ private audio)
+Events it sends:   heard.wake {word, score} · heard.started {reason} · heard.utterance {reason, seconds, had_speech, word} (+ private audio)
                    speech.started · speech.interrupted · speech.finished {interrupted}
                    speech.level {level 0–1} (~10 a second while he talks, for the face's mouth; not traced)
                    ears.status {state}  (listening / speaking / muted_or_quiet / mic_off)
                    mic.clapped   (two claps: pip-core decides what that switches, D-91) · mic.clapped_trial (heard, but
                    the clap switch isn't ticked yet: only shown on the dashboard)
 Commands it takes: ears.say (private.text) · ears.chime · ears.tone {name: "thinking" / "mic_on" / "mic_off"} · ears.stop
-                   ears.listen {seconds} (follow-up window) · ears.mic {mode: on / claps_only / off}
+                   ears.listen {seconds} (follow-up window; 0 ends it) · ears.mic {mode: on / claps_only / off}
                    ears.clap_mic {device, on} (which microphone listens for claps, "" = none; on = claps switch at all) · ears.mics (request: list them)
                    ears.ring {tone, max_seconds} · ears.ring_stop   (alarms: loop a ringtone until told to stop)
 
@@ -68,6 +68,7 @@ class Ears:
         self.silent_since = None
         self.state = "listening"
         self.ring_task: asyncio.Task | None = None
+        self._level_n = 0          # counts mouth-level readings, to send every other one
 
     # ---------------------------------------------------------------- the clap microphone (D-91)
     async def listen_for_claps(self, device: str) -> None:
@@ -193,7 +194,7 @@ class Ears:
 
     def _mouth(self, level: float) -> None:
         """How loud Pip's voice is right now, ~10 times a second, for the face's mouth (never traced)."""
-        self._level_n = getattr(self, "_level_n", 0) + 1
+        self._level_n += 1
         if self._level_n % 2 == 0:
             asyncio.ensure_future(self.bus.emit("speech.level", {"level": round(level, 2)}))
 

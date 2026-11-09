@@ -1,4 +1,4 @@
-"""M1a step 5 tests: memory (with the approval inbox), people, voices, opting out, and privacy."""
+"""M1a step 5 tests: memory (with the approval inbox), people, voices (incl. guests and guided learning), and privacy."""
 import asyncio
 import base64
 import json

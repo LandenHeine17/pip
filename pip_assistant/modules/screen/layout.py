@@ -110,7 +110,7 @@ def _boxes(face: dict, sections: list[dict]) -> list[dict]:
     return [{**section, **box} for section, box in zip(sections, placed, strict=True)]
 
 
-def describe_place(box: dict) -> str:
+def _where(box: dict) -> str:
     return f"x{box['x']} y{box['y']} w{box['w']} h{box['h']}"
 
 
@@ -230,10 +230,6 @@ def _name(section: dict) -> str:
     if section.get("list"):
         return f"{section['list']} list"
     return LABELS.get(section["type"], section["type"])
-
-
-def _where(box: dict) -> str:
-    return describe_place(box)
 
 
 def _number(value, what: str) -> int:

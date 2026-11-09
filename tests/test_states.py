@@ -3,7 +3,7 @@ Conversation's state bars (only when switched on)."""
 import asyncio
 import time
 
-from pip_assistant.core.conversation import DETAILS
+from pip_assistant.core.states import DETAILS
 from pip_assistant.core.prefs import Prefs
 from test_step6 import finish, room, setup
 
@@ -24,7 +24,7 @@ def watch(conv):
 async def test_each_situation_has_its_detail(tmp_path):
     bus, conv, ears, got, asks, tasks = await setup(tmp_path)
     now = time.monotonic()
-    assert conv.situation() == ("idle", "", 0.0)
+    assert conv.situation() == ("idle", "quiet", 0.0)
     conv.room_until = now + 3
     assert conv.situation()[:2] == ("idle", "following")
     conv.answer_id, conv.answer_kind = "a1", "mentioned"
@@ -53,6 +53,11 @@ async def test_each_situation_has_its_detail(tmp_path):
     assert conv.situation()[:2] == ("speaking", "joining_in")
     conv.say_reason = "welcome"
     assert conv.situation()[:2] == ("speaking", "welcome")
+    conv.say_reason = "not caught"
+    assert conv.situation()[:2] == ("speaking", "trouble")
+    conv.speaking = False
+    conv.cut_until = time.monotonic() + 1
+    assert conv.situation()[:2] == ("interrupted", "cut_in")
     await finish(bus, tasks)
 
 
@@ -67,7 +72,7 @@ async def test_a_request_goes_through_its_situations_and_only_words_about_pip_tr
     for t, d, private in seen:
         assert "time is it" not in str(d) and not private          # never what anyone said
         if t == "pip.state":
-            assert d["words"] == DETAILS.get(d["detail"], "")
+            assert d["words"] and d["words"] == DETAILS[d["detail"]]   # never blank
     assert not [d for t, d, _ in seen if t == "conversation.event" and d["kind"] == "state"]   # bars are off
     await finish(bus, tasks)
 
@@ -84,4 +89,19 @@ async def test_room_talk_is_followed_and_the_bars_show_when_switched_on(tmp_path
     assert conv.detail == "following"
     bars = [d for t, d, _ in seen if t == "conversation.event" and d["kind"] == "state"]
     assert bars and bars[-1]["detail"] == "following" and bars[-1]["words"] == "Following the conversation"
+    await finish(bus, tasks)
+
+
+async def test_listening_switched_off_says_how_to_turn_it_back_on_and_a_new_dashboard_is_told(tmp_path):
+    from types import SimpleNamespace
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path)
+    conv.mic = SimpleNamespace(listening=False, dashboard=True)       # switched off by two claps
+    assert conv.situation()[:2] == ("mic_off", "claps_off")
+    conv.mic.dashboard = False                                        # switched off on the dashboard
+    assert conv.situation()[:2] == ("mic_off", "switched_off")
+    conv.mic = None
+    seen = watch(conv)
+    await conv.on_program_connected("web")                           # the dashboard restarted: it's told
+    assert [d for t, d, _ in seen if t == "pip.state"] == [{"state": conv.state, "detail": conv.detail,
+                                                           "words": DETAILS[conv.detail], "ends_in": None}]
     await finish(bus, tasks)

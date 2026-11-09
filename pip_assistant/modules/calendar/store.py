@@ -1,7 +1,8 @@
 """The calendar's events, kept on the Pi (the copy Pip uses even offline).
 
-Calendars: "pip" is Pip's own (on the Pi only). Each connected Google account adds its calendars
-("g:<account>:<google calendar id>"), which can be ticked on or off on the dashboard.
+Calendars: "pip" is Pip's own (on the Pi only); more of Pip's own can be made ("pip:<id>"). Each
+connected Google account adds its calendars ("g:<account>:<google calendar id>"). A calendar can be
+ticked off (hidden, not synced) on the calendar page, or ignored (forgotten) on the Google page.
 
 An event belongs to one calendar. Changes Pip makes to a Google calendar's events are marked
 `pending` (add / change / delete) until the sync has sent them to Google (sync.py).
@@ -10,13 +11,14 @@ Heads-ups ("Heads up: dentist in 30 minutes") are alerts in Pip's schedule linke
 they're re-made whenever an event changes. Private events never get one (D-99).
 """
 import sqlite3
+import time
 from datetime import date, datetime, timedelta
 
 from pip_assistant.common.messages import new_id
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS calendar_calendars (
-    id          TEXT PRIMARY KEY,          -- 'pip', or 'g:<account>:<google calendar id>'
+    id          TEXT PRIMARY KEY,          -- 'pip' or 'pip:<id>' (Pip's own), or 'g:<account>:<google calendar id>'
     account_id  TEXT NOT NULL DEFAULT '',  -- the google module's account ('' for Pip's own)
     google_id   TEXT NOT NULL DEFAULT '',
     name        TEXT NOT NULL,
@@ -60,13 +62,9 @@ CREATE INDEX IF NOT EXISTS calendar_events_start ON calendar_events (start);
 CREATE INDEX IF NOT EXISTS calendar_events_google ON calendar_events (calendar_id, google_id);
 """
 
-FIELDS = ("calendar_id", "title", "start", "end", "all_day", "repeat", "location", "notes", "private", "reminder",
-          "google_id", "etag", "pending")
-
 
 class CalendarStore:
     def __init__(self, db: sqlite3.Connection, schedule=None, clock=None):
-        import time
         self.db, self.schedule, self.clock = db, schedule, clock or time.time
         self.db.executescript(SCHEMA)
         have = {r[1] for r in self.db.execute("PRAGMA table_info(calendar_calendars)")}

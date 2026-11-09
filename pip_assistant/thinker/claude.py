@@ -86,6 +86,8 @@ def classify(head: str, held: bool = False, final: bool = False):
 
 
 class ClaudeCLI:
+    """Runs `claude -p` with Pip's system prompt, no tools but web search, and no project or user settings."""
+
     def __init__(self, model: str = "", web_search: bool = True, timeout: float = 45.0, effort: str = ""):
         self.exe = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
         self.model, self.web_search, self.timeout, self.effort = model, web_search, timeout, effort

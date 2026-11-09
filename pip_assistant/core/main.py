@@ -1,4 +1,6 @@
-"""Start pip-core: the message hub, decision trace and watchdog."""
+"""Start pip-core. `build` creates every part (message hub, decision trace, watchdog, timers and
+alarms, people, memory, modules, the conversation) and connects them; the small functions below
+answer the dashboard's requests (`core.*`, sent by pip-web). `main` then runs until stopped."""
 import asyncio
 import logging
 import signal
@@ -8,7 +10,7 @@ from ..common import paths, settings
 from ..common.messages import Message
 from .bus import Bus
 from .conversation import Conversation
-from .memory import Memory, Refused
+from .memory import CATEGORIES, Memory, Refused
 from .mic import MicSwitch
 from .prefs import Prefs
 from .modules import Registry
@@ -101,10 +103,10 @@ def tv_snapshot(schedule: Schedule, modules: Registry) -> dict:
 
 
 def memory_snapshot(memory: Memory, people: People) -> dict:
+    """The Memory Center's list, with people's names filled in (sent privately)."""
     names = {p["id"]: p["name"] for p in people.all()}
     rows = [{**r, "about_names": [names.get(i, "?") for i in r["about"]], "owner_name": names.get(r["owner"], "")}
             for r in memory.items()]
-    from .memory import CATEGORIES
     return {"memories": rows, "categories": CATEGORIES}
 
 

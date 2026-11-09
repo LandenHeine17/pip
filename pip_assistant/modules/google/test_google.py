@@ -56,7 +56,7 @@ async def test_two_people_connect_their_own_accounts(setup):
     g._tokens.clear()
     from pip_assistant.modules.google.module import NeedsReconnect
     with pytest.raises(NeedsReconnect):
-        await g.request(a["accounts"][0]["id"] if False else g.accounts()[0]["id"], "GET",
+        await g.request(g.accounts()[0]["id"], "GET",
                         "https://www.googleapis.com/calendar/v3/users/me/calendarList")
     assert g.accounts()[0]["status"] == "reconnect"
     # Disconnect revokes at Google and forgets the token

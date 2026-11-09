@@ -1,6 +1,6 @@
 """~/pip-data/secrets.toml: the only place secrets live (rule 1).
 
-Programs read single keys with `get("groq_api_key")`. A module gets **its own section only**
+Pip's own keys (like groq_api_key) sit at the top of the file. A module gets **its own section only**
 (`ScopedSecrets("google")` reads and writes `[google]` and `[google.*]`), so one module can never
 see another's keys. Writing replaces only that module's section and keeps everything else in the
 file exactly as it was, comments included. The file stays readable by its owner only (0600).
@@ -20,10 +20,6 @@ def path() -> Path:
 def load() -> dict:
     p = path()
     return tomllib.loads(p.read_text()) if p.exists() else {}
-
-
-def get(name: str, default: str = "") -> str:
-    return load().get(name, default)
 
 
 def _value(v) -> str:

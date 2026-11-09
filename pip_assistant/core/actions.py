@@ -14,7 +14,7 @@ nothing is changed and Pip says so.
             (kind event → the calendar module)
             optional: repeat ('', daily, weekdays, weekends, weekly, weekly:0-6), label, heads_up_minutes
     change  id ('#a1b2c3' from the summary Claude sees), and at | shift_seconds | seconds (timers)
-    cancel  id                 (an id belonging to a module's item goes to that module: "change:event")
+    cancel  id                 (an id belonging to a module's item goes to that module: "cancel:event")
     other   any verb a plugged-in module declares ("add_task" → modules/todos), see core/modules.py
     look    kind (+ the module's fields): a look-up, not a change. Pip fetches it and asks Claude again
             with the result, once ("what's on next Friday?" → the calendar for that day). Handled in
@@ -25,7 +25,7 @@ Ringing alarms and voices (handled in core/conversation.py, which has the alarm 
     snooze         minutes (optional; default from settings)
     learn_voice    name: start learning that household member's voice (or remember a visitor for the visit)
 
-Memory (step 5):
+Memory:
     remember       text (third person, with names), category, about [names], sensitive, private
     forget         id ('#m1a2b3')
     update_memory  id, text
@@ -52,6 +52,7 @@ HERE = ("stop_alarm", "snooze", "learn_voice")   # done by Conversation, not app
 
 
 def check_here(items: list[dict]) -> list[tuple]:
+    """Check the actions in HERE (Conversation carries them out). Raises Invalid if one doesn't check out."""
     plan = []
     for a in items:
         do = a.get("do")
@@ -168,6 +169,7 @@ def _module(verb: str, a: dict, ctx: dict, now: datetime) -> tuple:
 
 
 def _check_memory(a: dict, ctx: dict) -> tuple:
+    """Check a memory action. For a new memory, also works out whether it must wait in the inbox, and why."""
     mem, people, speaker = ctx.get("memory"), ctx.get("people"), ctx.get("speaker")
     if mem is None:
         raise Invalid("no memory")
@@ -232,6 +234,7 @@ def apply(cmds, raw: str, ctx: dict | None = None) -> tuple[str, int]:
 
 
 async def apply_async(cmds, raw: str, ctx: dict | None = None) -> tuple[str, int]:
+    """Like apply, but waits for actions that take time (a module talking to Google)."""
     try:
         plan = check(cmds, parse(raw), ctx)
     except (Invalid, ValueError, TypeError, KeyError):
@@ -248,6 +251,7 @@ async def apply_async(cmds, raw: str, ctx: dict | None = None) -> tuple[str, int
 
 
 def _carry_out(cmds, plan: list[tuple], ctx: dict | None) -> list:
+    """Do each checked step; returns what to say for each (a module's may still need awaiting)."""
     said = []
     mem = (ctx or {}).get("memory")
     for step in plan:

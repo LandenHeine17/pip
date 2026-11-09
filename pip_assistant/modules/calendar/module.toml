@@ -16,7 +16,7 @@ explain = "How often Pip checks Google for calendar changes (his own changes are
 
 [settings.household_calendar]
 default = ""
-explain = "Where events go when Pip doesn't know whose they are: the email of a connected Google account (its main calendar), or empty for the first admin's (or Pip's own calendar if nobody is connected)."
+explain = "Where events go when Pip doesn't know whose they are: the email of a connected Google account (its main calendar), or empty for the first admin's (or Pip's own calendar if nobody is connected). A calendar picked as the household's on an account's Google settings page comes first."
 
 [settings.days_back]
 default = 30

@@ -1,8 +1,8 @@
 """To-dos kept on the Pi (the copy Pip uses even offline).
 
 Lists: "pip" is the household's own list on the Pi. Each connected Google account adds its Google
-Tasks lists ("g:<account>:<list id>"). Pip's changes to Google-backed to-dos wait as `pending`
-until the sync has sent them.
+Tasks lists ("g:<account>:<list id>"); a list can be ignored on the account's settings page. Pip's
+changes to Google-backed to-dos wait as `pending` until the sync has sent them.
 """
 import sqlite3
 import time
@@ -44,8 +44,8 @@ class TodoStore:
             self.db.execute("ALTER TABLE todos_lists ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0")
         self.db.execute("INSERT OR IGNORE INTO todos_lists (id, name, is_default) VALUES ('pip', 'Household', 1)")
         self.db.commit()
-        self.on_change = []
-        self.version = 0
+        self.on_change = []          # called after any change Pip makes (wakes the sync)
+        self.version = 0             # goes up whenever anything changes (so the dashboard knows to refresh)
 
     def _changed(self) -> None:
         self.version += 1
