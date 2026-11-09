@@ -368,7 +368,7 @@ async def test_a_visitor_can_be_added_to_the_household(people):
 
 async def test_dashboard_people_and_memory_actions(tmp_path):
     from pip_assistant.common.messages import Message
-    from pip_assistant.core.main import memory_action, memory_snapshot, people_action
+    from pip_assistant.core.dashapi import memory_action, memory_snapshot, people_action
     clock = Clock()
     bus, people, memory, conv, ears, got, tasks = await setup_bus(tmp_path, clock, FakeSTT(""))
     r = await people_action(people, memory, conv, Message("request", "core.people_action", data={"action": "add", "role": "admin"},

@@ -34,3 +34,6 @@ __pycache__/
 # Editors / OS
 .DS_Store
 *.swp
+
+# Claude Code agents' temporary worktrees
+.claude/worktrees/

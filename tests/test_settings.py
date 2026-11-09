@@ -5,7 +5,7 @@ import tomllib
 import pytest
 
 from pip_assistant.common import settings, voices
-from pip_assistant.core import settingsapi
+from pip_assistant.core import settings_schema, settingsapi
 from pip_assistant.core.settingsapi import SettingsAPI, programs_for
 
 
@@ -36,28 +36,28 @@ def api(tmp_path, conv=None, calls=None, **kw):
 
 # ---------------------------------------------------------------- SCHEMA
 def test_schema_matches_defaults_toml():
-    defaults = settings.defaults()
-    assert set(defaults) == set(settings.SCHEMA), "every default needs a SCHEMA entry, and the reverse"
-    for key, e in settings.SCHEMA.items():
+    defaults = settings_schema.defaults()
+    assert set(defaults) == set(settings_schema.SCHEMA), "every default needs a SCHEMA entry, and the reverse"
+    for key, e in settings_schema.SCHEMA.items():
         assert e["explain"].strip() and e["label"].strip(), key
-        assert e["group"] in settings.GROUPS, key
-        assert e["programs"] and set(e["programs"]) <= set(settings.ALL), key
-        assert isinstance(defaults[key], settings.TYPES[e["type"]]), key
-        assert not settings.validate({key: defaults[key]}), f"{key}'s default must pass its own check"
+        assert e["group"] in settings_schema.GROUPS, key
+        assert e["programs"] and set(e["programs"]) <= set(settings_schema.ALL), key
+        assert isinstance(defaults[key], settings_schema.TYPES[e["type"]]), key
+        assert not settings_schema.validate({key: defaults[key]}), f"{key}'s default must pass its own check"
 
 
 def test_fixed_choices_match_the_code():
     from pip_assistant.core.joining import INTERVALS
     from pip_assistant.ears.audio import RINGTONES
-    assert settings.RINGTONES == list(RINGTONES)
-    assert settings.MOODS == list(INTERVALS)
-    assert "en_US-lessac-medium" in settings.choices("ears.voice")
-    assert {"pippletron", "hey_pip"} <= set(settings.choices("ears.wake_words"))
+    assert settings_schema.RINGTONES == list(RINGTONES)
+    assert settings_schema.MOODS == list(INTERVALS)
+    assert "en_US-lessac-medium" in settings_schema.choices("ears.voice")
+    assert {"pippletron", "hey_pip"} <= set(settings_schema.choices("ears.wake_words"))
 
 
 # ---------------------------------------------------------------- validate
 def test_validate_rejects_wrong_values_in_plain_words():
-    errors = settings.validate({
+    errors = settings_schema.validate({
         "ears.barge_in": "yes", "web.port": 80.5, "social.mood": "grumpy", "ears.speech_rate": 3,
         "trace.keep_hours": 0, "social.quiet_hours": "late", "alarms.ringtones": {"timer": "siren"},
         "ears.wake_thresholds": {"pippletron": 1.5}, "ears.wake_words": [], "thinker.location": "  ",
@@ -73,30 +73,30 @@ def test_validate_rejects_wrong_values_in_plain_words():
     assert errors["ears.wake_words"] == "Needs at least one."
     assert errors["thinker.location"] == "Can't be empty."
     assert errors["no.such"] == errors["alarms.ringtones.extra"] == "There's no such setting."
-    assert settings.validate({"alarms.ringtones": {"party": "classic"}})["alarms.ringtones"].startswith("Unknown name")
+    assert settings_schema.validate({"alarms.ringtones": {"party": "classic"}})["alarms.ringtones"].startswith("Unknown name")
 
 
 def test_validate_accepts_good_values_and_tidies_them():
     changes = {"ears.speech_rate": 1, "social.quiet_hours": "", "ears.voice": "en_GB-alan-medium",
                "ears.wake_thresholds": {"hey_pip": 0.6}, "stt.spare_models": ["a", "a", ""]}
-    assert settings.validate(changes) == {}
-    c = settings.clean(changes)
+    assert settings_schema.validate(changes) == {}
+    c = settings_schema.clean(changes)
     assert c["ears.speech_rate"] == 1.0 and isinstance(c["ears.speech_rate"], float)
     assert c["ears.wake_thresholds"] == {"pippletron": 0.8, "hey_pip": 0.6}
     assert c["stt.spare_models"] == ["a"]
-    assert settings.validate({"ears.voice": "not a voice"})      # any Piper-style name is fine, nonsense isn't
+    assert settings_schema.validate({"ears.voice": "not a voice"})      # any Piper-style name is fine, nonsense isn't
 
 
 def test_settings_that_go_together():
-    assert "voices.probably" in settings.validate({"voices.probably": 0.5})          # sure is 0.45
-    assert settings.validate({"voices.probably": 0.5, "voices.sure": 0.6}) == {}
-    assert "mic.clap_gap_max_ms" in settings.validate({"mic.clap_gap_max_ms": 100 + 300, "mic.clap_gap_min_ms": 500})
+    assert "voices.probably" in settings_schema.validate({"voices.probably": 0.5})          # sure is 0.45
+    assert settings_schema.validate({"voices.probably": 0.5, "voices.sure": 0.6}) == {}
+    assert "mic.clap_gap_max_ms" in settings_schema.validate({"mic.clap_gap_max_ms": 100 + 300, "mic.clap_gap_min_ms": 500})
 
 
 def test_module_settings_validate():
-    assert settings.validate({"modules.calendar.sync_minutes": 5, "modules.todos.show_done_days": 3,
+    assert settings_schema.validate({"modules.calendar.sync_minutes": 5, "modules.todos.show_done_days": 3,
                               "modules.calendar.enabled": False}) == {}
-    errors = settings.validate({"modules.calendar.sync_minutes": "often", "modules.calendar.colour": 1,
+    errors = settings_schema.validate({"modules.calendar.sync_minutes": "often", "modules.calendar.colour": 1,
                                 "modules.nope.enabled": True, "modules.calendar.days_ahead": -1})
     assert errors["modules.calendar.sync_minutes"] == "Should be a number."
     assert errors["modules.calendar.colour"] == "There's no such module setting."
@@ -108,7 +108,7 @@ def test_module_settings_validate():
 def test_save_writes_only_non_defaults_and_keeps_modules(tmp_path):
     f = tmp_path / "settings.toml"
     f.write_text('[web]\nhost = "100.1.2.3"  # mine\n\n[modules.calendar]\nsync_minutes = 5.0\n')
-    settings.save({"ears.speech_rate": 1.2, "web.port": 8790, "social.welcome_back_minutes": 0,
+    settings_schema.save({"ears.speech_rate": 1.2, "web.port": 8790, "social.welcome_back_minutes": 0,
                    "thinker.location": 'Omaha, "NE" \\ USA', "modules.todos.show_done_days": 3}, f)
     saved = tomllib.loads(f.read_text())
     assert saved["ears"] == {"speech_rate": 1.2}
@@ -121,7 +121,7 @@ def test_save_writes_only_non_defaults_and_keeps_modules(tmp_path):
     assert cfg["ears"]["speech_rate"] == 1.2 and cfg["ears"]["voice"] == "en_US-lessac-medium"
     assert cfg["modules"]["calendar"]["sync_minutes"] == 5.0
     # back to the default: the line (and the empty section) go away
-    settings.save({"ears.speech_rate": 1.0, "modules.todos.show_done_days": 7}, f)
+    settings_schema.save({"ears.speech_rate": 1.0, "modules.todos.show_done_days": 7}, f)
     saved = tomllib.loads(f.read_text())
     assert "ears" not in saved and "todos" not in saved["modules"]
 
@@ -132,8 +132,8 @@ def test_save_round_trips_every_kind_of_value(tmp_path):
                "alarms.ringtones": {"timer": "gentle", "alarm": "classic", "reminder": "chimes", "event": "chimes"},
                "stt.spare_models": ["x-1", "y"], "ears.barge_in": False, "stt.word_list": "Pip,\tline\nnext",
                "mic.clap_max_ms": 300}
-    settings.save(changes, f)
-    flat = settings.flat(settings.load(f))
+    settings_schema.save(changes, f)
+    flat = settings_schema.flat(settings.load(f))
     for k, v in changes.items():
         assert flat[k] == v, k
 
@@ -141,8 +141,8 @@ def test_save_round_trips_every_kind_of_value(tmp_path):
 def test_save_with_one_bad_value_saves_nothing(tmp_path):
     f = tmp_path / "settings.toml"
     f.write_text("[web]\nport = 9000\n")
-    with pytest.raises(settings.SettingsError):
-        settings.save({"ears.speech_rate": 1.1, "social.mood": "grumpy"}, f)
+    with pytest.raises(settings_schema.SettingsError):
+        settings_schema.save({"ears.speech_rate": 1.1, "social.mood": "grumpy"}, f)
     assert f.read_text() == "[web]\nport = 9000\n"
     assert not (tmp_path / "settings.toml.bak").exists()
 
@@ -228,11 +228,11 @@ async def test_get_describes_every_setting(tmp_path):
     a, _ = api(tmp_path)
     await a.handle({"action": "set", "changes": {"ears.speech_rate": 1.3, "modules.calendar.days_back": 10}})
     r = await a.handle({"action": "get"})
-    assert [g["name"] for g in r["groups"]] == settings.GROUPS
+    assert [g["name"] for g in r["groups"]] == settings_schema.GROUPS
     rows = {s["key"]: s for g in r["groups"] for s in g["settings"]}
-    assert set(rows) == set(settings.SCHEMA)
+    assert set(rows) == set(settings_schema.SCHEMA)
     assert rows["ears.speech_rate"]["value"] == 1.3 and rows["ears.speech_rate"]["default"] == 1.0
-    assert rows["ears.speech_rate"]["min"] == 0.5 and rows["social.mood"]["choices"] == settings.MOODS
+    assert rows["ears.speech_rate"]["min"] == 0.5 and rows["social.mood"]["choices"] == settings_schema.MOODS
     assert rows["stt.model"]["advanced"] and not rows["social.mood"]["advanced"]
     mods = {s["key"]: s for m in r["modules"] for s in m["settings"]}
     assert mods["modules.calendar.days_back"]["value"] == 10 and mods["modules.calendar.days_back"]["default"] == 30

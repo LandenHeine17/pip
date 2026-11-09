@@ -10,7 +10,7 @@
     try_voice       say a sample sentence in the voice Pip has now (a newly chosen one plays after it applies)
 
 Settings are read once when a program starts, so a change applies by restarting the programs that read
-it (settings.SCHEMA "programs"). "Quiet" means Pip is idle: not talking, not holding a turn, nothing
+it (settings_schema.SCHEMA "programs"). "Quiet" means Pip is idle: not talking, not holding a turn, nothing
 ringing. He waits at most 2 minutes for that, then restarts anyway. pip-core restarts itself last.
 Restarting only happens when systemd runs Pip (like core/health.py); otherwise the page says a restart is needed.
 """
@@ -24,6 +24,7 @@ import time
 from ..common import settings, voices
 from . import states
 from ..common.settings import SettingsError
+from . import settings_schema
 
 log = logging.getLogger("pip-core")
 
@@ -78,20 +79,20 @@ class SettingsAPI:
         return {"error": f"Unknown action '{action}'."}
 
     def _defaults(self) -> dict:
-        return {**settings.defaults(), **{k: m["default"] for k, m in settings.module_settings().items()}}
+        return {**settings_schema.defaults(), **{k: m["default"] for k, m in settings_schema.module_settings().items()}}
 
     def _current(self) -> tuple[dict, dict]:
         """(settings as saved now, flat; [modules.*] as saved). Read fresh: a save shows straight away."""
         cfg = settings.load(self.path)
-        return settings.flat(cfg), cfg.get("modules", {}) or {}
+        return settings_schema.flat(cfg), cfg.get("modules", {}) or {}
 
     async def get(self) -> dict:
         values, user_mods = self._current()
-        defaults = settings.defaults()
-        groups = {g: [] for g in settings.GROUPS}
-        for key, e in settings.SCHEMA.items():
+        defaults = settings_schema.defaults()
+        groups = {g: [] for g in settings_schema.GROUPS}
+        for key, e in settings_schema.SCHEMA.items():
             groups[e["group"]].append(self._describe(key, e, values[key], defaults[key]))
-        mods, names = settings.module_settings(), {}
+        mods, names = settings_schema.module_settings(), {}
         for info in self.module_infos:
             names[info.name] = info
         out_mods = []
@@ -119,7 +120,7 @@ class SettingsAPI:
     def _describe(key: str, e: dict, value, default) -> dict:
         d = {"key": key, "label": e["label"], "explain": e["explain"], "type": e["type"],
              "advanced": bool(e.get("advanced")), "value": value, "default": default}
-        c = settings.choices(key, e)
+        c = settings_schema.choices(key, e)
         if c is not None:
             d["choices"] = c
             if key == "ears.voice":
@@ -133,10 +134,10 @@ class SettingsAPI:
     async def set(self, changes) -> dict:
         if not isinstance(changes, dict) or not changes:
             return {"error": "Nothing to save."}
-        errors = settings.validate(changes, self.path)
+        errors = settings_schema.validate(changes, self.path)
         if errors:
             return {"errors": errors}
-        cleaned = settings.clean(changes, self.path)
+        cleaned = settings_schema.clean(changes, self.path)
         before, before_mods = self._current()
         changed = [k for k, v in cleaned.items() if self._value(k, before, before_mods) != v]
         voice = cleaned.get("ears.voice")
@@ -147,7 +148,7 @@ class SettingsAPI:
                 return {"errors": {"ears.voice": str(e) if isinstance(e, voices.VoiceError)
                                    else f"Couldn't save the voice ({type(e).__name__})."}}
         try:
-            settings.save(cleaned, self.path)
+            settings_schema.save(cleaned, self.path)
         except SettingsError as e:
             return {"error": str(e)}
         programs = programs_for(changed)
@@ -162,7 +163,7 @@ class SettingsAPI:
             _, name, setting = key.split(".", 2)
             if setting in (mods.get(name) or {}):
                 return mods[name][setting]
-            return True if setting == "enabled" else settings.module_settings()[key]["default"]
+            return True if setting == "enabled" else settings_schema.module_settings()[key]["default"]
         return flat.get(key)
 
     # ---------------------------------------------------------------- restarting when quiet
@@ -199,7 +200,7 @@ class SettingsAPI:
 
     # ---------------------------------------------------------------- try buttons (owner-pressed)
     async def try_ringtone(self, tone: str) -> dict:
-        if tone not in settings.RINGTONES:
+        if tone not in settings_schema.RINGTONES:
             return {"error": f"Unknown ringtone '{tone}'."}
         if getattr(self.conv, "ringing", False):
             return {"error": "Something's ringing right now: try again when it stops."}
@@ -217,7 +218,7 @@ class SettingsAPI:
             await self.conv.command("ears", "ears.ring_stop", {})
 
     async def try_voice(self, text=None) -> dict:
-        text = str(text or "").strip()[:200] or SAMPLE.format(name=settings.flat(settings.load(self.path))
+        text = str(text or "").strip()[:200] or SAMPLE.format(name=settings_schema.flat(settings.load(self.path))
                                                               .get("pip.name", "Pip"))
         await self.conv.command("ears", "ears.say", {"reason": "settings"}, {"text": text})
         return {"ok": True, "note": "That's the voice Pip uses now. A newly chosen voice plays once it's applied."}
@@ -232,6 +233,6 @@ def programs_for(keys) -> list[str]:
             out.add("core")
             if key.endswith(".enabled"):
                 out.add("thinker")
-        elif key in settings.SCHEMA:
-            out.update(settings.SCHEMA[key]["programs"])
+        elif key in settings_schema.SCHEMA:
+            out.update(settings_schema.SCHEMA[key]["programs"])
     return [p for p in ORDER if p in out]
