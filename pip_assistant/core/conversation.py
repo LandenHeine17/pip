@@ -208,6 +208,8 @@ class Conversation:
         self.pending_task = None    # answers it once the wait is over
         self.pending_how = ("direct", False, {}, False)   # (reason, offline, data, chime) for the held turn
         self.sentences = 0
+        self.spoken: list[str] = []  # sentences of the current answer actually sent to be spoken
+        self.trimmed = False         # the current answer was cut short after max_sentences
         self.long_ok = False
         self.stt = stt
         self.answer_id = None
@@ -381,6 +383,8 @@ class Conversation:
         if not self.mic.listening:  # anything half-done from what was heard is dropped
             self.cancel_answer("listening switched off")
             self.joining.cancel_wait()
+            if self.enrolling:
+                self.cancel_enrolment()
             self.pending, self.expect_until, self.listen_until = "", 0.0, 0.0
             if self.pending_task:
                 self.pending_task.cancel()
@@ -496,9 +500,10 @@ class Conversation:
         self.refresh_state()
 
     async def on_speech_finished(self, msg: Message) -> None:
+        was_talking = self.speaking and msg.data.get("spoken", True)   # not just a chime or a tone
         self.speaking, self.say_pending_until = False, 0.0
         self.speech_done.set()
-        if self.answer_id is None and not msg.data.get("interrupted"):
+        if was_talking and self.answer_id is None and not msg.data.get("interrupted"):
             await self._maybe_follow_up()
         self.refresh_state()
 
@@ -513,11 +518,13 @@ class Conversation:
             await self.note("joined")
         self.sentences += 1
         if self.sentences > self.max_sentences and not self.long_ok:
+            self.trimmed = True
             if self.sentences == self.max_sentences + 1:
                 await self.command("thinker", "thinker.cancel", {"answer_id": self.answer_id})
                 await self.bus.publish(Message("event", "answer.trimmed", data={"after": self.max_sentences}))
             return  # roommates don't give speeches (D-79)
         self.speech_done.clear()
+        self.spoken.append(text)
         self.filler_said = self.filler_said or "first sentence"  # he's answering: no longer "thinking"
         self.voice_kind = self.answer_kind   # what he's saying is an answer, or him joining in
         await self.say(text, "answer")
@@ -585,11 +592,15 @@ class Conversation:
             await self.bus.publish(Message("event", "stt.failed", data={"error": type(e).__name__}))
             if reason == "wake":
                 await self.say(SAYINGS["stt_failed"], "error")
+            await self._finish_pending()
             return
         stt_s = round(time.perf_counter() - t0, 2)
-        if ident:
-            self.speaker, self.last_pcm = await ident, pcm
+        speaker = await ident if ident else self.speaker
         self.transcribing = False
+        if not self.listening:   # switched off while this was being transcribed (D-91): drop it
+            self.refresh_state()
+            return
+        self.speaker, self.last_pcm = speaker, pcm
         asyncio.get_running_loop().call_soon(self.refresh_state)  # by then he's answering (thinking) or done
         await self.bus.publish(Message("event", "stt.done", data={"seconds": stt_s, "chars": len(text),
                                                                    "reason": reason, "offline": offline,
@@ -598,16 +609,19 @@ class Conversation:
             reply = await self.commands.while_ringing(text, reason)
             if reply is not None:
                 await self.say(reply, "alarm answered")
+                await self._finish_pending()
                 return
         if not text.strip(" .?!,"):
             if reason == "wake":
                 await self.say(SAYINGS["not_caught"], "not caught")
+            await self._finish_pending()   # it was only a breath or an "um": a held turn is answered now
             return
         text = self.fix_names(text)
         self.hear(text)
         await self.feed(text, "direct", self.speaker, stt_s=stt_s, offline=offline, reason=reason)
         if reason == "wake" and NOT_PIP.search(text) and not PIP_NAMES.search(text):
             await self.bus.publish(Message("event", "wake.rejected", data={"why": "transcript names Ziggletron"}))
+            await self._finish_pending()
             return
         await self.addressed(text, reason, stt_s=stt_s, offline=offline, heard_s=msg.data.get("seconds") or 0)
 
@@ -696,12 +710,13 @@ class Conversation:
         await self.show("pip", reply, total_s=round(time.perf_counter() - t0, 3), local=True)
         return True
 
-    async def people_command(self, text: str, offline: bool = False) -> bool:
+    async def people_command(self, text: str, offline: bool = False, asker: tuple | None = None) -> bool:
         """Offline (or if Claude fails): 'I'm Sam', 'learn my voice', 'who am I?', 'remember…' (core/peoplecmds.py)."""
         if not self.people_cmds:
             return False
+        speaker, pcm = asker or (self.speaker, self.last_pcm)
         try:
-            reply = await self.people_cmds.handle(text, self.speaker, self.last_pcm, offline)
+            reply = await self.people_cmds.handle(text, speaker, pcm, offline)
         except Exception:
             log.exception("people command failed")
             reply = SAYINGS["command_failed"]
@@ -714,7 +729,7 @@ class Conversation:
         if isinstance(reply, StartLearning):
             self.said(reply.say)
             await self.show("pip", reply.say, local=True)
-            await self.start_enrolment(reply.person_id, first=self.last_pcm, greeting=reply.say)
+            await self.start_enrolment(reply.person_id, first=pcm, greeting=reply.say)
             return True
         self.said(reply)
         self.speech_done.clear()
@@ -865,6 +880,9 @@ class Conversation:
             if chime:
                 await self.chime()
             await self.respond(text, reason, offline=offline, **data)
+        # No longer "waiting to see if you're done", even if nothing was said back ("never mind" offline).
+        # (Not before respond(): it would flash idle before thinking.)
+        self.refresh_state()
 
     async def on_room(self, msg: Message) -> None:
         """Room speech: everything is transcribed and kept in the room transcript, like Ziggletron (D-92).
@@ -910,11 +928,12 @@ class Conversation:
                 self.joining.heard()
             return
         self.joining.cancel_wait()
-        self.speaker, self.last_pcm = speaker, pcm
         if how == "mentioned":
             if self.answer_id is None and not self.speaking and not offline:
+                self.speaker, self.last_pcm = speaker, pcm
                 await self.answer(text, "mentioned", kind="mentioned")
             return
+        self.speaker, self.last_pcm = speaker, pcm
         if not expected:
             self.answer_id = None
             await self.command("thinker", "thinker.cancel")
@@ -938,14 +957,18 @@ class Conversation:
         return True
 
     # ---------------------------------------------------------------- answering
-    async def answer(self, text: str, reason: str, kind: str = "direct", mood: str = "", looked_up: str = "") -> None:
+    async def answer(self, text: str, reason: str, kind: str = "direct", mood: str = "", looked_up: str = "",
+                     asker: tuple | None = None) -> None:
         """Ask Claude. kind: "direct" (said to Pip), "mentioned" (his name came up: he may PASS) or "join"
         (nobody spoke to him: he may join in with "SAY: …" or PASS). Claude sees the room transcript.
-        `looked_up`: what Claude asked Pip to look up first (ACTION look), for the second round."""
+        `looked_up`: what Claude asked Pip to look up first (ACTION look), for the second round.
+        `asker`: (speaker, audio) of who asked. It's kept with this answer, so if someone else talks while
+        Claude works, the actions and look-ups are still done as the person who asked."""
+        asker = asker or (self.speaker, self.last_pcm)
         aid = new_id()
         self.answer_id, self.answer_kind, self.join_spoke = aid, kind, False
         self.join_count = self.transcript.count
-        self.sentences = 0
+        self.sentences, self.spoken, self.trimmed = 0, [], False   # this answer's sentences actually said
         self.long_ok = bool(WANTS_DETAIL.search(text or ""))
         self.filler_said = None
         self.looking_up = bool(looked_up)
@@ -953,7 +976,7 @@ class Conversation:
         filler = asyncio.create_task(self._thinking_tone(aid)) if kind == "direct" and not looked_up else None
         t0 = time.perf_counter()
         try:
-            sp = self.speaker if kind != "join" else None
+            sp = asker[0] if kind != "join" else None
             schedule = self.schedule.summary() if self.schedule else ""
             if self.modules is not None:   # each module's part: the calendar, to-dos, … (only what this speaker may hear)
                 from .modules import Call
@@ -981,7 +1004,7 @@ class Conversation:
             await self.bus.publish(Message("event", "answer.failed", data={"error": reply.data["error"], "kind": kind}))
             if kind == "direct":
                 # Claude didn't answer: Pip's own commands may still manage it ("timer ten minutes")
-                if text and (await self.people_command(text) or await self.local_command(text)):
+                if text and (await self.people_command(text, asker=asker) or await self.local_command(text)):
                     return
                 await self.say(SAYINGS["thinker_failed"], "error")
             return
@@ -989,8 +1012,10 @@ class Conversation:
             if kind == "join":
                 return  # joining in never acts on anything (nothing overheard is acted on)
             return await self.claude_action(reply.private["action"], t0,
-                                            again=None if looked_up else (text, reason, kind, mood))
+                                            again=None if looked_up else (text, reason, kind, mood), asker=asker)
         answer = reply.private.get("text", "")
+        if self.trimmed:   # cut short (D-79): the transcript and the dashboard get only what he really said
+            answer = " ".join(self.spoken)
         if not answer:  # PASS: he decided it wasn't for him / nothing to add
             await self.bus.publish(Message("event", "answer.passed", data={"kind": kind}))
             if kind in ("direct", "mentioned"):
@@ -1029,25 +1054,27 @@ class Conversation:
                 asyncio.ensure_future(self.bus.publish(Message("event", "answer.dropped", data={"why": why})))
             self.refresh_state()
 
-    async def claude_action(self, raw: str, t0: float, again: tuple | None = None) -> None:
+    async def claude_action(self, raw: str, t0: float, again: tuple | None = None, asker: tuple | None = None) -> None:
         """Claude turned a request into actions; Pip checks them, does them and confirms (D-84, D-94).
         Ringing alarms and voice learning are handled here (they need the alarm and the audio);
         the rest by core/actions.py. Anything invalid means nothing at all is done.
         A look-up ("look", D-102) isn't a change: Pip fetches it and asks Claude again, once (`again`)."""
         from . import actions
         from .peoplecmds import StartLearning
+        asker = asker or (self.speaker, self.last_pcm)
+        speaker, pcm = asker
         said, done, learning = [], 0, None
         try:
             items = actions.parse(raw)
             looks = [a for a in items if a.get("do") == "look"]
             if looks:
-                return await self.look_up(looks, again, t0)
+                return await self.look_up(looks, again, t0, asker)
 
             here = [a for a in items if a.get("do") in actions.HERE]
             rest = [a for a in items if a.get("do") not in actions.HERE]
             plan = actions.check_here(here)
             if rest:
-                actions.check(self.commands, rest, self._action_ctx())   # validate before doing anything
+                actions.check(self.commands, rest, self._action_ctx(speaker))   # validate before doing anything
             for step in plan:
                 if step[0] == "stop_alarm":
                     n = await self.schedule.acknowledge("claude")
@@ -1058,7 +1085,7 @@ class Conversation:
                     said.append(f"Snoozed for {when.say_duration((step[1] or self.schedule.snooze_min) * 60)}." if n
                                 else "Nothing's ringing.")
                 elif step[0] == "learn_voice":
-                    r = await self.people_cmds.introduced(step[1], True, self.speaker, self.last_pcm) \
+                    r = await self.people_cmds.introduced(step[1], True, speaker, pcm) \
                         if self.people_cmds else "I can't recognise voices yet."
                     if isinstance(r, StartLearning):
                         learning = r
@@ -1066,7 +1093,7 @@ class Conversation:
                         said.append(r)
                 done += 1
             if rest:
-                s, n = await actions.apply_async(self.commands, json.dumps(rest), self._action_ctx())
+                s, n = await actions.apply_async(self.commands, json.dumps(rest), self._action_ctx(speaker))
                 said.append(s)
                 done += n
         except Exception as e:
@@ -1083,14 +1110,15 @@ class Conversation:
         if learning:
             self.said(learning.say)
             await self.show("pip", learning.say, local=True)
-            await self.start_enrolment(learning.person_id, first=self.last_pcm, greeting=learning.say)
+            await self.start_enrolment(learning.person_id, first=pcm, greeting=learning.say)
 
-    async def look_up(self, looks: list[dict], again: tuple | None, t0: float) -> None:
+    async def look_up(self, looks: list[dict], again: tuple | None, t0: float, asker: tuple | None = None) -> None:
         """Claude asked to see more first (the calendar for next Friday, …): fetch it and ask again."""
         from . import actions
         found = []
+        asker = asker or (self.speaker, self.last_pcm)
         if again is not None:
-            ctx = self._action_ctx()
+            ctx = self._action_ctx(asker[0])
             for a in looks[:3]:
                 try:
                     _, act, plan, call = actions._module(f"look:{a.get('kind')}", a, ctx, ctx["call"].now)
@@ -1107,12 +1135,14 @@ class Conversation:
             await self.show("pip", text, total_s=round(time.perf_counter() - t0, 2), local=True)
             return
         text, reason, kind, mood = again
-        await self.answer(text, reason, kind=kind, mood=mood, looked_up=" ".join(found))
+        await self.answer(text, reason, kind=kind, mood=mood, looked_up=" ".join(found), asker=asker)
 
-    def _action_ctx(self) -> dict:
+    def _action_ctx(self, speaker=None) -> dict:
+        """What core/actions.py needs to check and do actions, as `speaker` (who asked; default: who's talking)."""
         from .modules import Call
-        return {"memory": self.memory, "people": self.people, "speaker": self.speaker, "modules": self.modules,
-                "call": Call(speaker=self.speaker, now=self.commands.now()) if self.commands else Call(speaker=self.speaker)}
+        sp = speaker if speaker is not None else self.speaker
+        return {"memory": self.memory, "people": self.people, "speaker": sp, "modules": self.modules,
+                "call": Call(speaker=sp, now=self.commands.now()) if self.commands else Call(speaker=sp)}
 
     async def _maybe_follow_up(self) -> None:
         last = self.transcript.last()

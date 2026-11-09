@@ -195,3 +195,54 @@ def test_every_situation_has_words_and_its_faces_match_and_it_reaches_the_tv():
     assert drain(q) == [("state", {"state": "listening", "detail": "turn", "words": DETAILS["turn"], "ends_in": 2.5})]
     client = TestClient(build_app(FakeBus({"core.tv": {}}), state, {}))
     assert client.get("/api/tv").json()["state_detail"]["detail"] == "turn"
+
+
+def test_a_module_request_that_isnt_a_json_object_is_refused_plainly():
+    client = TestClient(build_app(FakeBus(), State(), {}))
+    name = client.get("/api/modules").json()[0]["page"].split("/")[2]
+    for body in (b"{not json", b"[1, 2]", b"\xff\xfe"):
+        r = client.post(f"/api/m/{name}", content=body, headers={"content-type": "application/json"})
+        assert r.status_code == 400
+    assert client.post(f"/api/m/{name}", json={"action": "status"}).status_code == 200
+
+
+async def test_the_weather_backs_off_after_a_failure_and_never_passes_old_news_as_now(monkeypatch):
+    from pip_assistant.common import weather
+    now, tries = [1_000_000.0], []
+    monkeypatch.setattr(weather.time, "time", lambda: now[0])
+    w = weather.Weather("Lincoln, Nebraska")
+
+    async def failing(self):
+        tries.append(now[0])
+        raise OSError("offline")
+    monkeypatch.setattr(weather.Weather, "_fetch", failing)
+    assert await w.text() == "" and await w.screen() == {}
+    assert len(tries) == 1                                    # not again straight away
+    now[0] += 150
+    await w.text()
+    assert len(tries) == 2                                    # a couple of minutes later: once more
+
+    async def works(self):
+        self.summary, self.data, self.fetched = "Now: 40°F", {"temp": 40}, now[0]
+    monkeypatch.setattr(weather.Weather, "_fetch", works)
+    now[0] += 150
+    assert await w.text() == "Now: 40°F"
+    monkeypatch.setattr(weather.Weather, "_fetch", failing)
+    now[0] += 2 * 3600
+    assert await w.text() == "Now: 40°F"                      # an hour or two old: still fine
+    now[0] += 2 * 3600
+    assert await w.text() == "" and w.cached() == {}           # four hours old: not "now" any more
+
+
+async def test_the_tv_doesnt_wait_for_slow_weather(monkeypatch):
+    from pip_assistant.common import weather
+
+    async def slow(self):
+        await asyncio.sleep(5)
+        self.summary, self.data, self.fetched = "x", {"temp": 1}, time.time()
+    monkeypatch.setattr(weather.Weather, "_fetch", slow)
+    w = weather.Weather("Lincoln, Nebraska")
+    t = time.monotonic()
+    assert await w.screen_within(0.2) == {}
+    assert time.monotonic() - t < 1
+    w._task.cancel()

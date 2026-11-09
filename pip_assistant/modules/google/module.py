@@ -76,6 +76,7 @@ class GoogleAccounts:
         self._pending: dict[str, dict] = {}               # sign-ins in progress: state → {verifier, person_id, at}
         self.on_connect: list = []                        # other modules' callbacks: f(account id) after connecting
         self.on_disconnect: list = []                     # …and before an account is forgotten (they drop its copies)
+        self._sync_errors: dict[str, dict[str, str]] = {}  # account id → {"calendar": "", "to-dos": "ConnectError"}
 
     # ---------------------------------------------------------------- the shared OAuth client
     def configured(self) -> bool:
@@ -126,8 +127,13 @@ class GoogleAccounts:
                             (*fields.values(), aid))
             self.db.commit()
 
-    def synced(self, aid: str, error: str = "") -> None:
-        self.set(aid, last_sync=self.ctx.clock(), error=error[:200])
+    def synced(self, aid: str, error: str = "", part: str = "calendar") -> None:
+        """A sync of one part (the calendar, the to-dos) finished, with its error or "". The Google page shows
+        the last sync time and every part's latest error, so one part succeeding doesn't hide another failing."""
+        errors = self._sync_errors.setdefault(aid, {})
+        errors[part] = error
+        shown = "; ".join(f"{p}: {e}" for p, e in errors.items() if e)
+        self.set(aid, last_sync=self.ctx.clock(), error=shown[:200])
 
     # ---------------------------------------------------------------- signing in (PKCE, paste-back)
     def start_sign_in(self, person_id: str) -> str:
@@ -161,7 +167,11 @@ class GoogleAccounts:
                 "code": code, "client_id": s.get("client_id"), "client_secret": s.get("client_secret"),
                 "redirect_uri": self.redirect_uri, "grant_type": "authorization_code", "code_verifier": pend["verifier"]})
         if r.status_code != 200:
-            raise ValueError(f"Google didn't accept the sign-in ({r.json().get('error', r.status_code)})")
+            try:
+                why = r.json().get("error", r.status_code)
+            except ValueError:   # not JSON (an error page): just the status
+                why = r.status_code
+            raise ValueError(f"Google didn't accept the sign-in ({why})")
         tok = r.json()
         if not tok.get("refresh_token"):
             raise ValueError("Google didn't give a lasting sign-in. Remove Pip's access in your Google account and connect again.")

@@ -5,7 +5,10 @@ Every couple of minutes, and straight after Pip changes something:
     1. the account's calendar list → calendar_calendars (new ones ticked on; gone ones removed)
     2. Pip's own changes waiting for this account are sent (add / change / delete)
     3. each ticked calendar is fetched: the first time days_back to days_ahead (settings; 30 and 180),
-       then only what changed (Google's sync token). Repeating events arrive as single occurrences.
+       then only what changed (Google's sync token), with a full fetch again about weekly so events
+       that come within days_ahead arrive. Repeating events arrive as single occurrences.
+       A change Google refuses for good (e.g. a bad reminder, no right to edit) is dropped; it never
+       stops the rest of the sync.
 
 The first time an account connects, if its main calendar is the household's, Pip's own upcoming
 events move into it (setting upload_on_connect). Pip can also make, rename, recolour and delete
@@ -19,6 +22,8 @@ import logging
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
+import httpx
+
 from .store import CalendarStore
 
 log = logging.getLogger(__name__)
@@ -26,6 +31,18 @@ API = "https://www.googleapis.com/calendar/v3"
 RRULE = {"daily": "RRULE:FREQ=DAILY", "weekdays": "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
          "weekends": "RRULE:FREQ=WEEKLY;BYDAY=SA,SU", "weekly": "RRULE:FREQ=WEEKLY"}
 DAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
+FULL_EVERY = 7 * 86400   # a full fetch this often, so events that newly come within days_ahead arrive
+
+
+def refused(e: Exception) -> bool:
+    """Did Google refuse this one change for good (a bad request, no right to change that event), rather than
+    "try later" (offline, busy, too many requests, signed out)? Those are given up so the rest keeps syncing."""
+    if not isinstance(e, httpx.HTTPStatusError) or e.response is None:
+        return False
+    code = e.response.status_code
+    if code == 403:
+        return not any(w in e.response.text for w in ("rateLimitExceeded", "userRateLimitExceeded", "quotaExceeded"))
+    return 400 <= code < 500 and code not in (401, 408, 429)
 
 
 def rrule(repeat: str) -> list[str]:
@@ -57,7 +74,8 @@ def to_google(ev: dict) -> dict:
     if ev["repeat"]:
         body["recurrence"] = rrule(ev["repeat"])
     if ev["reminder"] is not None:
-        body["reminders"] = {"useDefault": False, "overrides": [{"method": "popup", "minutes": int(ev["reminder"])}]}
+        mins = min(max(int(ev["reminder"]), 0), 40320)   # Google refuses more than 4 weeks
+        body["reminders"] = {"useDefault": False, "overrides": [{"method": "popup", "minutes": mins}]}
     return body
 
 
@@ -96,7 +114,7 @@ class CalendarSync:
             except Exception as e:  # e.g. offline: changes wait, the local copy stays
                 log.info("calendar sync for an account failed: %s", type(e).__name__)
                 out[acc["id"]] = type(e).__name__
-            self.google.synced(acc["id"], out[acc["id"]])
+            self.google.synced(acc["id"], out[acc["id"]], "calendar")
         return out
 
     async def _req(self, acc: dict, method: str, path: str, **kw):
@@ -114,11 +132,22 @@ class CalendarSync:
         if first and self.settings.get("upload_on_connect", True) and self.household() == self.primary(acc["id"]):
             self.adopt_local(self.primary(acc["id"]))
         mine = {c["id"] for c in self.store.calendars() if c["account_id"] == acc["id"]}
+        trouble = None
         for ev in self.store.pending(mine):
-            await self.push(acc, ev)
+            try:
+                await self.push(acc, ev)
+            except Exception as e:
+                if not refused(e):   # e.g. offline: the changes wait for next time, but Google's still come in
+                    trouble = e
+                    break
+                # Google won't ever take this change: give it up, so it doesn't block every sync after it
+                log.warning("Google refused a calendar change (%s %s); dropped", ev["pending"], e.response.status_code)
+                await self.give_up(acc, ev)
         for c in self.store.calendars():
             if c["account_id"] == acc["id"] and c["ticked"]:
                 await self.pull(acc, c)
+        if trouble is not None:
+            raise trouble
 
     # ---------------------------------------------------------------- calendars
     async def calendars(self, acc: dict) -> None:
@@ -202,6 +231,19 @@ class CalendarSync:
                 r.raise_for_status()
             self.store.forget(ev["id"])
 
+    async def give_up(self, acc: dict, ev: dict) -> None:
+        """A change Google refused: a new event stays on the Pi only; a changed one goes back to Google's copy;
+        a deleted one is let go (if it's still in Google it comes back with the next full fetch)."""
+        if ev["pending"] == "add":
+            self.store.save_synced(ev["id"])
+        elif ev["pending"] == "change":
+            try:
+                await self._refetch(acc, self.store.calendar(ev["calendar_id"]), ev)
+            except Exception:
+                self.store.save_synced(ev["id"])
+        else:
+            self.store.forget(ev["id"])
+
     async def _refetch(self, acc, cal, ev) -> None:
         r = await self._req(acc, "GET", f"/calendars/{quote(cal['google_id'], safe='')}/events/{quote(ev['google_id'], safe='')}")
         if r.status_code in (404, 410) or r.json().get("status") == "cancelled":
@@ -262,7 +304,9 @@ class CalendarSync:
     async def pull(self, acc: dict, cal: dict) -> None:
         base = f"/calendars/{quote(cal['google_id'], safe='')}/events"
         params = {"singleEvents": "true", "showDeleted": "true", "maxResults": "250"}
-        full = not cal["sync_token"]
+        # Only changes are fetched after the first time, so about weekly everything is fetched again: an event
+        # that was beyond days_ahead last time comes into range only that way.
+        full = not cal["sync_token"] or self.clock() - (cal.get("full_at") or 0) > FULL_EVERY
         if full:
             now = datetime.fromtimestamp(self.clock()).astimezone()
             params["timeMin"] = (now - timedelta(days=self.settings.get("days_back", 30))).isoformat()
@@ -285,12 +329,13 @@ class CalendarSync:
                 continue
             token = page.get("nextSyncToken", "")
             break
-        if full:  # anything we had that Google no longer lists (and isn't Pip's unsent change) is gone
+        if full:  # anything we had in that window that Google no longer lists (and isn't Pip's unsent change) is gone
+            lo, hi = (datetime.fromisoformat(params[k]).timestamp() for k in ("timeMin", "timeMax"))
             for ev in self.store.db.execute("SELECT * FROM calendar_events WHERE calendar_id = ? AND google_id != '' "
-                                            "AND pending = ''", (cal["id"],)).fetchall():
+                                            "AND pending = '' AND end > ? AND start < ?", (cal["id"], lo, hi)).fetchall():
                 if ev["google_id"] not in seen:
                     self.store.forget(ev["id"])
-        self.store.upsert_calendar(cal["id"], sync_token=token)
+        self.store.upsert_calendar(cal["id"], sync_token=token, **({"full_at": self.clock()} if full else {}))
 
     def _apply(self, cal: dict, item: dict) -> None:
         local = self.store.by_google(cal["id"], item["id"])

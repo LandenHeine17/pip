@@ -102,6 +102,9 @@
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// A value inside an onclick="…": the browser turns esc()'s &#39; back into ' before the script runs, so a name
+// like D'Andre would end a '…' string early. JSON gives a "…" string instead (no quotes around ${js(x)}).
+const js = v => esc(JSON.stringify(v ?? ""));
 const WHAT = {core:"The conductor: routes messages, keeps the trace, watches health",
   ears:"Microphone, wake words, “stop”, Pip’s voice", thinker:"Claude and the offline fallback",
   web:"This dashboard and the TV page"};
@@ -205,7 +208,7 @@ function live(){
   es.addEventListener("state", ev => { const d = JSON.parse(ev.data); setState(d.state, d); });
   es.addEventListener("mic", ev => renderMic(JSON.parse(ev.data)));
   es.addEventListener("net", ev => { $("netoff").hidden = JSON.parse(ev.data).online; });
-  es.addEventListener("conversation", ev => { const l = JSON.parse(ev.data); conv.unshift(l); renderConv(); if (l.who === "pip") { loadMemory(); loadPeople(); } });
+  es.addEventListener("conversation", ev => { const l = JSON.parse(ev.data); conv.unshift(l); conv = conv.slice(0, 200); renderConv(); if (l.who === "pip") { loadMemory(); loadPeople(); } });
   es.addEventListener("people", () => loadPeople());
   es.addEventListener("trace", ev => { const e = JSON.parse(ev.data); e._fresh = true; rows.unshift(e); rows = rows.slice(0,200); renderTrace(); });
   es.addEventListener("alerts", () => loadSched());
@@ -240,10 +243,10 @@ function renderSched(){
     return `<div class="item"><div><span class="tag">${esc(KIND[a.kind]||a.kind)}</span><b>${name}</b>
       <div class="sub">${a.kind==="timer" ? "of "+left(a.length||0) : clock(a.due)}${a.repeat?" · "+REP(a.repeat):""}${a.state==="ringing"?" · ringing":""}</div>
       ${pct!=null?`<div class="bar"><i style="width:${pct}%"></i></div>`:""}</div>
-      <span style="display:flex;align-items:center;gap:6px">${a.kind==="timer" ? `<span class="big">${left(a.due-now)}</span>` : ""}<button class="ghost" title="Cancel" onclick="act({action:'cancel',id:'${esc(a.id)}'})">✕</button></span></div>`;
+      <span style="display:flex;align-items:center;gap:6px">${a.kind==="timer" ? `<span class="big">${left(a.due-now)}</span>` : ""}<button class="ghost" title="Cancel" onclick="act({action:'cancel',id:${js(a.id)}})">✕</button></span></div>`;
   }).concat(missed).concat(sched.later_heads_ups ? [`<div class="sub" style="padding:4px 2px">+ ${sched.later_heads_ups} more calendar heads-up${sched.later_heads_ups>1?"s":""} after tomorrow · <a href="/m/calendar/">calendar</a></div>`] : []).join("") || `<div class="empty">Nothing set.</div>`;
   $("events").innerHTML = sched.events.map(e => `<div class="item" style="border-left:4px solid ${e.color||"transparent"}"><div><b>${esc(e.title)}</b>${e.private?` <span class="pill" style="background:var(--line)">private</span>`:""}<div class="sub">${e.all_day ? new Date(e.at*1000).toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"})+" · all day" : clock(e.at)}${e.repeat?" · "+REP(e.repeat):""}</div></div>
-      <button class="ghost" title="Remove" onclick="if(confirm('Remove this event${e.repeat?" (all repeats)":""}?')) act({action:'remove_event',id:'${esc(e.id)}'})">✕</button></div>`).join("")
+      <button class="ghost" title="Remove" onclick="if(confirm('Remove this event${e.repeat?" (all repeats)":""}?')) act({action:'remove_event',id:${js(e.id)}})">✕</button></div>`).join("")
     || `<div class="empty">Nothing on the calendar.</div>`;
 }
 async function loadSched(){ try{ const r = await (await fetch("/api/alerts",{cache:"no-store"})).json(); if(r.now){ sched = r; skew = Date.now()/1000 - r.now; $("ringing").dataset.key = ""; renderSched(); } }catch(e){} }
@@ -259,16 +262,16 @@ function renderMemory(){
   const pend = mem.memories.filter(m => m.status === "pending");
   $("inbox").innerHTML = pend.length ? `<div class="label">Inbox · waiting for approval</div><div class="items" style="margin-bottom:12px">${pend.map(m => `
     <div class="item" style="background:var(--warnbg)"><div><b>${esc(m.text)}</b><div class="sub">${esc(m.why_pending||"")}${m.source?" · "+esc(m.source):""}</div></div>
-    <span style="display:flex;gap:6px"><button class="primary" onclick="memAct({action:'approve',id:'${m.id}'})">Approve</button>
-    <button onclick="memEdit('${m.id}')">Edit</button><button class="ghost" onclick="memAct({action:'reject',id:'${m.id}'})">Reject</button></span></div>`).join("")}</div>` : "";
+    <span style="display:flex;gap:6px"><button class="primary" onclick="memAct({action:'approve',id:${js(m.id)}})">Approve</button>
+    <button onclick="memEdit(${js(m.id)})">Edit</button><button class="ghost" onclick="memAct({action:'reject',id:${js(m.id)}})">Reject</button></span></div>`).join("")}</div>` : "";
   const rows = mem.memories.filter(m => m.status !== "pending" && (arch ? m.status === "archived" : m.status === "active")
     && (!cat || m.category === cat) && (!q || m.text.toLowerCase().includes(q)));
   $("memories").innerHTML = rows.map(m => `<div class="item"><div style="min-width:0"><span class="tag">${esc(mem.categories[m.category]||m.category)}</span><b>${esc(m.text)}</b>
       <div class="sub">${VIS(m.visibility)}${m.owner_name?" · "+esc(m.owner_name)+"'s":""}${m.about_names.length?" · about "+esc(m.about_names.join(", ")):""}${m.source?" · "+esc(m.source):""} · ${new Date(m.created*1000).toLocaleDateString()}</div></div>
-      <span style="display:flex;gap:4px;flex-shrink:0"><button class="ghost" title="Edit" onclick="memEdit('${m.id}')">Edit</button>
-      <button class="ghost" title="${m.visibility==='private'?'Make household':'Make private'}" onclick="memAct({action:'visibility',id:'${m.id}',value:'${m.visibility==='private'?'household':'private'}'})">${m.visibility==='private'?'Share':'Private'}</button>
-      ${m.status==="archived"?`<button class="ghost" title="Restore" onclick="memAct({action:'restore',id:'${m.id}'})">Restore</button>`:`<button class="ghost" title="Archive (kept, not used)" onclick="memAct({action:'archive',id:'${m.id}'})">Archive</button>`}
-      <button class="ghost" title="Delete" onclick="if(confirm('Delete this memory for good?')) memAct({action:'delete',id:'${m.id}'})">✕</button></span></div>`).join("")
+      <span style="display:flex;gap:4px;flex-shrink:0"><button class="ghost" title="Edit" onclick="memEdit(${js(m.id)})">Edit</button>
+      <button class="ghost" title="${m.visibility==='private'?'Make household':'Make private'}" onclick="memAct({action:'visibility',id:${js(m.id)},value:'${m.visibility==='private'?'household':'private'}'})">${m.visibility==='private'?'Share':'Private'}</button>
+      ${m.status==="archived"?`<button class="ghost" title="Restore" onclick="memAct({action:'restore',id:${js(m.id)}})">Restore</button>`:`<button class="ghost" title="Archive (kept, not used)" onclick="memAct({action:'archive',id:${js(m.id)}})">Archive</button>`}
+      <button class="ghost" title="Delete" onclick="if(confirm('Delete this memory for good?')) memAct({action:'delete',id:${js(m.id)}})">✕</button></span></div>`).join("")
     || `<div class="empty">${arch ? "Nothing archived." : "Nothing remembered yet. Say \"Pip, remember…\""}</div>`;
   const n = mem.memories.filter(m => m.status === "active").length;
   $("memsum").textContent = `${n} remembered${pend.length ? ` · ${pend.length} waiting` : ""}`;
@@ -302,14 +305,14 @@ function renderPeople(){
   $("people").innerHTML = ppl.people.map(p => `<div class="item"><div><b>${esc(p.name)}</b> <span class="pill ${p.role==="admin"?"ok":""}" style="background:var(--soft)">${p.role}</span>
       <div class="sub">${p.voice_samples ? `voice learned (${p.voice_samples} samples)` : `voice not learned yet: say "Pip, I'm ${esc(p.name.split(" ")[0])}"`}${p.last_heard?` · last heard ${new Date(p.last_heard*1000).toLocaleString([], {weekday:"short", hour:"numeric", minute:"2-digit"})}`:""}</div></div>
       <span style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
-      ${ppl.voice_model ? `<button onclick="pAct({action:'enrol_start',id:'${p.id}'})">${p.voice_samples?"Re-learn voice":"Learn my voice"}</button>` : ""}
-      ${ppl.voice_model && ppl.m0_recordings && p.role==="admin" && !p.voice_samples ? `<button title="Uses 8 recordings you already made in the M0 tests: nothing to read" onclick="pAct({action:'voice_from_m0',id:'${p.id}'})">Use my M0 recordings</button>` : ""}
+      ${ppl.voice_model ? `<button onclick="pAct({action:'enrol_start',id:${js(p.id)}})">${p.voice_samples?"Re-learn voice":"Learn my voice"}</button>` : ""}
+      ${ppl.voice_model && ppl.m0_recordings && p.role==="admin" && !p.voice_samples ? `<button title="Uses 8 recordings you already made in the M0 tests: nothing to read" onclick="pAct({action:'voice_from_m0',id:${js(p.id)}})">Use my M0 recordings</button>` : ""}
       ${!mods.some(m => m.name === "google") ? "" : googleAcc[p.id]
         ? `<a class="ghost" style="padding:6px 10px;font-size:.88rem" href="/m/google/account.html?id=${googleAcc[p.id]}">Google settings</a>`
         : `<a class="ghost" style="padding:6px 10px;font-size:.88rem" href="/m/google/?person=${p.id}">Connect Google</a>`}
-      ${p.voice_samples ? `<button class="ghost" title="Forget voice" onclick="if(confirm('Forget ${esc(p.name)}\'s voice?')) pAct({action:'forget_voice',id:'${p.id}'})">Forget voice</button>` : ""}
-      <button class="ghost" title="Remove person" onclick="if(confirm('Remove ${esc(p.name)}, their voice and memories about them?')) pAct({action:'remove',id:'${p.id}'})">✕</button></span></div>`).join("")
-    + ppl.guests.map(g => `<div class="item"><div><b>${esc(g.name)}</b> <span class="pill" style="background:var(--soft)">this visit</span><div class="sub">forgotten after 2 hours of quiet</div></div><button class="ghost" onclick="pAct({action:'guest_join',id:'${g.id}'})">Add to household</button></div>`).join("")
+      ${p.voice_samples ? `<button class="ghost" title="Forget voice" onclick="if(confirm(${js(`Forget ${p.name}’s voice?`)})) pAct({action:'forget_voice',id:${js(p.id)}})">Forget voice</button>` : ""}
+      <button class="ghost" title="Remove person" onclick="if(confirm(${js(`Remove ${p.name}, their voice and memories about them?`)})) pAct({action:'remove',id:${js(p.id)}})">✕</button></span></div>`).join("")
+    + ppl.guests.map(g => `<div class="item"><div><b>${esc(g.name)}</b> <span class="pill" style="background:var(--soft)">this visit</span><div class="sub">forgotten after 2 hours of quiet</div></div><button class="ghost" onclick="pAct({action:'guest_join',id:${js(g.id)}})">Add to household</button></div>`).join("")
     || `<div class="empty">Nobody added yet. Add yourself first (as Admin).</div>`;
   $("peoplesum").textContent = ppl.voice_model ? `${ppl.people.length} ${ppl.people.length===1?"person":"people"}` : "voice model not installed";
 }

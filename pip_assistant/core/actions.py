@@ -39,8 +39,12 @@ import logging
 import re
 from datetime import datetime, timedelta
 
+from .memory import CREDENTIAL
+
 REPEATS = re.compile(r"^(|daily|weekdays|weekends|weekly|weekly:[0-6])$")
 FAILED = "Sorry, that didn't work. Nothing was changed."
+NO_SECRETS = "I can't keep passwords, card or phone numbers in my memory."
+NOTHING = "I didn't catch what to remember."
 log = logging.getLogger(__name__)
 
 
@@ -149,6 +153,10 @@ def check(cmds, items: list[dict], ctx: dict | None = None) -> list[tuple]:
                 raise Invalid("change without a new time")
             if length is not None and not 1 <= length <= 24 * 3600:
                 raise Invalid("timer length")
+            row = found[1]
+            if shift is not None and at is None and length is None and row["kind"] != "timer" and not row["repeat"] \
+                    and row["due"] + shift <= cmds.clock():
+                raise Invalid("moved into the past")   # (timers stop at "now"; a repeat moves on to its next day)
             plan.append(("change", *found, at, shift, length))
         else:
             plan.append(_module(str(do), a, ctx, now))   # an action a module added ("add_task", …)
@@ -180,7 +188,7 @@ def _check_memory(a: dict, ctx: dict) -> tuple:
         if a["do"] == "approve_memory":
             # Only the person it's about, recognised for sure, may approve it by voice (D-107)
             me = speaker.person_id if speaker and speaker.level == "sure" and not speaker.guest else None
-            if row["status"] != "pending" or not me or not mem.is_about(row, me, speaker.name):
+            if row["status"] != "pending" or not me or not mem.is_about(row, me, speaker.name) or not mem.may_see(row, me):
                 raise Invalid("only the person it's about may approve it")
             return ("approve_memory", row)
         if a["do"] == "forget":
@@ -188,23 +196,29 @@ def _check_memory(a: dict, ctx: dict) -> tuple:
         text = str(a.get("text") or "").strip()
         if len(text) < 3:
             raise Invalid("no text")
+        if CREDENTIAL.search(text):
+            raise Invalid("credential")   # checked now, so nothing else in the list is done either (D-84)
         return ("update_memory", row, text)
     text = str(a.get("text") or "").strip()
     if len(text) < 3:
         raise Invalid("no text")
+    if CREDENTIAL.search(text):
+        raise Invalid("credential")
     me = speaker.person_id if speaker and speaker.level == "sure" and not speaker.guest else None
-    about = []
+    about, strangers = [], False
     for name in a.get("about") or []:
         p = people.by_name(str(name)) if people else None
         if p:
             about.append(p["id"])
+        else:
+            strangers = True   # someone Pip doesn't know ("Jordan from next door"): still someone else
     category = str(a.get("category") or "household")
     personal = category in ("preference", "personal")      # household facts and rules can come from anyone
-    own = bool(me) and personal and about == [me]          # only about the speaker, and Pip is sure it's them
+    own = bool(me) and personal and about == [me] and not strangers   # only about the speaker, and Pip is sure it's them
     why = ""
     if a.get("sensitive") and not own:                      # your own sensitive facts are saved straight away (D-88)
         why = "sensitive"
-    elif personal and any(pid != me for pid in about):
+    elif personal and (strangers or any(pid != me for pid in about)):
         why = "about someone else"
     elif a.get("private") and not me:
         why = "private, but I didn't recognise the voice"
@@ -223,22 +237,22 @@ def apply(cmds, raw: str, ctx: dict | None = None) -> tuple[str, int]:
     For actions that must wait (a module talking to Google) use apply_async."""
     try:
         plan = check(cmds, parse(raw), ctx)
-    except (Invalid, ValueError, TypeError, KeyError):
-        return FAILED, 0
+    except (Invalid, ValueError, TypeError, KeyError) as e:
+        return _refused(e, raw), 0
     said = _carry_out(cmds, plan, ctx)
     for i, s in enumerate(said):
         if inspect.isawaitable(s):
             s.close()
             said[i] = FAILED
-    return " ".join(said), len(plan)
+    return " ".join(said), _done(said)
 
 
 async def apply_async(cmds, raw: str, ctx: dict | None = None) -> tuple[str, int]:
     """Like apply, but waits for actions that take time (a module talking to Google)."""
     try:
         plan = check(cmds, parse(raw), ctx)
-    except (Invalid, ValueError, TypeError, KeyError):
-        return FAILED, 0
+    except (Invalid, ValueError, TypeError, KeyError) as e:
+        return _refused(e, raw), 0
     said = _carry_out(cmds, plan, ctx)
     for i, s in enumerate(said):
         if inspect.isawaitable(s):
@@ -247,7 +261,24 @@ async def apply_async(cmds, raw: str, ctx: dict | None = None) -> tuple[str, int
             except Exception:
                 log.exception("action failed")
                 said[i] = FAILED
-    return " ".join(said), len(plan)
+    return " ".join(said), _done(said)
+
+
+def _refused(e: Exception, raw: str) -> str:
+    """What Pip says when the actions don't check out (nothing was done)."""
+    if str(e) != "credential":
+        return FAILED
+    try:
+        alone = len(parse(raw)) == 1
+    except (Invalid, ValueError):
+        alone = True
+    return NO_SECRETS if alone else f"{NO_SECRETS} So I didn't do any of it."
+
+
+def _done(said: list[str]) -> int:
+    """How many steps really happened: a step that failed while being done isn't counted."""
+    from .commands import PASSED
+    return sum(s not in (FAILED, NO_SECRETS, NOTHING, PASSED) for s in said)
 
 
 def _carry_out(cmds, plan: list[tuple], ctx: dict | None) -> list:
@@ -267,8 +298,7 @@ def _carry_out(cmds, plan: list[tuple], ctx: dict | None) -> list:
                     continue
                 row, outcome = mem.add(text, cat, about, owner, private, sensitive, why, source, own=own)
             except Refused as e:
-                said.append("I can't keep passwords, card or phone numbers in my memory." if str(e) == "credential"
-                            else "I didn't catch what to remember.")
+                said.append(NO_SECRETS if str(e) == "credential" else NOTHING)
                 continue
             said.append({"saved": f"Saved: {row['text'].rstrip('.!')}.", "duplicate": "I already knew that.",
                          "waiting": "That's waiting in the memory inbox.",
@@ -285,7 +315,7 @@ def _carry_out(cmds, plan: list[tuple], ctx: dict | None) -> list:
                 row = mem.update(step[1]["id"], text=step[2])
                 said.append(f"Updated: {row['text'].rstrip('.!')}.")
             except Refused:
-                said.append("I can't keep passwords, card or phone numbers in my memory.")
+                said.append(NO_SECRETS)
         elif kind == "timer":
             said.append(cmds._make_timer(step[1], step[2]))
         elif kind == "alarm":

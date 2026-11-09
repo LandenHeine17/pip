@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS alerts (
     repeat   TEXT NOT NULL DEFAULT '',   -- '', daily, weekdays, weekends, weekly, weekly:<0-6>
     state    TEXT NOT NULL,       -- waiting / ringing / done / cancelled / missed
     event_id TEXT,                -- heads-ups: the calendar event it belongs to
+    planned  TEXT,                -- the local clock time it was set for ('2027-03-14T02:30:00'); a snooze doesn't change it
     created  REAL NOT NULL,
     updated  REAL NOT NULL
 );
@@ -61,6 +62,8 @@ class Schedule:
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(SCHEMA)
+        if "planned" not in {r[1] for r in self.db.execute("PRAGMA table_info(alerts)")}:
+            self.db.execute("ALTER TABLE alerts ADD COLUMN planned TEXT")   # databases made before this column
         self.db.commit()
         self.bus = bus
         self.clock = clock
@@ -84,12 +87,16 @@ class Schedule:
         return dict(r) if r else None
 
     def add(self, kind: str, label: str, due: float, length: float | None = None, repeat: str = "",
-            event_id: str | None = None) -> dict:
-        """Save an alert and read it back: Pip only says it's set once it really exists (PIP-NEW-039)."""
+            event_id: str | None = None, planned: datetime | None = None) -> dict:
+        """Save an alert and read it back: Pip only says it's set once it really exists (PIP-NEW-039).
+        planned: the clock time asked for, if known. A repeat comes back to it ("2:30 every day" stays 2:30,
+        even after a night when 2:30 didn't exist because the clocks went forward)."""
         now = self.clock()
         aid = new_id()
-        self.db.execute("INSERT INTO alerts (id, kind, label, due, length, repeat, state, event_id, created, updated) "
-                        "VALUES (?,?,?,?,?,?,?,?,?,?)", (aid, kind, label, due, length, repeat, "waiting", event_id, now, now))
+        planned_txt = (planned or datetime.fromtimestamp(due)).isoformat(timespec="seconds")
+        self.db.execute("INSERT INTO alerts (id, kind, label, due, length, repeat, state, event_id, planned, created, updated) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        (aid, kind, label, due, length, repeat, "waiting", event_id, planned_txt, now, now))
         self.db.commit()
         row = self._row(aid)
         if not row or row["state"] != "waiting" or abs(row["due"] - due) > 0.01:
@@ -105,6 +112,15 @@ class Schedule:
         row = self._row(alert_id)
         if row is None:
             raise RuntimeError("alert not found")
+        if fields.get("state") == "waiting" and alert_id in self.ringing:
+            # Moved while ringing ("make it 7:30", "add 5 minutes"): it stops now and rings again at the
+            # new time, like a cancel stops it.
+            self.ringing.remove(alert_id)
+            if not self.ringing and _loop_running():
+                if self._ring_task and self._ring_task is not asyncio.current_task():
+                    self._ring_task.cancel()
+                asyncio.ensure_future(self._stop_sound())
+                self._notify()
         self._changed("updated", row)
         return row
 
@@ -202,7 +218,9 @@ class Schedule:
         if a["kind"] == "timer":
             return "Your timer is done." if label in ("", "timer") else f"Your {label} timer is done."
         if a["kind"] == "alarm":
-            return f"It's {when.say_clock(datetime.now())}. Time to get up!" if label in ("", "alarm") else f"Alarm: {label}."
+            # The time it was set for ("It's 7 AM"), not the clock now: it repeats while ringing (and in tests).
+            return f"It's {when.say_clock(datetime.fromtimestamp(a['due']))}. Time to get up!" if label in ("", "alarm") \
+                else f"Alarm: {label}."
         if a["kind"] == "event":
             before = a.get("length") or 0
             return f"Heads up: {label} is starting now." if before < 60 else f"Heads up: {label} in {when.say_duration(before)}."
@@ -255,11 +273,10 @@ class Schedule:
                 await self._command("ears", "ears.say", {"reason": "alarm"}, {"text": text})
                 await asyncio.sleep(self.repeat_every)
                 if self.clock() - started >= self.ring_s:
-                    ids = list(self.ringing)
+                    ids, self.ringing = list(self.ringing), []
                     for i in ids:
                         if r := self._row(i):
                             self._finish(r, "done")
-                    self.ringing.clear()
                     await self._stop_sound()
                     self._notify()
                     await self._event("alert.unanswered", {"count": len(ids)})
@@ -270,9 +287,11 @@ class Schedule:
     def _finish(self, a: dict, state: str) -> None:
         """Done (or missed): a repeating one moves on to its next time, keeping its clock time."""
         if a["repeat"]:
-            nxt = when.next_repeat(a["repeat"], datetime.fromtimestamp(a["due"]), self._now_dt())
+            # From the time it was set for, not when it last rang: a snoozed 7 AM alarm is still 7 AM tomorrow.
+            base = datetime.fromisoformat(a["planned"]) if a.get("planned") else datetime.fromtimestamp(a["due"])
+            nxt = when.next_repeat(a["repeat"], base, self._now_dt())
             if nxt:
-                self.update(a["id"], state="waiting", due=nxt.timestamp())
+                self.update(a["id"], state="waiting", due=nxt.timestamp(), planned=nxt.isoformat(timespec="seconds"))
                 if state == "missed":
                     self.db.execute("INSERT INTO alerts (id, kind, label, due, length, repeat, state, event_id, created, updated) "
                                     "VALUES (?,?,?,?,?,?,?,?,?,?)", (new_id(), a["kind"], a["label"], a["due"], a["length"], "",

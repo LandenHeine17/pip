@@ -82,16 +82,22 @@ def alerts_snapshot(schedule: Schedule, modules: Registry) -> dict:
 def tv_snapshot(schedule: Schedule, modules: Registry) -> dict:
     """Only what the TV page shows (D-110): timers, alarms and reminders (heads-ups due within the hour),
     what's ringing, and today's and tomorrow's events from calendars in the two-week list, never private
-    ones; the screen's layout and the to-do lists on it (D-111). Sent privately (labels and titles are
-    personal), never logged."""
+    ones nor any from an account that shares only with its owner (nor their heads-ups); the screen's
+    layout and the to-do lists on it (D-111). Sent privately (labels and titles are personal), never logged."""
     snap = schedule.snapshot()
     now = snap["now"]
+    cal = modules.modules.get("calendar")
+
+    def for_room(a) -> bool:   # a heads-up's event must be one Pip may mention to anyone (as on Claude's side)
+        if a["kind"] != "event" or not a.get("event_id"):
+            return True
+        return cal is not None and cal.for_the_room(cal.store.event(a["event_id"]))
     alerts = [{"kind": a["kind"], "label": a["label"], "due": a["due"], "length": a.get("length"), "state": a["state"],
                "repeat": a["repeat"]}
-              for a in snap["alerts"] if a["kind"] != "event" or a["state"] == "ringing" or a["due"] - now < 3600]
-    cal = modules.modules.get("calendar")
+              for a in snap["alerts"] if (a["kind"] != "event" or a["state"] == "ringing" or a["due"] - now < 3600)
+              and for_room(a)]
     events = [{"title": e["title"], "at": e["at"], "all_day": e["all_day"], "color": e["color"]}
-              for e in (cal.upcoming(2) if cal else []) if not e["private"]]
+              for e in (cal.upcoming(2) if cal else []) if e["shared"]]
     out = {"now": now, "alerts": alerts, "events": events[:12]}
     # What's on the screen (D-111), and the to-do lists it shows (only those, and only shared ones).
     screen, todos = modules.modules.get("screen"), modules.modules.get("todos")

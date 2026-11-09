@@ -104,7 +104,15 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         name = request.path_params["name"]
         if name not in mods:
             return JSONResponse({"error": "no such module"}, status_code=404)
-        args = dict(request.query_params) if request.method == "GET" else await request.json()
+        if request.method == "GET":
+            args = dict(request.query_params)
+        else:
+            try:
+                args = await request.json()
+            except ValueError:   # not JSON (or not UTF-8)
+                args = None
+            if not isinstance(args, dict):
+                return JSONResponse({"error": "send a JSON object"}, status_code=400)
         action = str(args.pop("action", "status"))
         try:
             r = await bus.request("core", "module.request", {"module": name, "action": action}, args, timeout=60)
@@ -241,10 +249,7 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
                              any(x["type"] == "conversation" and x.get("room", True) for x in sections))
         except Exception:
             out["error"] = "pip-core not reachable"
-        try:
-            out["weather"] = await weather.screen()
-        except Exception:
-            pass
+        out["weather"] = await weather.screen_within(1.0)   # never hold the page up for a slow weather service
         if "health" in state.tv_boxes:
             out["vitals"] = vitals_now()
         return JSONResponse(out, headers={"Cache-Control": "no-store"})

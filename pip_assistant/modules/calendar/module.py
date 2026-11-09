@@ -27,11 +27,26 @@ from .store import CalendarStore
 from .sync import CalendarSync
 
 log = logging.getLogger(__name__)
+MAX_HEADS_UP = 40320   # minutes (4 weeks): the longest reminder Google accepts
 REPEATS = ("", "daily", "weekdays", "weekends", "weekly") + tuple(f"weekly:{i}" for i in range(7))
 
 
 def short(eid: str) -> str:
     return "#" + eid[:6]
+
+
+def heads_up(minutes) -> float | None:
+    """A heads-up asked for, in minutes → seconds before the event. Kept to 0–4 weeks: Google refuses a reminder
+    longer than that, and one refused event would hold up the rest of the sync."""
+    if minutes is None:
+        return None
+    try:
+        m = float(minutes)
+    except TypeError:
+        raise ValueError("not a number")
+    if m != m:   # nan
+        raise ValueError("not a number")
+    return min(max(m, 0.0), MAX_HEADS_UP) * 60
 
 
 class Calendar(Module):
@@ -131,10 +146,23 @@ class Calendar(Module):
         acc = accounts.get((cals.get(ev["calendar_id"]) or {}).get("account_id", ""))
         return not acc or acc["sharing"] == "everyone" or acc["person_id"] == call.person_id
 
+    def for_the_room(self, ev: dict | None) -> bool:
+        """May this event show on the room's monitor? Only if Pip may mention it to anyone (not private, and
+        its account shares with everyone): the same rule as telling Claude, for nobody in particular."""
+        if not ev:
+            return False
+        cals = {c["id"]: c for c in self.store.calendars()}
+        return self.visible(ev, Call(now=datetime.fromtimestamp(self.ctx.clock())), cals, self._accounts())
+
     # ---------------------------------------------------------------- what Claude reads
     def line(self, ev: dict, at: datetime, cals: dict, accounts: dict, names: dict, day: bool = False) -> str:
-        end = datetime.fromtimestamp(ev["end"])
-        t = (f"{at:%a %Y-%m-%d} " if day else "") + ("all day" if ev["all_day"] else f"{at:%H:%M}–{end:%H:%M}")
+        # A one-off event listed on a later day of itself (overnight, several days) shows its real start, and
+        # the days whenever it doesn't start and end on the same day: "Sun 09:00–Tue 17:00".
+        start = at if ev["repeat"] else datetime.fromtimestamp(ev["start"])
+        end = start + (datetime.fromtimestamp(ev["end"]) - datetime.fromtimestamp(ev["start"]))
+        hours = f"{start:%H:%M}–{end:%H:%M}" if (end - timedelta(seconds=1)).date() == start.date() else \
+            f"{start:%a %H:%M}–{end:%a %H:%M}"
+        t = (f"{at:%a %Y-%m-%d} " if day else "") + ("all day" if ev["all_day"] else hours)
         rep = f" ({when.say_repeat(ev['repeat'])})" if ev["repeat"] else ""
         where = f" at {ev['location']}" if ev["location"] else ""
         cal = "" if ev["calendar_id"] == self.sync.household() else \
@@ -241,9 +269,12 @@ class Calendar(Module):
             end = self._time(a["end"], call) if a.get("end") else start + timedelta(hours=1)
             if end <= start:
                 raise Invalid("ends before it starts")
-        heads = a.get("heads_up_minutes")
+        try:
+            heads = heads_up(a.get("heads_up_minutes"))
+        except ValueError:
+            raise Invalid("bad heads-up")
         return {"title": title, "start": start, "end": end, "all_day": all_day, "repeat": rep,
-                "heads": float(heads) * 60 if heads is not None else None, "location": str(a.get("location") or ""),
+                "heads": heads, "location": str(a.get("location") or ""),
                 "private": bool(a.get("private")), "calendar_id": self.target(str(a.get("calendar") or ""), call)}
 
     def do_add(self, p: dict, call: Call) -> str:
@@ -259,9 +290,20 @@ class Calendar(Module):
         if a.get("at"):
             p["start"] = self._time(a["at"], call)
         elif a.get("shift_seconds"):
-            p["start"] = datetime.fromtimestamp(ev["start"] + float(a["shift_seconds"]))
+            try:
+                shift = float(a["shift_seconds"])
+            except (TypeError, ValueError):
+                raise Invalid("bad shift")
+            if not abs(shift) <= 366 * 86400:   # also catches nan / inf
+                raise Invalid("shift too big")
+            # By the clock on the wall: "a day later" over a clock change is still 9:00 (or midnight, all day)
+            p["start"] = datetime.fromtimestamp(ev["start"]) + timedelta(seconds=shift)
+            if not call.now - timedelta(days=1) < p["start"] < call.now + timedelta(days=366):
+                raise Invalid("time not in the coming year")
         if a.get("end"):
             p["end"] = self._time(a["end"], call)
+        elif "start" in p:   # keep its length as the clock shows it (a 9–10 meeting stays 9–10 over a clock change)
+            p["end"] = p["start"] + (datetime.fromtimestamp(ev["end"]) - datetime.fromtimestamp(ev["start"]))
         for k in ("title", "location"):
             if a.get(k):
                 p[k] = str(a[k])[:200]
@@ -461,9 +503,18 @@ class Calendar(Module):
         """The dashboard's "next two weeks" list: only calendars chosen for it (D-109)."""
         today = datetime.fromtimestamp(self.ctx.clock()).date()
         listed = {c["id"] for c in self.store.calendars() if c["in_list"]}
+        accounts = self._accounts()
+        everyone = {c["id"] for c in self.store.calendars()   # calendars Pip may mention to anyone (the room's monitor)
+                    if (accounts.get(c["account_id"]) or {"sharing": "everyone"})["sharing"] == "everyone"}
+        # A timed event running past midnight is listed once, at its start (not again at "12:00 AM" the next
+        # day); several-day all-day events still show on each of their days. One that started before today
+        # and is still going (day 2 of a conference) is listed today, so it doesn't disappear.
         return [{"id": o["id"], "title": "Private" if o["private"] else o["title"], "at": o["at"], "all_day": o["all_day"],
-                 "repeat": o["repeat"], "private": o["private"], "color": o["color"]}
-                for o in self.occurrences(today, today + timedelta(days=days - 1)) if o["calendar_id"] in listed]
+                 "repeat": o["repeat"], "private": o["private"], "color": o["color"],
+                 "shared": not o["private"] and o["calendar_id"] in everyone}
+                for o in self.occurrences(today, today + timedelta(days=days - 1)) if o["calendar_id"] in listed
+                and (o["all_day"] or o["repeat"] or o["at"] == o["start"]
+                     or datetime.fromtimestamp(o["at"]).date() == today)]
 
     def calendars_view(self, ignored: bool = False) -> list[dict]:
         accounts, names = self._accounts(), self._people()
@@ -483,7 +534,12 @@ class Calendar(Module):
             raise ValueError("Pick a date")
         all_day = bool(a.get("all_day"))
         if all_day:
-            last = date.fromisoformat(str(a.get("end_date") or a.get("date")))
+            try:
+                last = date.fromisoformat(str(a.get("end_date") or a.get("date")))
+            except ValueError:
+                raise ValueError("Pick a last day")
+            if last < d:
+                raise ValueError("The last day can't be before the first")
             start = datetime.combine(d, datetime.min.time())
             end = datetime.combine(last, datetime.min.time()) + timedelta(days=1)
         else:
@@ -499,10 +555,13 @@ class Calendar(Module):
         if rep not in REPEATS:
             raise ValueError("Unknown repeat")
         heads = a.get("heads_up")
+        try:
+            heads = heads_up(None if heads in ("", "none") else heads)
+        except ValueError:
+            raise ValueError("The heads-up is a number of minutes")
         return {"title": title[:200], "start": start, "end": end, "all_day": all_day, "repeat": rep,
                 "location": str(a.get("location") or "")[:200], "notes": str(a.get("notes") or "")[:2000],
-                "private": bool(a.get("private")),
-                "heads": float(heads) * 60 if heads not in (None, "", "none") else None}
+                "private": bool(a.get("private")), "heads": heads}
 
     async def dashboard(self, action: str, args: dict) -> dict:
         s = self.store

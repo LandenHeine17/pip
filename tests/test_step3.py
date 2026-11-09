@@ -132,7 +132,8 @@ async def test_question_is_answered_out_loud(tmp_path):
     await ears.emit("heard.utterance", {"reason": "wake", "had_speech": True, "seconds": 2.0},
                     private={"audio_b64": audio_b64()})
     await asyncio.sleep(0.3)
-    await ears.emit("speech.finished", {"interrupted": False})
+    await ears.emit("speech.started", {})
+    await ears.emit("speech.finished", {"interrupted": False, "spoken": True})
     await asyncio.sleep(0.2)
     says = [t for k, t, _ in got if k == "ears.say"]
     assert ("ears.chime", None, None) in got

@@ -53,6 +53,7 @@ class TodoSync:
             except Exception as e:
                 log.info("to-do sync for an account failed: %s", type(e).__name__)
                 out[acc["id"]] = type(e).__name__
+            self.google.synced(acc["id"], out[acc["id"]], "to-dos")   # the Google page's "last synced"
         return out
 
     async def _req(self, acc, method, path, **kw):

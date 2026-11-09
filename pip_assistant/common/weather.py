@@ -4,6 +4,7 @@ Only the place name and coordinates leave the Pi.
 
 Used by pip-thinker (what Claude is told) and pip-web (the weather box and the face's clothing on
 the TV page). `dress()` says what the face wears, as Ziggletron's did."""
+import asyncio
 import time
 
 import httpx
@@ -15,26 +16,52 @@ CODES = {0: "clear", 1: "mostly clear", 2: "partly cloudy", 3: "overcast", 45: "
          86: "heavy snow showers", 95: "thunderstorm", 96: "thunderstorm with hail", 99: "thunderstorm with hail"}
 
 
+RETRY_S = 120         # after a failed fetch, wait this long before trying again (not on every request)
+STALE_S = 3 * 3600    # older than this, it isn't "now" any more: not shown or told at all
+
+
 class Weather:
     def __init__(self, place: str, refresh_s: float = 1800):
         self.place, self.refresh_s = place, refresh_s
         self.coords = None
         self.summary = ""
         self.data: dict = {}   # the same forecast, for the screen: now, wear, days
-        self.fetched = 0.0
+        self.fetched = 0.0     # when the last fetch worked
+        self.tried = 0.0       # when a fetch was last started
+        self._task = None
 
     async def screen(self) -> dict:
         """For the TV page: {"temp", "feels", "sky", "wear", "days": [{"name", "sky", "high", "low", "rain"}]}."""
-        await self.text()
-        return self.data
+        await self._refresh()
+        return self.cached()
+
+    async def screen_within(self, wait: float) -> dict:
+        """The screen's weather, waiting at most `wait` seconds: a slow fetch carries on for next time."""
+        if self._task is None or self._task.done() or self._task.get_loop() is not asyncio.get_running_loop():
+            self._task = asyncio.ensure_future(self.screen())
+        try:
+            return await asyncio.wait_for(asyncio.shield(self._task), wait)
+        except Exception:
+            return self.cached()
+
+    def cached(self) -> dict:
+        return self.data if self.fresh() else {}
+
+    def fresh(self) -> bool:
+        return time.time() - self.fetched < STALE_S
 
     async def text(self) -> str:
-        if time.time() - self.fetched > self.refresh_s or not self.summary:
+        await self._refresh()
+        return self.summary if self.fresh() else ""
+
+    async def _refresh(self) -> None:
+        now = time.time()
+        if (now - self.fetched > self.refresh_s or not self.summary) and now - self.tried > RETRY_S:
+            self.tried = now
             try:
                 await self._fetch()
             except Exception:
-                pass  # keep the last summary; Pip can still search if needed
-        return self.summary
+                pass  # keep the last summary while it's fresh; Pip can still search if needed
 
     async def _fetch(self) -> None:
         async with httpx.AsyncClient(timeout=8, headers={"User-Agent": "pip-assistant"}) as http:

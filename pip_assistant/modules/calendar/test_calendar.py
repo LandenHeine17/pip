@@ -436,3 +436,98 @@ async def test_the_timers_list_shows_only_the_next_day_of_heads_ups(env, tmp_pat
     assert "pasta" in soon and all(a["due"] <= clock() + 86400 for a in snap["alerts"] if a["kind"] == "event")
     assert snap["later_heads_ups"] == len(sched.active(("event",))) - len([a for a in snap["alerts"] if a["kind"] == "event"])
     assert snap["later_heads_ups"] >= 3
+
+
+async def test_an_only_me_calendar_stays_off_the_room_monitor(env):
+    from pip_assistant.core.main import tv_snapshot
+    reg, cal, fake, people, sched, clock = env
+    sam = people.add_person("Sam")
+    fake.calendars["sam@example.com"] = {"summary": "Sam", "primary": True, "accessRole": "owner", "owner": "sam@example.com"}
+    fake.add_event("sam@example.com", summary="Sam's therapy", start={"dateTime": "2026-11-07T15:00:00-06:00"},
+                   end={"dateTime": "2026-11-07T16:00:00-06:00"}, reminders={"useDefault": False, "overrides": [
+                       {"method": "popup", "minutes": 400}]})
+    acc = await connect(reg.modules["google"], fake, sam["id"], "sam@example.com")
+    await cal.sync.run_once()
+    snap = tv_snapshot(sched, reg)
+    assert "Sam's therapy" in [e["title"] for e in snap["events"]]           # shared with everyone: on the monitor
+    await reg.modules["google"].dashboard("sharing", {"id": acc["id"], "value": "me"})
+    sched.add("event", "Sam's therapy", clock() + 60, event_id=next(iter(cal.store.all_events()))["id"])
+    snap = tv_snapshot(sched, reg)
+    assert "Sam's therapy" not in [e["title"] for e in snap["events"]]       # only for Sam: not on the room's screen
+    assert "Sam's therapy" not in [a["label"] for a in snap["alerts"]]       # nor its heads-up
+    assert [e["shared"] for e in cal.upcoming(2)] == [False]
+
+
+async def test_an_overnight_or_several_day_event_is_listed_once_and_told_with_its_days(env):
+    reg, cal, fake, people, sched, clock = env
+    say(reg, "add:event", {"title": "party", "at": "2026-11-07T22:00", "end": "2026-11-08T01:00"})
+    say(reg, "add:event", {"title": "conference", "at": "2026-11-08T09:00", "end": "2026-11-10T17:00"})
+    say(reg, "add:event", {"title": "trip", "date": "2026-11-11", "all_day": True})
+    [trip] = [e for e in cal.store.all_events() if e["title"] == "trip"]
+    cal.store.update_event(trip["id"], end=datetime(2026, 11, 13))                # two days, all day
+    assert [e["title"] for e in cal.upcoming(14)] == ["party", "conference", "trip", "trip"]
+    told = look(reg, first="2026-11-07", last="2026-11-10")
+    assert "party Sat 2026-11-07 Sat 22:00–Sun 01:00" in told and "conference Sun 2026-11-08 Sun 09:00–Tue 17:00" in told
+    assert "conference Tue 2026-11-10 Sun 09:00–Tue 17:00" in told               # still on, with its real times
+
+
+async def test_one_change_google_refuses_doesnt_stop_the_sync(env):
+    import httpx
+    reg, cal, fake, people, sched, clock = env
+    landen = people.add_person("Landen", "admin")
+    fake.calendars["landen@example.com"] = {"summary": "Landen", "primary": True, "accessRole": "owner", "owner": "landen@example.com"}
+    await connect(reg.modules["google"], fake, landen["id"], "landen@example.com")
+    await cal.sync.run_once()
+    say(reg, "add:event", {"title": "visa renewal", "at": "2026-12-20T10:00", "heads_up_minutes": 50400}, me(landen))
+    [visa] = cal.store.all_events()
+    assert visa["reminder"] == 40320                                  # kept to Google's 4-week limit
+    say(reg, "add:event", {"title": "lab report", "at": "2026-12-21T10:00"}, me(landen))
+    handle = fake.handle
+
+    def picky(request):   # Google refuses the visa one (as it would a bad reminder), takes the rest
+        if request.method == "POST" and b"visa" in request.content:
+            return httpx.Response(400, json={"error": {"message": "Invalid reminder"}}, request=request)
+        return handle(request)
+    cal.ctx._transport.handler = picky
+    fake.add_event("landen@example.com", summary="Chem lab", start={"dateTime": "2026-11-09T13:00:00-06:00"},
+                   end={"dateTime": "2026-11-09T15:00:00-06:00"})
+    assert await cal.sync.run_once() == {next(iter(cal._accounts())): ""}
+    titles = {e["title"]: e for e in cal.store.all_events()}
+    assert "Chem lab" in titles and not titles["visa renewal"]["pending"]       # Google's came in; the refused one let go
+    assert any(e["summary"] == "lab report" for e in fake.events["landen@example.com"].values())
+    with pytest.raises(Invalid):
+        say(reg, "add:event", {"title": "x", "at": "2026-12-20T10:00", "heads_up_minutes": "soon"})
+
+
+async def test_events_coming_into_the_window_arrive_with_the_weekly_full_fetch(env):
+    reg, cal, fake, people, sched, clock = env
+    landen = people.add_person("Landen", "admin")
+    fake.calendars["landen@example.com"] = {"summary": "Landen", "primary": True, "accessRole": "owner", "owner": "landen@example.com"}
+    await connect(reg.modules["google"], fake, landen["id"], "landen@example.com")
+    await cal.sync.run_once()
+    ev = fake.add_event("landen@example.com", summary="Spring break", start={"dateTime": "2027-05-10T09:00:00-05:00"},
+                        end={"dateTime": "2027-05-10T10:00:00-05:00"})
+    ev["updated"] = 0                     # made long ago: an incremental fetch won't bring it
+    await cal.sync.run_once()
+    assert "Spring break" not in [e["title"] for e in cal.store.all_events()]
+    clock.t += 8 * 86400
+    await cal.sync.run_once()
+    assert "Spring break" in [e["title"] for e in cal.store.all_events()]
+
+
+async def test_moving_by_a_day_over_the_clock_change_keeps_the_clock_time(env):
+    reg, cal, fake, people, sched, clock = env
+    clock.t = datetime(2027, 3, 10, 9, 0).timestamp()
+    c = Call(now=datetime(2027, 3, 10, 9, 0))
+    say(reg, "add:event", {"title": "moving day", "date": "2027-03-13", "all_day": True}, c)
+    say(reg, "add:event", {"title": "standup", "at": "2027-03-13T09:00"}, c)
+    for e in cal.store.all_events():
+        say(reg, "change:event", {"id": e["id"][:6], "shift_seconds": 86400}, c)
+    told = look(reg, c, "2027-03-13", "2027-03-15")
+    assert "moving day Sun 2027-03-14 all day" in told and "standup Sun 2027-03-14 09:00–10:00" in told
+    items = told.split(": ", 1)[1]
+    assert "Sat" not in items and "Mon" not in items                  # not an hour off into the next or last day
+    [ev] = [e for e in cal.store.all_events() if e["title"] == "standup"]
+    for bad in ("1e12", "nan", "inf", "soon"):
+        with pytest.raises(Invalid):
+            say(reg, "change:event", {"id": ev["id"][:6], "shift_seconds": bad}, c)
