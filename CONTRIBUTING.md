@@ -4,7 +4,7 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
 
 ## 1. Before you change anything
 
-1. **Find out what phase we're in.** See `CLAUDE.md` → "Current phase". We're in M1a: Pip is being built, step by step (`docs/ARCHITECTURE.md` §14). The application is `pip_assistant/`; `m0/` holds the measurement tools from M0.
+1. **Find out what phase we're in.** See `CLAUDE.md` → "Current phase". M1a and M1b are built (`docs/ARCHITECTURE.md` §14); next is M2. The application is `pip_assistant/`; `m0/` holds the measurement tools from M0.
 2. **Find the requirement.** Read the relevant part of `docs/PIP-SPEC.md`, then look it up in `docs/REQUIREMENTS.md` (`PIP-NEW-nnn`, Ziggletron's `FEAT-nnn`, acceptance criteria `AC-*`). **When building a feature, open its Detail link**: the archived proposal holds the exact rules, edge cases and examples. Check REQUIREMENTS §0 (overridden passages) and `docs/DECISIONS.md` first; decisions win.
 3. **Check the owner's decisions** in `docs/DECISIONS.md` (`D-nn`). Decisions override the rest of the spec. If your change contradicts one, **stop and ask the owner**.
 4. **Read only what you need.** The map says which file covers what. You don't need to read everything.
@@ -23,6 +23,7 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
   - Commit messages describe the change; never paste a spoken or private request.
 - **The owner reads docs, not code** (D-71). If a change affects how something works, update the plain-language docs and diagrams in the same change.
 - **Dependencies:** use releases at least two weeks old. System (apt) packages only with the owner's OK.
+- **Pip's own changes** (asked by voice or on the dashboard) go through the **Changes page** and pip-builder (D-118), never by hand-editing what's running. If you're Pip's coding agent: you work on a plain copy with no git, the only command you can run is `tools/sandbox-test`, and edits to `pyproject.toml`, `uv.lock`, `deploy/systemd/`, `tools/`, `.claude/` or `.gitignore` are refused.
 - **Third-party code we run** (e.g. openWakeWord) is pinned, and any local fixes are saved as patches in `m0/patches/`.
 
 ## 3. Long-running or heavy jobs (on the Pi)
@@ -38,6 +39,7 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
 2. **Measurement tests (recordings, sound, speed, wake words): only run one that settles a specific decision**, and say which one. Write the result to `~/pip-data/m0/results/<id>.json` (fields: `id, ran_at, passed, summary, details`). Update `~/pip-data/m0/status.json`: to-do list, progress and findings in plain language.
 3. **Update the map** if you added, moved or removed files or folders.
 4. **Commit and push.** The pre-commit check must pass (`tools/install_hooks.sh` installs it). End commit messages with the attribution line your tool requires.
+5. **Install it** (the owner, or with the owner's OK): `sh deploy/install.sh`. It installs the **committed** HEAD as a new version in `~/pip-app` and refuses if tracked files have uncommitted changes, so commit first. It waits for a quiet moment, restarts Pip, checks his health and switches back by itself if he isn't healthy (see [`docs/HOW-PIP-WORKS.md`](docs/HOW-PIP-WORKS.md) §7). Pip runs from `~/pip-app/current`, so restarting a service alone doesn't pick up edits in `~/pip`. **Never edit `~/pip-app` by hand.**
 
 ## 5. When to ask the owner instead
 

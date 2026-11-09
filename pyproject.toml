@@ -25,6 +25,7 @@ pip-core = "pip_assistant.core.main:run"
 pip-ears = "pip_assistant.ears.main:run"
 pip-thinker = "pip_assistant.thinker.main:run"
 pip-web = "pip_assistant.web.main:run"
+pip-builder = "pip_assistant.builder.main:run"
 
 [build-system]
 requires = ["setuptools>=68"]

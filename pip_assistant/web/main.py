@@ -243,8 +243,14 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         html = resources.files("pip_assistant.web").joinpath("static/settings.html").read_text()
         return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
-    def passed_to_core(msg_type: str, timeout: float = 15):
-        """A route that hands its request to pip-core: GET → {"action": "get"}, POST → the JSON body."""
+    async def changes_page(request):
+        """The Changes page (M1b): Pip's self-changes, waiting for the owner's approvals."""
+        html = resources.files("pip_assistant.web").joinpath("static/changes.html").read_text()
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+    def passed_to_core(msg_type: str, timeout: float = 15, target: str = "core", get: str = "get"):
+        """A route that hands its request to pip-core (or another program): GET → {"action": get}, POST → the
+        JSON body. It travels privately and comes back privately."""
         async def handler(request):
             if request.method == "POST":
                 try:
@@ -254,11 +260,11 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
                 if not isinstance(body, dict):
                     return JSONResponse({"error": "That request isn't a JSON object"}, status_code=400)
             else:
-                body = {"action": "get"}
+                body = {"action": get}
             try:
-                r = await bus.request("core", msg_type, {}, body, timeout=timeout)
+                r = await bus.request(target, msg_type, {}, body, timeout=timeout)
             except Exception as e:
-                return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
+                return JSONResponse({"error": f"pip-{target} not reachable ({type(e).__name__})"}, status_code=503)
             return JSONResponse(r.private if r.private else r.data)
         return handler
 
@@ -305,7 +311,10 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
                              Route("/settings", settings_page),
                              Route("/api/settings", passed_to_core("core.settings", 300), methods=["GET", "POST"]),
                              Route("/api/personality", passed_to_core("core.personality", 70), methods=["GET", "POST"]),
-                             Route("/api/migrate", passed_to_core("core.migrate", 60), methods=["GET", "POST"])])
+                             Route("/api/migrate", passed_to_core("core.migrate", 60), methods=["GET", "POST"]),
+                             Route("/changes", changes_page),
+                             Route("/api/changes", passed_to_core("builder.page", 30, target="builder", get="list"),
+                                   methods=["GET", "POST"])])
 
 
 def listen(bus, state: State) -> None:
@@ -391,6 +400,10 @@ def listen(bus, state: State) -> None:
     bus.subscribe("mic.changed", on_mic)
     bus.subscribe("net.changed", on_net)
     bus.subscribe("module.*", on_module)
+
+    async def on_builder(msg: Message):   # a self-change moved on (M1b): the Changes page and the badge reload
+        state.push("builder", {"id": msg.data.get("id"), "status": msg.data.get("status")})
+    bus.subscribe("builder.changed", on_builder)
 
 
 async def main() -> None:

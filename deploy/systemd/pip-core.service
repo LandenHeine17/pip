@@ -3,7 +3,8 @@ Description=Pip: pip-core (the conductor: messages, decision trace, watchdog, ti
 
 
 [Service]
-ExecStart=%h/pip/.venv/bin/pip-core
+WorkingDirectory=%h/pip-app/current
+ExecStart=%h/pip-app/current/.venv/bin/pip-core
 Restart=on-failure
 RestartSec=3
 MemoryMax=700M

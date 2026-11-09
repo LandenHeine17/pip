@@ -118,10 +118,13 @@ class ClaudeCLI:
         self.warm, self.warm_prompt = await self._spawn(system_prompt), system_prompt
 
     async def ask(self, answer_id: str, system_prompt: str, user_text: str, on_sentence, on_searching,
-                  held: bool = False):
+                  held: bool = False, on_result=None):
         """Stream an answer. Calls on_sentence(text) per sentence and on_searching() once if it searches.
         held=True: only words after "SAY:" are spoken (joining in). Returns (full_text, info); info["passed"]
-        is True when Claude chose to stay quiet."""
+        is True when Claude chose to stay quiet.
+        on_result(cost_usd, is_error, error_text) is called once the CLI reports how the request went (the
+        usage meter, common/usage.py); error_text is the CLI's own message ("usage limit reached…"), never
+        anything that was said."""
         if self.warm and self.warm.returncode is None and self.warm_prompt == system_prompt:
             proc, self.warm = self.warm, None
         else:
@@ -170,8 +173,14 @@ class ClaudeCLI:
                             if mode == "speak":
                                 await speak(piece)
                     elif ev.get("type") == "result":
-                        info["is_error"] = ev.get("is_error", False)
+                        info["is_error"] = bool(ev.get("is_error", False))
                         info["cost_usd"] = ev.get("total_cost_usd")
+                        if on_result is not None:
+                            err = str(ev.get("result") or ev.get("subtype") or "")[:300] if info["is_error"] else ""
+                            try:
+                                on_result(info["cost_usd"], info["is_error"], err)
+                            except Exception:
+                                log.exception("usage callback failed")
             await asyncio.wait_for(read(), self.timeout)
             if mode is None:  # a very short answer ("Sure."), or a join-in that never said SAY:
                 mode, rest = classify(head, held, final=True)

@@ -7,6 +7,10 @@ Takes:  thinker.ask (request; data.answer_id, data.kind = direct / mentioned / j
         Answers with that personality, nothing from the room, nothing spoken or done; replies private.text.
         thinker.cancel {answer_id} (command)
 Sends:  answer.sentence {answer_id} (+ private.text) · answer.searching {answer_id}
+        usage.limited {until}: Claude said the plan's usage limit is reached; joining in and self-changes pause
+        until then (D-69; core/joining.py). Replies to people keep trying.
+Usage:  every request is counted by kind in the usage table (common/usage.py); today's and the week's totals
+        and paused_until go out with each heartbeat (the dashboard's Programs section shows them).
 System prompt = the personality (common/personality.py: ~/pip-data/personality.md, re-read when it changes)
 + RULES (fixed here) + each module's [claude] instructions (module.toml).
 Offline, Pip's own commands (timers, alarms, reminders, calendar) still work in pip-core; the
@@ -14,12 +18,14 @@ offline Qwen fallback for chat (D-75, PIP-NEW-081) is planned for M2.
 """
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta
 
 from ..common import personality
 from ..common.messages import Message
 from ..common.modules import enabled
 from ..common.program import make_bus, serve, start
+from ..common.usage import Usage, is_limit_error, paused_until
 from ..common.weather import Weather
 from ..core import when
 from .claude import ClaudeCLI
@@ -68,6 +74,16 @@ answered from who's speaking. People who live here are added on your dashboard. 
 or recognise voices. You can't yet send messages or control devices; \
 if asked, say that's coming soon. Never claim to have done something.
 
+Changing yourself: people can ask you to change how you work or add something new to you ("Pip, add a \
+way to track whose turn it is for the dishes", "stop saying good morning every time"). Only when someone \
+clearly asks you to change or add to yourself, reply with ONLY:
+ACTION {{"do": "request_change", "summary": "keep track of whose turn it is for the dishes"}}
+The summary is a short paraphrase of the change in your own words, with no names or personal details. Pip \
+writes up a plan, and it's approved on your dashboard's Changes page, never by voice. Questions about how you \
+work, complaints that don't ask for a change ("you're glitchy today"), what-ifs ("could you ever...?") and \
+things you can already do (timers, memories, voices) never use request_change: just answer. If they ask \
+to undo or take back a change, tell them to press Undo on the Changes page; you can't approve or undo changes.
+
 Use the weather below for weather questions instead of searching. Only search the web for current \
 facts you genuinely don't know (news, scores, opening hours).
 
@@ -94,8 +110,73 @@ class Thinker:
         self.preview_claude = OneOffCLI(t["model"], t["web_search"], t["timeout_seconds"], t["effort"])
         self.weather = Weather(t["location"])
         self.name = cfg.get("pip", {}).get("name", "Pip")   # fills {name} in the personality (Settings)
+        try:
+            self.usage = Usage()
+        except Exception as e:   # the meter must never stop Pip answering
+            log.warning("usage meter unavailable: %s", e)
+            self.usage = None
+        self.paused_until = 0.0
+        self.cancelled: set[str] = set()
+        self.show_usage()
 
     name = "Pip"   # fills {name} in the personality; settings ([pip] name) override it in __init__
+    usage = None
+    paused_until = 0.0
+    KIND = {"direct": "answer", "mentioned": "mention", "join": "join", "preview": "preview"}
+
+    # ---------------------------------------------------------------- the usage meter (D-69, PIP-NEW-089)
+    def show_usage(self) -> None:
+        """Put today's and this week's totals, and any pause, in the heartbeat (→ /api/health)."""
+        status = getattr(getattr(self, "bus", None), "status", None)
+        if status is None:
+            return
+        if self.usage is not None:
+            try:
+                status["usage_today"], status["usage_week"] = self.usage.today(), self.usage.week()
+            except Exception as e:
+                log.warning("usage meter: %s", e)
+        status["paused_until"] = self.paused_until if self.paused_until > time.time() else None
+
+    async def count(self, kind: str, report: dict, failed: Exception | None, cancelled: bool = False) -> None:
+        """One Claude request done: count it, and pause joining in if Claude says the limit is reached."""
+        if report:
+            error, text = report["error"], report["text"]
+        else:   # no result from the CLI: it failed (or was stopped) before finishing
+            error, text = failed is not None and not cancelled, str(failed or "")
+        if self.usage is not None:
+            try:
+                self.usage.record(self.KIND.get(kind, "other"), report.get("cost"), error)
+            except Exception as e:
+                log.warning("usage meter: %s", e)
+        if error and is_limit_error(text):
+            await self.limited(paused_until(text))
+        self.show_usage()
+
+    async def limited(self, until: float) -> None:
+        self.paused_until = max(self.paused_until, until)
+        log.warning("Claude's usage limit reached: joining in paused until %s", time.strftime("%H:%M", time.localtime(until)))
+        await self.bus.emit("usage.limited", {"until": round(self.paused_until)})
+
+    def paused(self) -> bool:
+        return self.paused_until > time.time()
+
+    async def _ask(self, cli, kind: str, aid: str, *args, **kw):
+        """cli.ask(…), counted in the usage meter."""
+        report: dict = {}
+
+        def on_result(cost, is_error, text):
+            report.update(cost=cost, error=bool(is_error), text=text or "")
+        failed = None
+        try:
+            return await cli.ask(aid, *args, on_result=on_result, **kw)
+        except Exception as e:
+            failed = e
+            raise
+        finally:
+            stopped = self.__dict__.setdefault("cancelled", set())
+            cancelled = aid in stopped
+            stopped.discard(aid)
+            await self.count(kind, report, failed, cancelled)
 
     async def system_prompt(self, persona: str | None = None) -> str:
         """The personality (the saved one, or `persona` for a preview), then the fixed rules, then the modules'.
@@ -161,9 +242,8 @@ class Thinker:
         async def nothing(*_):
             pass
         try:
-            text, info = await self.preview_claude.ask(aid, await self.system_prompt(persona),
-                                                       self.user_text(question, [f"Someone: {question}"]),
-                                                       nothing, nothing)
+            text, info = await self._ask(self.preview_claude, "preview", aid, await self.system_prompt(persona),
+                                         self.user_text(question, [f"Someone: {question}"]), nothing, nothing)
         except Exception as e:
             log.warning("preview failed: %s", e)
             return msg.reply({"error": f"{type(e).__name__}: {str(e)[:120]}"}, source="thinker")
@@ -184,9 +264,11 @@ class Thinker:
         async def searching():
             await self.bus.emit("answer.searching", {"answer_id": aid})
 
+        kind = msg.data.get("kind", "direct")
+        if kind == "join" and self.paused():   # usage limit reached: no joining in until it resets (D-69)
+            return msg.reply({"passed": True, "paused": True}, private={"text": ""}, source="thinker")
         try:
-            kind = msg.data.get("kind", "direct")
-            text, info = await self.claude.ask(aid, await self.system_prompt(),
+            text, info = await self._ask(self.claude, kind, aid, await self.system_prompt(),
                                                self.user_text(msg.private.get("text", ""), msg.private.get("transcript"),
                                                              schedule=msg.private.get("schedule", ""),
                                                              people=msg.private.get("people", ""),
@@ -197,6 +279,9 @@ class Thinker:
         except Exception as e:
             log.warning("answer failed: %s", e)
             return msg.reply({"error": f"{type(e).__name__}: {str(e)[:120]}"}, source="thinker")
+        if info.get("is_error") and not text and not info.get("action"):
+            # The CLI answered with an error (a usage limit, …) rather than words: say so, don't go quiet
+            return msg.reply({"error": "Claude reported an error"}, source="thinker")
         action = info.pop("action", None)  # what was asked for: private, like everything people say (D-34)
         info["action"] = bool(action)
         if info.get("passed"):
@@ -205,6 +290,8 @@ class Thinker:
         return msg.reply({k: v for k, v in info.items() if v is not None}, private=private, source="thinker")
 
     async def on_cancel(self, msg: Message):
+        if msg.data.get("answer_id"):
+            self.cancelled.add(msg.data["answer_id"])
         self.claude.cancel(msg.data.get("answer_id"))
         self.preview_claude.cancel(msg.data.get("answer_id"))
         return {"ok": True}
@@ -216,6 +303,7 @@ class Thinker:
                 await self.claude.prepare(await self.system_prompt())
             except Exception as e:
                 log.warning("couldn't pre-start Claude: %s", e)
+            self.show_usage()   # a new day, or a pause that has ended
             await asyncio.sleep(20)
 
 

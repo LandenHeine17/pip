@@ -121,6 +121,10 @@ SAYINGS = {
     "thinker_failed": "Sorry, my brain isn't answering right now. Try me again in a moment.",
     "no_speech": "",  # wake word but then nothing: stay quiet
     "command_failed": "Sorry, that didn't work. Nothing was set.",
+    # Asking Pip to change himself (M1b, PIP-NEW-069): only people he recognises for sure may ask by voice
+    "change_asked": "Okay, I'll write up a plan. It'll be on the dashboard to approve.",
+    "change_not_you": "Ask whoever looks after me to put that in on the dashboard's Changes page.",
+    "change_unavailable": "I can't take change requests right now. Try again later.",
 }
 
 
@@ -1097,6 +1101,11 @@ class Conversation:
                     from . import when
                     said.append(f"Snoozed for {when.say_duration((step[1] or self.schedule.snooze_min) * 60)}." if n
                                 else "Nothing's ringing.")
+                elif step[0] == "request_change":
+                    text, ok = await self.request_change(step[1], speaker)
+                    said.append(text)
+                    done += ok
+                    continue
                 elif step[0] == "learn_voice":
                     r = await self.people_cmds.introduced(step[1], True, speaker, pcm) \
                         if self.people_cmds else "I can't recognise voices yet."
@@ -1124,6 +1133,26 @@ class Conversation:
             self.said(learning.say)
             await self.show("pip", learning.say, local=True)
             await self.start_enrolment(learning.person_id, first=pcm, greeting=learning.say)
+
+    async def request_change(self, summary: str, speaker) -> tuple[str, bool]:
+        """Someone asked Pip to change how he works (ACTION request_change, PIP-NEW-069, AC-SM-01). Only a voice
+        he recognises for sure, and not a guest's, may ask; pip-builder then writes a plan for the dashboard's
+        Changes page, where the owner approves it (voice never approves anything). Claude's paraphrase travels
+        only in the private part, so it's never in the trace. Returns (what to say, whether it was passed on)."""
+        if speaker is None or speaker.level != "sure" or speaker.guest or not speaker.person_id:
+            await self.bus.publish(Message("event", "change.refused", data={"why": "voice not recognised"}))
+            return SAYINGS["change_not_you"], False
+        try:
+            r = await self.bus_request("builder", "builder.ask",
+                                       {"source": "voice", "asked_by": speaker.label, "person_id": speaker.person_id},
+                                       {"text": summary}, timeout=10)
+            ok = not r.data.get("error")
+        except Exception:   # pip-builder not running, or too slow
+            ok = False
+        if not ok:
+            await self.bus.publish(Message("event", "change.refused", data={"why": "builder unavailable"}))
+            return SAYINGS["change_unavailable"], False
+        return SAYINGS["change_asked"], True
 
     async def look_up(self, looks: list[dict], again: tuple | None, t0: float, asker: tuple | None = None) -> None:
         """Claude asked to see more first (the calendar for next Friday, …): fetch it and ask again."""

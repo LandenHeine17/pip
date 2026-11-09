@@ -19,7 +19,7 @@ These come straight from the decisions and the M0 results:
 
 ## 2. The big picture
 
-Pip is **five small programs** on the Pi, plus the screen's browser (four are built; **pip-builder is not built yet, M1b**). Each runs as its own systemd service with its own memory cap, so one misbehaving part can't take down the others.
+Pip is **five small programs** on the Pi, plus the screen's browser. All five are built (pip-builder in M1b, 2026-11-09). Each runs as its own systemd service with its own memory cap, so one misbehaving part can't take down the others.
 
 ```mermaid
 flowchart TB
@@ -28,7 +28,7 @@ flowchart TB
         CORE["🧠 pip-core<br/>the conductor: conversation,<br/>timers, memory, actions, log"]
         THINK["💭 pip-thinker<br/>Claude (offline Qwen<br/>fallback: not built yet)"]
         WEB["🖥️ pip-web<br/>dashboard, TV page, API"]
-        BUILD["🔧 pip-builder<br/>self-changes, in a sandbox<br/>(not built yet, M1b)"]
+        BUILD["🔧 pip-builder<br/>self-changes, in sandboxes"]
         KIOSK["📺 Screen browser<br/>(Pip's face)"]
         DATA[("~/pip-data<br/>settings, secrets,<br/>database, models")]
     end
@@ -48,9 +48,9 @@ flowchart TB
 |---|---|---|---|
 | **pip-ears** | Listens all the time: echo-cancelled audio from the speakerphone, speech detection, both wake words ("Pippletron", "Hey Pip"), talking over Pip (stops him instantly), mute detection; and a second plain USB microphone used only for the two-clap switch (D-91). Also plays everything Pip says (Piper voice) and alarm sounds, and turns Pip down when someone talks over him | Must react in milliseconds and never wait for the internet or the AI | 600 MB |
 | **pip-core** | The conductor. Decides what to do with each thing heard; runs conversations, timers, reminders and alarms; holds memory, people and settings; runs actions; keeps the log of everything that happens; watches the other programs' health; recognises voices (TitaNet, step 5) | Everything goes through one place, so it's easy to follow and log | 700 MB (was 400; voice model + offline Whisper, D-87) |
-| **pip-thinker** | Talks to Claude through the Claude Code CLI (one fresh session per request, fixing Ziggletron's collision bug P-01). *Not built yet:* the offline Qwen fallback when Claude is unavailable (planned for M2, D-75) and tracking Pro-plan usage (PIP-NEW-089) | Slow and memory-hungry; must never hold up the conductor | 2.0 GB (Qwen needs ~1.3 GB while loaded) |
+| **pip-thinker** | Talks to Claude through the Claude Code CLI (one fresh session per request, fixing Ziggletron's collision bug P-01). Counts every Claude request in the usage meter (`common/usage.py`, PIP-NEW-089) and announces when Claude's usage limit is reached. *Not built yet:* the offline Qwen fallback when Claude is unavailable (planned for M2, D-75) | Slow and memory-hungry; must never hold up the conductor | 2.0 GB (Qwen needs ~1.3 GB while loaded) |
 | **pip-web** | The dashboard (phone/PC over Tailscale) and the TV page for the face, which gets only what it shows (D-110). Plain http on the Tailscale address, https at the Pi's Tailscale name (`tailscale serve`), and 127.0.0.1 for the monitor. No logins (D-116); a same-site check (`web/security.py`) stops other websites from changing Pip | Keeps network-facing code away from the core and from secrets | 300 MB |
-| **pip-builder** *(not built yet, M1b)* | Self-changes: writes and tests code changes in a sandbox (the systemd sandbox that passed in M0) and hands the result to you for approval | Untrusted code must be fenced off from your data | 2.0 GB, only while running |
+| **pip-builder** | Self-changes (D-118): keeps the record of each change, runs Claude Code in a sandbox to plan and build it, checks it, and puts it live through a versioned install once you've approved it twice on the Changes page (§9) | Untrusted code must be fenced off from your data | 300 MB for the program; each sandbox job 2 GB, only while running |
 | *Screen browser* | Chromium in kiosk mode on the monitor (system service `pip-tv`, `deploy/tv/`), showing the TV page `/tv` from pip-web's local address | How Ziggletron's face worked; Pip's replaces it (D-110) | (existing) |
 
 Total in everyday use (est.): about 1.5–2.5 GB plus the browser, comfortably inside 8 GB, and matching the 1.5 GB measured in M0.
@@ -132,7 +132,8 @@ What else leaves the Pi:
 | Claude | The room transcript (last 40 lines), memories, what's set, the calendar's today and tomorrow plus counts for the week (the rest only when Claude looks it up, D-102) and open to-dos (only what the speaker may hear; never private events or ignored calendars), the allowed actions. Join-in checks get only the rest of today | Each answer, mention or join-in check (at most every ~40 s) |
 | Open-Meteo | "Lincoln, Nebraska" | Weather updates |
 | Google | For each person who connected their account (D-97): their calendar events and to-dos, both ways (D-98, D-100). Private events are kept on the Pi too but never told to Claude | Every ~2 min, and straight after a change |
-| GitHub | **Code only.** Never personal data (checked on every commit) | When changes are pushed |
+| Claude (self-changes) | The request, Pip's code (the workspace copy) and the plan; never `~/pip-data` | When a change is planned or built (D-118) |
+| GitHub | **Code only.** Never personal data (checked on every commit). Pip never pushes; the owner does (D-118) | When changes are pushed |
 
 ## 7. Modules: how features plug in
 
@@ -212,14 +213,16 @@ The voice engine is a setting: `voice_engine` under `[ears]` in `defaults.toml` 
 | `~/pip` (repo) | All code, modules, default settings, generic wake-word models (synthetic voices only), docs | Yes (public-safe) |
 | `~/pip-data/settings.toml` | Your settings (location, room, mode, voice…), written by the Settings page | **No** |
 | `~/pip-data/secrets.toml` | API keys, and each module's own section (e.g. `[google]`: the Google client and each connected person's sign-in key). Only pip-core reads it (`core/stt.py` for the Groq key; modules through `core/modules.py`); a module only ever sees its own section | **No** |
-| `~/pip-data/pip.db` | One SQLite database: memories, people and voice profiles, timers/reminders, the 48-hour decision trace, and each module's own tables (`calendar_…`, `todos_…`, `google_…`, `screen_…`) | **No** |
+| `~/pip-data/pip.db` | One SQLite database: memories, people and voice profiles, timers/reminders, the 48-hour decision trace, each module's own tables (`calendar_…`, `todos_…`, `google_…`, `screen_…`), self-changes (`builder_changes`) and the usage meter (`usage`) | **No** |
 | `~/pip-data/models/` | The voice recognition model (`speaker/`) and Pip's Piper voice (`voices/`). The wake-word models in use are the generic ones in the repo (`models/wake/`) | **No** |
+| `~/pip-app/` | The live copy Pip runs from (§10): `releases/<id>/` (one folder per installed version, with its own `.venv`), `current` (a link to the running one), `release-state.json`, `release.log` | **No** |
+| `~/pip-data/builder/` | Self-change workspaces (`work/<id>/`, deleted when the change ends) and install results (`releases/`) | **No** |
 | `~/pip-data/m0/` | M0's results, the Qwen model and wake-word training output, and your consented test recordings (`recordings/`, kept, D-72) | **No** |
 
 - **A fresh clone** starts with default settings and generic models, runs a first-time setup (API keys, location, room), and works without anyone's personal data (PIP-NEW-096).
 - **SD-card friendly:** small batched writes and size-capped logs.
 - **No conversation text** is stored except the short-lived conversation context in memory (D-53 feed is live-only).
-- **Ziggletron's data** (memories into the inbox; reminders, calendar, TV layouts) is imported once, read-only, at switch-over (D-07).
+- **Ziggletron's data:** his 80 memories (into the inbox, for approval) and his personality text were brought over once, read-only, in step 8 (D-117). Nothing else (D-117 narrowed D-07).
 
 ## 9. Security
 
@@ -230,19 +233,43 @@ The voice engine is a setting: `voice_engine` under `[ears]` in `defaults.toml` 
   - A module's page may only *read* with a plain link (GET); its changes must be sent the other way (POST).
 - **Voice alone is never enough** for admin things (settings, approving changes): those need the dashboard (PIP-NEW-027).
 - **Secrets:** only pip-core reads them; pip-web and pip-thinker never see them.
-- **Self-changes** *(not built yet, M1b)*: pip-builder runs in the systemd sandbox (no access to your home folder, data or network beyond what's allowed; tested in M0). You approve the plan and then the actual change; it's installed alongside the current version and rolled back automatically if the health checks fail (PIP-NEW-069–076).
+- **Self-changes** (built in M1b, D-118, PIP-NEW-069–076). Fixes Ziggletron's self-edit holes (tests run with full rights, the agent could write `.git`, spoken words in commits, leftover branches, no rollback):
+  - **The workspace** is a plain copy of the code with **no `.git`** (`~/pip-data/builder/work/<id>/`), and its Python environment is made *before* the agent starts, so the agent can't plant git hooks or change packages.
+  - **The agent sandbox** (Claude Code, `builder/sandbox.py`): a systemd job where the home folder is empty except the change's own folder and the Claude login file (mounted, never copied); 2 GB, 2 CPUs, 10 min to plan, 30 min to build. It needs the network to reach Claude. Planning may only read; building may edit files and run **one** command: `tools/sandbox-test`. No web search, no other tools.
+  - **`tools/sandbox-test`** runs the tests with **no network and no home folder** (`unshare`: only loopback; an empty home, so no secrets, no Claude login, no `~/.ssh`, no `~/pip-data`). Generated code never runs where it could reach the internet or the login.
+  - **The checks** (by pip-builder, outside the agent sandbox): forbidden files are refused (`pyproject.toml`, `uv.lock`, `.venv`, service files, the commit checks, `tools/sandbox-test`, `.claude/`, `.gitignore`, git's files, binaries); a secret scan; then the full test suite and an import check in the **strict M0 sandbox** (no network at all).
+  - **Your approval, twice, on the dashboard** (Changes page): the plan, then the finished change with its diff and test report. Voice can ask, never approve. A change to security-sensitive code (`web/security.py`, `builder/`, `release.py`, `deploy/`, `core/bus.py`, secrets handling, `tools/`, `CLAUDE.md`) also needs "I've read the diff". Passing the checks only makes it reviewable.
+  - **Going live**: committed on its own branch with a message made from the approved summary (never the request), installed as a new version with automatic rollback (§10). Pip never pushes.
 - **Prompt safety:** device names, web results and calendar text are treated as data, never as instructions.
 
 ## 10. Updates, restarts and recovery
 
 - Each program is a **systemd service**: started at boot, restarted if it crashes, memory-capped.
 - **Watchdog:** each program sends a heartbeat. A missed heartbeat means it's stuck, so it gets restarted and logged (PIP-NEW-079).
-- **Today** the services run straight from the repo: `sh deploy/install.sh` installs or updates them and restarts them.
-- **Versioned installs** *(not built yet)*: each update goes into its own folder (`~/pip-app/releases/<version>`), and a `current` link points at the running one. After an update, health checks run within 2 minutes; if they fail, the link goes back to the previous version automatically (PIP-NEW-080). The last 3 versions are kept.
+- **Versioned installs** (built in M1b, PIP-NEW-080, D-118). Pip runs from a separate live copy, never straight from the repo. Every update, by you or by a self-change, goes through `pip_assistant/release.py`:
+
+```mermaid
+flowchart TD
+    A["sh deploy/install.sh"] --> B{"Uncommitted changes<br/>in ~/pip?"}
+    S["An approved self-change<br/>(committed on its own branch)"] --> C
+    B -- "yes" --> X["Stop (or --allow-dirty:<br/>install the last commit anyway)"]
+    B -- "no" --> C["Make the version:<br/>~/pip-app/releases/(id)<br/>(git worktree + its own .venv)"]
+    C --> D["Wait for a quiet moment<br/>(not while he talks, listens or rings; ≤ 2 min)"]
+    D --> E["Point ~/pip-app/current at it,<br/>restart Pip"]
+    E --> F{"Healthy within 2 min,<br/>and for 30 s after?"}
+    F -- "yes" --> G["Live. Keep the newest 3<br/>(+ current and previous)"]
+    F -- "no" --> H["Switch back to the version before,<br/>restart, check again"]
+```
+
+- **Healthy** means every expected program reports `ok` *on the new version* (each heartbeat carries its `release`, shown in `/api/health` and the dashboard header), and the dashboard (`/`) and the TV's data (`/api/tv`) answer.
+- It runs as its own systemd job, so the restarts it causes can't cut it off.
+- Alarms survive the switch: they're in the database, and the start-up catch-up re-arms them.
+- The first install moves the services from `~/pip` to `~/pip-app/current`; if that version isn't healthy, the old service files are put back.
+- `~/pip-app/release-state.json` records what's current, what was before, and every install and rollback; `~/pip-app/release.log` has every progress line. `python3 -m pip_assistant.release list | status | rollback` from `~/pip`.
 
 ## 11. Testing
 
-- **Every module has its own tests.** They're run by hand (`uv run pytest`, memory-capped; see CONTRIBUTING §4), and later in pip-builder before any self-change is offered to you. The pre-commit check runs only `tools/check_secrets.py` and `tools/check_map.py`.
+- **Every module has its own tests.** They're run by hand (`uv run pytest`, memory-capped; see CONTRIBUTING §4), and by pip-builder before any self-change is offered to you (the agent runs them in `tools/sandbox-test`; then the whole suite runs again in the strict sandbox). The pre-commit check runs only `tools/check_secrets.py` and `tools/check_map.py`.
 - **Replay tests:** conversations and audio clips are fed in without anyone speaking, for listening, interruptions and alarms. Tests that use your private recordings run only on the Pi and never go to GitHub.
 - The **acceptance criteria** (`AC-*` in REQUIREMENTS) become automated tests as each feature is built.
 
@@ -263,7 +290,7 @@ The voice engine is a setting: `voice_engine` under `[ears]` in `defaults.toml` 
 | **Groq Whisper Turbo + word list** | Best in M0 (D-48); local Whisper as the offline fallback |
 | **Claude Code CLI** (Pro plan) | D-05, D-17; one fresh session per request |
 | **llama-cpp-python + Qwen 2.5 1.5B** | Offline fallback (D-75); tested in M0, not built into Pip yet |
-| **systemd** services and sandbox | Already on the Pi; restarts, memory caps and the M0-tested sandbox |
+| **systemd** services and sandbox, plus `unshare` | Already on the Pi; restarts, memory caps and the M0-tested sandbox; `unshare` (no root needed) takes the network and home folder away from self-change tests |
 
 ## 13. Repository layout
 
@@ -274,17 +301,19 @@ pip/                          (the repo)
 │   ├── core/                 pip-core program (conductor, scheduler, memory, trace)
 │   ├── thinker/              pip-thinker program
 │   ├── web/                  pip-web program (dashboard + TV page)
-│   ├── builder/              pip-builder (self-change pipeline; not built yet, M1b)
+│   ├── builder/              pip-builder (the self-change pipeline: store, sandbox, agent, pipeline)
+│   ├── release.py            versioned installs with automatic rollback (run with the system python3)
 │   ├── common/               shared bits: messages, settings, secrets, paths (SQLite code lives in core/ and the modules)
 │   └── modules/              plug-in features: google, calendar, todos, screen (+ _template/)
 ├── models/                   generic, public-safe models
-├── deploy/                   systemd service files (deploy/systemd/), install.sh; the monitor's kiosk (deploy/tv/, install-tv.sh); https (install-https.sh)
+├── deploy/                   systemd service files (deploy/systemd/, incl. pip-builder.service), install.sh (installs the committed HEAD as a release); the monitor's kiosk (deploy/tv/, install-tv.sh); https (install-https.sh)
+├── tools/                    the commit checks, and sandbox-test (tests with no network and no home folder)
 ├── tests/                    cross-program and replay tests
 ├── docs/                     PIP-SPEC, HOW-PIP-WORKS, ARCHITECTURE, DECISIONS, REQUIREMENTS, PROJECT-MAP
 └── m0/                       measurement tools (kept for re-runs)
 ```
 
-## 14. Building it: the M1a plan
+## 14. Building it: the M1a and M1b plans
 
 Built in small steps. Each step ends with something you can try.
 
@@ -301,7 +330,19 @@ Built in small steps. Each step ends with something you can try.
 | 7. Screen: face, widgets, layouts. **First part built 2026-11-08 (D-110):** Ziggletron's face brought over with Pip's states and colours and a voice-driven mouth; clock, weather, timers, next events and captions in a fixed layout; the TV's own narrow feed; Pip's kiosk (`pip-tv`) replaces Ziggletron's. **Rest built 2026-11-08 (D-111):** the screen by voice (`modules/screen`): boxes added, moved, resized and coloured, ready-made and saved screens, fixes offered when something won't fit, undo, a Screen page on the dashboard; new boxes: to-do list, Notes, Pi health, Conversation (room talk only while it's up). What Pip is doing within each state, as a face and words (D-112). **Installed 2026-11-08**; the owner is trying it | The face on the monitor; "Pip, show the morning screen" |
 | 8. Settings page, personality, import from Ziggletron. **Built 2026-11-09 (D-116, D-117):** every setting on a Settings page, applied by restarting only the part that needs it when Pip is quiet; an editable personality with versions and a "try it" preview; Ziggletron's memories (to the inbox) and personality brought over read-only; no logins (D-116), a same-site check and https over Tailscale | Change any setting and Pip's personality on the dashboard |
 
-Then **M1b** adds the safe self-change pipeline, and you switch over from Ziggletron.
+### M1b: safe self-changes
+
+**Built 2026-11-09 (D-118)**; installed when the owner runs `sh deploy/install.sh` (the first run creates the first version and moves the services to `~/pip-app/current`).
+
+| Part | What you'll be able to do |
+|---|---|
+| Versioned installs (PIP-NEW-080) | Every update goes live only if Pip is healthy on it, and goes back by itself if not; the dashboard header shows the running version |
+| pip-builder (PIP-NEW-069–076) | Ask Pip for a change by voice or on the Changes page; approve the plan, watch it being built, review the diff and test report, approve it, and undo it later |
+| Usage meter (PIP-NEW-089) | "Claude today: N requests (≈$X)" on the dashboard; joining in and self-changes pause when Claude's usage limit is reached |
+
+**Switch-over from Ziggletron: done.** Ziggletron is off (D-82), the monitor is Pip's (D-110), and his memories and personality were brought over (D-117). Ziggletron stays installed as the owner's fallback; only the owner touches it.
+
+**Next: M2**, smarter conversation and self-knowledge ([PIP-SPEC §5](PIP-SPEC.md#5-building-it)): among others the offline Qwen fallback (D-75) and explaining himself from his docs, code and the decision trace (PIP-NEW-064–067).
 
 ## 15. Review
 

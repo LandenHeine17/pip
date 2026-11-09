@@ -5,16 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pip Dashboard</title>
 <link rel="stylesheet" href="/pip.css">
+<style>
+.badge{display:inline-block;min-width:1.4em;padding:0 6px;margin-left:4px;border-radius:999px;background:var(--bad);color:#fff;font-size:.72rem;line-height:1.4em;text-align:center}
+.badge[hidden]{display:none}
+.notice{padding:10px 14px;border-radius:14px;background:var(--warnbg);color:var(--warn);font-weight:600;font-size:.88rem;margin-bottom:10px}
+.notice[hidden]{display:none}
+</style>
 </head>
 <body>
 <main>
 <header>
   <div class="brand"><div class="logo">P</div>
     <div><h1>Pip</h1><div class="sub">Listens to the room and joins in · timers, calendar, to-dos, memory, voices</div></div></div>
-  <div class="status"><span id="modlinks" style="display:flex;gap:6px"></span><a href="/settings"><button>Settings</button></a><button id="mic" class="micbtn" onclick="toggleMic()" title="Switch listening off or on.">Listening…</button>
+  <div class="status"><span id="modlinks" style="display:flex;gap:6px"></span><a href="/changes" title="Changes to Pip himself: plans and finished changes waiting for you"><button>Changes<span class="badge" id="chbadge" hidden></span></button></a><a href="/settings"><button>Settings</button></a><button id="mic" class="micbtn" onclick="toggleMic()" title="Switch listening off or on.">Listening…</button>
     <span class="face" id="state" title="Pip's state: grey idle · green listening · purple thinking · blue speaking · orange interrupted · red ringing · dark mic off"><span class="orb"></span><span id="statetext">…</span></span>
     <span class="netoff" id="netoff" hidden title="Pip can't reach the internet: only timers, alarms and other basics work until it's back">offline</span>
-    <span class="sub" id="conn">Connecting…</span></div>
+    <span class="sub" id="conn">Connecting…</span><span class="sub" id="release" title="The version of Pip that's running"></span></div>
 </header>
 
 <div class="grid">
@@ -73,7 +79,9 @@
 <section>
   <details>
     <summary><h2>Programs</h2><span class="sub" id="progsum"></span></summary>
+    <div class="notice" id="usagepause" hidden></div>
     <div class="cards" id="programs"></div>
+    <div class="sub" id="usage" style="margin-top:8px" title="Pip's plan doesn't say how much is left, so there's no warning before the limit: only a notice once Claude says it's reached."></div>
     <div class="sub" style="margin-top:8px">Each program sends a heartbeat every 2 s. One that goes quiet is shown as stuck and restarted automatically.</div>
   </details>
 </section>
@@ -96,8 +104,8 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 const js = v => esc(JSON.stringify(v ?? ""));
 const WHAT = {core:"The conductor: routes messages, keeps the trace, watches health",
   ears:"Microphone, wake words, “stop”, Pip’s voice", thinker:"Claude and the offline fallback",
-  web:"This dashboard and the TV page"};
-const ORDER = ["core","ears","thinker","web"];
+  web:"This dashboard and the TV page", builder:"Self-changes: writes plans, builds and checks the changes you approve"};
+const ORDER = ["core","ears","thinker","web","builder"];
 const STATE = {ok:["ok","Running"], stuck:["stuck","Stuck"], missing:["missing","Not running"]};
 const PIPSTATE = {idle:"Idle", listening:"Listening", thinking:"Thinking", speaking:"Speaking", interrupted:"Interrupted", ringing:"Ringing", offline:"Offline", mic_off:"Not listening"};
 let micState = null;
@@ -131,6 +139,29 @@ function renderHealth(p){
       ${h.activity?`<div class="kv">${esc({listening:"Listening",speaking:"Speaking",muted_or_quiet:"Muted or very quiet"}[h.activity]||h.activity)}${h.level_dbfs!=null?` · mic ${esc(h.level_dbfs)} dBFS`:""}</div>`:""}
       ${h.stage?`<div class="kv">${esc(h.stage)}</div>`:""}</div>`;
   }).join("") || `<div class="empty">Waiting for pip-core…</div>`;
+  renderUsage(p.thinker || {}); renderRelease((p.core || {}).release);
+}
+// How much Pip used Claude today (D-69), and the pause after the plan's usage limit
+const hhmm = ts => new Date(ts*1000).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+function renderUsage(t){
+  const u = t.usage_today, w = t.usage_week;
+  $("usage").textContent = u ? `Claude today: ${u.requests} request${u.requests===1?"":"s"}${u.cost_usd ? ` (≈$${u.cost_usd.toFixed(2)})` : ""}${u.errors ? ` · ${u.errors} failed` : ""}`
+    + (w ? ` · last 7 days: ${w.requests}${w.cost_usd ? ` (≈$${w.cost_usd.toFixed(2)})` : ""}` : "") : "";
+  const until = t.paused_until, paused = !!(until && until*1000 > Date.now());
+  $("usagepause").hidden = !paused;
+  if (paused) $("usagepause").textContent = `Claude's usage limit reached: joining in and self-changes paused until ${hhmm(until)}. Replies to people keep trying.`;
+}
+// The running release (versioned installs, PIP-NEW-080): a short commit id, or an object with one
+function renderRelease(r){
+  const sha = !r ? "" : typeof r === "string" ? r : (r.sha || r.id || r.commit || "");
+  const at = r && typeof r === "object" && r.time ? new Date(typeof r.time === "number" ? r.time*1000 : r.time) : null;
+  $("release").textContent = sha === "dev" ? "· running from the repo (no release)" : sha ? `· release ${String(sha).slice(0,7)}${at && !isNaN(at) ? " · " + at.toLocaleDateString([], {month:"short", day:"numeric"}) : ""}` : "";
+}
+// Changes waiting for the owner (questions, plans to approve, finished changes): the badge on "Changes"
+async function loadChanges(){
+  try{ const r = await (await fetch("/api/changes",{cache:"no-store"})).json();
+    const n = (r.changes||[]).filter(c => c.waiting).length;
+    $("chbadge").hidden = !n; $("chbadge").textContent = n; }catch(e){ $("chbadge").hidden = true; }
 }
 function row(e, fresh){
   const t = new Date(e.ts*1000).toLocaleTimeString();
@@ -308,7 +339,8 @@ let mods = [];
 async function loadModules(){ try{ mods = await (await fetch("/api/modules",{cache:"no-store"})).json();
   $("modlinks").innerHTML = mods.map(m => `<a href="${m.page}"><button>${esc(m.label)}</button></a>`).join("");
   $("calLink").hidden = !mods.some(m => m.name === "calendar"); renderPeople(); }catch(e){} }
-loadModules(); loadSched(); loadConv(); loadTrace(); loadHealth(); loadMemory(); loadPeople(); loadMic(); if(!location.search.includes("nolive")) live();
+setInterval(loadChanges, 30000);
+loadModules(); loadChanges(); loadSched(); loadConv(); loadTrace(); loadHealth(); loadMemory(); loadPeople(); loadMic(); if(!location.search.includes("nolive")) live();
 </script>
 </body>
 </html>

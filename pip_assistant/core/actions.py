@@ -25,6 +25,11 @@ Ringing alarms and voices (handled in core/conversation.py, which has the alarm 
     snooze         minutes (optional; default from settings)
     learn_voice    name: start learning that household member's voice (or remember a visitor for the visit)
 
+Changing Pip himself (M1b, PIP-NEW-069, AC-SM-01; handled in core/conversation.py):
+    request_change summary: a short paraphrase of what to change. Only for someone Pip recognises for sure
+                   (not a guest); it goes to pip-builder, which writes a plan for the dashboard's Changes page.
+                   Voice can only ask: approving and undoing happen on the dashboard.
+
 Memory:
     remember       text (third person, with names), category, about [names], sensitive, private
     forget         id ('#m1a2b3')
@@ -52,7 +57,8 @@ class Invalid(ValueError):
     pass
 
 
-HERE = ("stop_alarm", "snooze", "learn_voice")   # done by Conversation, not apply()
+HERE = ("stop_alarm", "snooze", "learn_voice", "request_change")   # done by Conversation, not apply()
+SUMMARY_MAX = 300
 
 
 def check_here(items: list[dict]) -> list[tuple]:
@@ -73,6 +79,13 @@ def check_here(items: list[dict]) -> list[tuple]:
             if not name or len(name) > 30:
                 raise Invalid("no name")
             plan.append(("learn_voice", name.split()[0].title() if name.islower() else name.split()[0]))
+        elif do == "request_change":
+            summary = re.sub(r"\s+", " ", str(a.get("summary") or "")).strip()
+            if len(summary) < 5 or len(summary) > SUMMARY_MAX:
+                raise Invalid("no change summary")
+            if CREDENTIAL.search(summary):
+                raise Invalid("credential")
+            plan.append(("request_change", summary))
     return plan
 
 

@@ -7,6 +7,7 @@ import signal
 
 from .. import __version__
 from ..common import paths, settings
+from ..common.program import release_info
 from ..common.messages import Message
 from .bus import Bus
 from .conversation import Conversation
@@ -27,14 +28,15 @@ log = logging.getLogger("pip-core")
 def build(cfg: dict) -> tuple[Bus, Trace, Health]:
     trace = Trace(paths.database(), keep_hours=cfg["trace"]["keep_hours"])
     health = Health(cfg["programs"]["expected"], stuck_after=cfg["programs"]["stuck_after_seconds"],
-                    restart=cfg["programs"]["restart_stuck"])
+                    restart=cfg["programs"]["restart_stuck"], release=release_info()["release"])
     bus = Bus(paths.core_socket(), trace, health)
     mic = MicSwitch(paths.database())
     prefs = Prefs(paths.database())
     net = Net(bus)
     bus.net = net
     bus.core_handlers["core.health"] = lambda m: {"programs": health.snapshot(), "version": __version__,
-                                                  "mic": mic.snapshot(), "online": net.online}
+                                                  "mic": mic.snapshot(), "online": net.online,
+                                                  **release_info()}
     bus.core_handlers["core.trace"] = lambda m: {"entries": trace.recent(int(m.data.get("limit", 200)))}
     try:
         stt = make_stt(cfg)

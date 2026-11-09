@@ -65,7 +65,7 @@ GROUPS = ["Voice & sounds", "Listening", "Conversation & joining in", "Location 
           "Advanced"]
 RINGTONES = ["classic", "kitchen", "chimes", "gentle"]   # = ears/audio.RINGTONES (a test keeps them in step)
 MOODS = ["quiet", "normal", "chatty"]                    # = core/joining.INTERVALS
-ALL = ("core", "ears", "thinker", "web")
+ALL = ("core", "ears", "thinker", "web", "builder")
 
 
 def _s(group, label, explain, kind, programs, *, choices=None, min=None, max=None, item=None, nonempty=False,
@@ -168,6 +168,12 @@ SCHEMA = {
     "thinker.web_search": _s(B, "Web search", "Let Claude look things up for current facts.", "bool", ["thinker"]),
     "thinker.timeout_seconds": _s(B, "Give up after", "Give up on an answer after this many seconds.",
                                   "float", ["thinker"], min=10, max=180),
+    "builder.enabled": _s(B, "Self-changes", "Let Pip change his own code when asked (each change needs your "
+                          "approval twice, on the Changes page).", "bool", ["builder"]),
+    "builder.model": _s(B, "Claude model for changes", "Which Claude plans and builds self-changes.", "str",
+                        ["builder"], choices=["sonnet", "opus", "haiku"]),
+    "builder.effort": _s(B, "Effort for changes", "How hard Claude thinks while planning and building a change.",
+                         "str", ["builder"], choices=["low", "medium", "high", "xhigh", "max"]),
     # ---- Personality (the editor is on the same part of the page)
     "pip.name": _s(P, "Name", "What Pip calls himself in his personality ({name}). It doesn't change the wake words "
                    "or the names he answers to.", "str", ["thinker"], nonempty=True, max=30),
@@ -230,7 +236,7 @@ SCHEMA = {
     "mic.clap_settle_ms": _s(A, "Quiet after claps", "…and then nothing more for this long (ms): three claps or "
                              "applause don't count.", "int", ["ears"], min=100, max=3000),
     "programs.expected": _s(A, "Programs", "Programs pip-core expects to hear from.", "list", ["core"],
-                            choices=["ears", "thinker", "web"]),
+                            choices=["ears", "thinker", "web", "builder"]),
     "programs.heartbeat_seconds": _s(A, "Heartbeat", "How often (seconds) each program says \"I'm alive\".", "float",
                                      ALL, min=0.5, max=10),
     "programs.stuck_after_seconds": _s(A, "Stuck after", "No heartbeat for this many seconds means a program is "
@@ -239,6 +245,12 @@ SCHEMA = {
                                  "as a service).", "bool", ["core"]),
     "trace.keep_hours": _s(A, "Keep the trace", "How many hours the decision trace (what happened, never the words) "
                            "is kept.", "int", ["core"], min=1, max=720),
+    "builder.plan_minutes": _s(A, "Planning time limit", "Give up on planning a change after this many minutes.",
+                               "int", ["builder"], min=2, max=60),
+    "builder.build_minutes": _s(A, "Building time limit", "Give up on building a change after this many minutes.",
+                                "int", ["builder"], min=5, max=120),
+    "builder.keep_days": _s(A, "Keep change requests", "The words of a change request are deleted after this "
+                            "many days (the record of the change stays).", "int", ["builder"], min=1, max=3650),
     "web.host": _s(A, "Dashboard address", "Address the dashboard listens on. On the Pi this is the Tailscale "
                    "address.", "str", ["web"], nonempty=True),
     "web.port": _s(A, "Dashboard port", "Port for the dashboard.", "int", ["web"], min=1024, max=65535),
