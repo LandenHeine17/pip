@@ -1,5 +1,5 @@
-"""Fixes from the 2026-11-09 code review of the conversation: switched off means nothing more is answered,
-a held turn isn't stuck for 16 s, actions are done as the person who asked, only real speech opens the
+"""Fixes from the 2026-11-09 code review of the conversation: switched off still answers what was already
+heard (D-114), a held turn isn't stuck for 16 s, actions are done as the person who asked, only real speech opens the
 follow-up window, and voice learning stops when listening is switched off."""
 import asyncio
 import time
@@ -25,16 +25,17 @@ class SlowSTT:
         return self.texts.pop(0) if self.texts else ""
 
 
-async def test_switched_off_while_transcribing_is_not_answered(tmp_path):
+async def test_what_was_heard_before_switching_off_is_still_answered(tmp_path):
+    """Owner, D-114: switching listening off only stops him hearing anything new."""
     bus, conv, ears, got, asks, tasks = await setup(tmp_path)
     conv.stt = SlowSTT("Pip, what's the weather tomorrow?")
     await ears.emit("heard.utterance", *utt())
     await asyncio.sleep(0.1)
     assert conv.transcribing
-    await conv.set_mic(False)                        # switched off on the dashboard mid-way (D-91)
+    await conv.set_mic(False)                        # switched off on the dashboard mid-way
     conv.stt.release.set()
-    await asyncio.sleep(2.5)
-    assert asks == [] and not conv.pending
+    await asyncio.sleep(0.5)
+    assert len(asks) == 1 and conv.state == "mic_off"
     await finish(bus, tasks)
 
 

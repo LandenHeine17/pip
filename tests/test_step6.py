@@ -162,9 +162,9 @@ async def test_two_claps_switch_listening_off_and_on_but_not_past_the_dashboard(
     await asyncio.sleep(0.1)
     assert got[-2:] == [("ears.mic", None, {"mode": "claps_only"}), ("ears.tone", None, {"name": "mic_off"})]
     assert conv.state == "mic_off"
-    await ears.emit("heard.utterance", *room())               # anything that still arrives is ignored
-    await asyncio.sleep(0.1)
-    assert conv.stt.calls == 0 and not conv.transcript.lines
+    await ears.emit("heard.utterance", *room())               # heard just before: still used (D-114); pip-ears
+    await asyncio.sleep(0.1)                                   # captures nothing new once it's off
+    assert conv.stt.calls == 1 and conv.state == "mic_off"
     await ears.emit("mic.clapped", {})
     await asyncio.sleep(0.1)
     assert got[-2:] == [("ears.mic", None, {"mode": "on"}), ("ears.tone", None, {"name": "mic_on"})]

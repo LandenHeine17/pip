@@ -1,7 +1,7 @@
 """M1a step 4 tests: understanding times, Pip's own commands, ringing, restarts, offline, privacy."""
 import asyncio
 import json
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -419,7 +419,7 @@ async def test_reminders_keep_the_daytime_preference_and_tonight_after_midnight(
     c, s, clock = cmds
     assert await say(c, "remind me tomorrow at 3 to call mom") == "Okay, I'll remind you at 3 PM tomorrow."
     clock.t = datetime(2026, 11, 4, 22, 0).timestamp()
-    assert await say(c, "remind me tonight at 1 to take meds") == "Okay, I'll remind you at 1 AM tomorrow."
+    assert await say(c, "remind me tonight at 1 to take meds") == "Okay, I'll remind you at 1 AM."   # same night (D-114)
 
 
 async def test_in_n_hours_counts_real_time_across_a_clock_change(tmp_path):
@@ -527,3 +527,19 @@ async def test_later_while_ringing_is_not_a_snooze(cmds):
     clock.t += 61
     await s._tick()
     assert await c.while_ringing("okay, five more minutes", "room") == "Snoozed for 5 minutes."
+
+
+def test_tomorrow_means_after_you_next_sleep():
+    """Owner, D-114: just after midnight, "tomorrow" is the coming day, like people mean it."""
+    late = datetime(2026, 11, 12, 0, 30)                       # Thursday 00:30, not slept yet
+    assert when.clock("tomorrow at 7", late, alarm=True) == datetime(2026, 11, 12, 7, 0)
+    assert when.day("tomorrow", late) == date(2026, 11, 12)
+    assert when.day("the day after tomorrow", late) == date(2026, 11, 13)
+    assert when.say_time(datetime(2026, 11, 12, 7, 0), late) == "7 AM tomorrow"
+    assert when.say_time(datetime(2026, 11, 12, 1, 30), late) == "1:30 AM"          # later the same night
+    assert when.say_time(datetime(2026, 11, 12, 1, 0), datetime(2026, 11, 11, 23, 0)) == "1 AM"
+    morning = datetime(2026, 11, 12, 8, 0)                     # after sleeping: the usual meaning
+    assert when.day("tomorrow", morning) == date(2026, 11, 13)
+    assert when.say_time(datetime(2026, 11, 13, 7, 0), morning) == "7 AM tomorrow"
+    from pip_assistant.thinker.main import Thinker
+    assert '"tomorrow" means Thursday' in Thinker.time_now(late) and "after midnight" not in Thinker.time_now(morning)

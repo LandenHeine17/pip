@@ -141,7 +141,7 @@ class Todos(Module):
         t = self.store.add(p["title"], p["list_id"], due=p["due"])
         who = self.whose(self.store.get_list(t["list_id"]) or {}, self._accounts(), self._names())
         whose = f"{who}'s to-dos" if who and t["list_id"] != self.household() else "the to-do list"
-        due = f", for {when.say_day(date.fromisoformat(t['due']), datetime.fromtimestamp(self.ctx.clock()).date())}" if t["due"] else ""
+        due = f", for {when.say_day(date.fromisoformat(t['due']), datetime.fromtimestamp(self.ctx.clock()))}" if t["due"] else ""
         return f"Added {t['title']} to {whose}{due}."
 
     def check_ref(self, a: dict, call: Call) -> dict:

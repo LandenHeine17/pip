@@ -472,7 +472,7 @@ class Calendar(Module):
         at, now = datetime.fromtimestamp(ev["start"]), datetime.fromtimestamp(self.ctx.clock())
         if ev["repeat"]:
             return when.say_repeat(ev["repeat"]) + ("" if ev["all_day"] else f" at {when.say_clock(at)}")
-        return when.say_day(at.date(), now.date()) + ("" if ev["all_day"] else f" at {when.say_clock(at)}")
+        return when.say_day(at.date(), now) + ("" if ev["all_day"] else f" at {when.say_clock(at)}")
 
     def on_whose(self, ev: dict) -> str:
         cal = self.store.calendar(ev["calendar_id"]) or {"account_id": "", "is_primary": 0, "name": ""}

@@ -380,15 +380,12 @@ class Conversation:
         elif self.mic.listening and self.mic_off_since is not None:
             await self.note("mic_on", how=how, off_for=round(time.monotonic() - self.mic_off_since))
             self.mic_off_since = None
-        if not self.mic.listening:  # anything half-done from what was heard is dropped
-            self.cancel_answer("listening switched off")
-            self.joining.cancel_wait()
+        if not self.mic.listening:
+            # Off just means he stops hearing anything new. What he'd already heard is still answered (owner,
+            # D-114); only the things that need him to keep listening end: listening windows and voice learning.
+            self.expect_until = self.listen_until = 0.0
             if self.enrolling:
                 self.cancel_enrolment()
-            self.pending, self.expect_until, self.listen_until = "", 0.0, 0.0
-            if self.pending_task:
-                self.pending_task.cancel()
-                self.pending_task = None
         await self.command("ears", "ears.mic", {"mode": self.mic.mode})
         if tone:
             await self.command("ears", "ears.tone", {"name": tone})
@@ -547,8 +544,6 @@ class Conversation:
 
     async def on_utterance(self, msg: Message) -> None:
         reason = msg.data.get("reason")
-        if not self.listening:
-            return  # switched off (D-91): pip-ears shouldn't send anything, and nothing is used if it does
         if reason != "room":
             self.listen_until = 0.0
             self.transcribing = bool(msg.data.get("had_speech"))
@@ -597,9 +592,6 @@ class Conversation:
         stt_s = round(time.perf_counter() - t0, 2)
         speaker = await ident if ident else self.speaker
         self.transcribing = False
-        if not self.listening:   # switched off while this was being transcribed (D-91): drop it
-            self.refresh_state()
-            return
         self.speaker, self.last_pcm = speaker, pcm
         asyncio.get_running_loop().call_soon(self.refresh_state)  # by then he's answering (thinking) or done
         await self.bus.publish(Message("event", "stt.done", data={"seconds": stt_s, "chars": len(text),
@@ -909,7 +901,7 @@ class Conversation:
             if reply is not None:
                 await self.say(reply, "alarm answered")
                 return
-        if not text.strip(" .?!,") or not self.listening:
+        if not text.strip(" .?!,"):
             await self._finish_pending()
             return
         text = self.fix_names(text)
