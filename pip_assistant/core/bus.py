@@ -32,6 +32,7 @@ class Bus:
         self.core_listeners: list = []          # (pattern, coroutine) for events core itself reacts to
         self.core_waiting: dict = {}            # request id -> future, for requests core itself sent
         self.on_connect: list = []              # coroutines called with a program's name when it (re)connects
+        self.on_subscribe: list = []            # …and when it has said which events it wants (it can receive them now)
         self.server = None
 
     async def start(self) -> None:
@@ -101,6 +102,8 @@ class Bus:
             return
         if msg.kind == "subscribe":
             self.patterns[msg.source] = list(msg.data.get("patterns", []))
+            for hook in self.on_subscribe:
+                asyncio.create_task(hook(msg.source))
             return
         self._log(msg)
         if msg.kind == "event":
