@@ -30,6 +30,8 @@ flowchart LR
 | pip-web | `pip_assistant/web/` | Serves the dashboard (`static/index.html`), the Changes page (`static/changes.html`) and the monitor's face page (`static/tv.html`). It stores nothing itself and asks pip-core (or, for the Changes page, pip-builder) for everything. |
 | pip-builder | `pip_assistant/builder/` | Pip changing his own code (§6): keeps the record of each change, starts the sandboxed Claude Code and test jobs, and puts an approved change live. Does nothing until someone asks. |
 
+`Conversation` (in `core/conversation.py`) is big, so its parts live in their own files and it takes them all in: `hearing.py` (speech-to-text, whose voice), `micctl.py` (the Listening switches, claps, prefs), `turns.py` (waiting for you to finish), `enrolment.py` (learning a voice), `context.py` (what Claude is told), `acting.py` (doing actions and Pip's own commands), `feed.py` (the dashboard's conversation feed). `conversation.py` keeps the state, `say()` and the main path from hearing to answering; its docstring has the full list.
+
 Code shared by all five is in `pip_assistant/common/`, and features that plug in (calendar, to-dos, Google, the screen) are in `pip_assistant/modules/`. Each program starts in its `main.py`.
 
 ### Messages
@@ -103,18 +105,18 @@ flowchart TD
 
 `situation()` reads fields on the `Conversation` object (grouped under "What the face shows" in `Conversation.__init__`) and asks questions **in this order**. The first one that's true wins, so a higher rule always beats a lower one: an alarm ringing beats everything.
 
-| # | Question | State, detail | Words | Set by (in `core/conversation.py` unless noted) |
+| # | Question | State, detail | Words | Set by (`Conversation`; the file is `core/conversation.py` unless noted) |
 |---|---|---|---|---|
 | 1 | Is an alarm or timer ringing? | ringing, ring | Say "stop" or "snooze" | `core/schedule.py` |
 | 2 | Is his voice playing? | speaking, by why he's talking (`say_reason`) | Answering / Joining in / Saying hi / Saying what I did / Saying something went wrong / Guiding voice learning | `on_speech_started`, `say()` |
-| 3 | Is listening switched off? | mic_off, claps_off / switched_off | Clap twice to turn me back on / Switched off on the dashboard | `core/mic.py`, `apply_mic` |
+| 3 | Is listening switched off? | mic_off, claps_off / switched_off | Clap twice to turn me back on / Switched off on the dashboard | `core/mic.py`, `apply_mic` (`core/micctl.py`) |
 | 4 | Did someone talk over him in the last 1.5 s? | interrupted, cut_in | Someone talked over me | `on_interrupted` (`cut_until`) |
 | 5 | Is Claude working on an answer for someone, with nothing said yet? | thinking, asking / searching / looking_up | Working on an answer / Searching the web / Looking it up | `answer`, `on_searching` |
 | 6 | Have words been sent to be spoken but not started yet? | thinking, voice | Getting the words out | `say()` (`say_pending_until`, 3 s) |
 | 7 | Is speech said to him being turned into text? | listening, hearing | Working out what you said | `on_utterance` (`transcribing`) |
-| 8 | Is he holding your words until you're done? | listening, turn (countdown) | Waiting to see if you're done | `addressed` (`pending`, `turn_until`) |
+| 8 | Is he holding your words until you're done? | listening, turn (countdown) | Waiting to see if you're done | `addressed` (`core/turns.py`; `pending`, `turn_until`) |
 | 9 | Is a listening window open? | listening, called / follow_up / hearing / learning_voice (countdown) | Heard my name: go on / Listening for your reply / … | `listening_for(seconds, why)` |
-| 10 | Did the internet drop in the last 2 minutes? | offline, no_internet | No internet: timers and alarms still work | `transcribe` (`offline_until`) |
+| 10 | Did the internet drop in the last 2 minutes? | offline, no_internet | No internet: timers and alarms still work | `transcribe` (`core/hearing.py`; `offline_until`) |
 | 11 | Is Claude deciding whether a mention was for him? | idle, mentioned | Heard my name mentioned: is it for me? | `on_room` → `answer(kind="mentioned")` |
 | 12 | Is Claude deciding whether to join in? | idle, joining | Thinking about joining in | `core/joining.py` → `join_in` |
 | 13 | Has there been room talk in the last 4 s? | idle, following | Following the conversation | `on_started`, `on_room` (`room_until`) |
@@ -249,7 +251,7 @@ stateDiagram-v2
 
 (Also `stopped`: the Stop button while planning, building or checking.)
 
-1. **Asking.** By voice: Claude answers with `ACTION {"do": "request_change", "summary": …}` (the rule is in `RULES`, `thinker/main.py`); `Conversation.request_change` (`core/conversation.py`) passes it on only for a speaker Pip is **sure** of who isn't a guest, and says it'll be on the dashboard. On the dashboard: the request box on the Changes page. Either way pip-builder gets `builder.ask`, with the words in `private`.
+1. **Asking.** By voice: Claude answers with `ACTION {"do": "request_change", "summary": …}` (the rule is in `RULES`, `thinker/main.py`); `Conversation.request_change` (`core/acting.py`) passes it on only for a speaker Pip is **sure** of who isn't a guest, and says it'll be on the dashboard. On the dashboard: the request box on the Changes page. Either way pip-builder gets `builder.ask`, with the words in `private`.
 2. **Planning** (`_plan`): a fresh workspace (`Workspaces.prepare`): `~/pip-data/builder/work/<id>/src` is a plain export of `main` with **no `.git`**, `base/` an untouched copy to diff against, and `src/.venv` made before Claude starts. Claude Code reads the code and returns a JSON plan. `risk_for` makes it `security` if it touches a `SECURITY` path, whatever Claude said.
 3. **Building** (`_build`, after "Build it"): Claude Code edits `src/` and runs the tests with `tools/sandbox-test`.
 4. **Checking** (`_check`): `compute_diff` (text files only), `forbidden`, `secret_problems` (`tools/check_secrets.py`), then `strict_check`: the whole suite plus an import check in the strict sandbox.
@@ -308,7 +310,8 @@ Exit codes: **0** live, **1** rolled back (healthy again), **2** stopped before 
 
 | To understand… | Read |
 |---|---|
-| everything said in the room, and when Pip answers | `core/conversation.py`: `on_room`, `addressed`, `answer` |
+| everything said in the room, and when Pip answers | `core/conversation.py`: `on_room`, `answer`; `core/turns.py`: `addressed` |
+| what Claude is told about the room, people and what's set | `core/context.py` (`for_claude`) |
 | when he joins in by himself | `core/joining.py` |
 | knowing who's talking | `core/people.py`, `core/peoplecmds.py` |
 | timers, alarms, reminders | `core/schedule.py` (saving and ringing), `core/alerts.py` (making and changing them), `common/when.py`, `core/commands.py` (offline phrasings) |
