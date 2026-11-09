@@ -14,14 +14,13 @@ Claude understands any wording (D-94).
 import asyncio
 import os
 import io
-import tomllib
 import wave
 
 import time
 
 import httpx
 
-from ..common import paths
+from ..common import secrets
 
 
 class RateLimited(Exception):
@@ -42,8 +41,8 @@ def with_names(word_list: str, names: list[str]) -> str:
 
 
 def secret(name: str) -> str:
-    f = paths.data_dir() / "secrets.toml"
-    return tomllib.loads(f.read_text()).get(name, "") if f.exists() else ""
+    """One of Pip's own keys from ~/pip-data/secrets.toml (common/secrets.py), or "" if it isn't there."""
+    return str(secrets.load().get(name, ""))
 
 
 class GroqSTT:

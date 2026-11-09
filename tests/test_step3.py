@@ -249,7 +249,7 @@ async def test_claude_reader_streams_sentences_and_spots_search(tmp_path):
 
 # ------------------------------------------------------------------ name in the transcript (Ziggletron-style)
 def test_names_pip_spots_mishearings_but_not_ziggletron():
-    from pip_assistant.core.conversation import names_pip
+    from pip_assistant.core.names import names_pip
     for t in ["Hey Pip, what time is it?", "Pippletron, stop", "Hey, Pipp.", "pipple tron what's up",
               "Piplotron, what's the weather?", "what's the weather, Pippletron?"]:
         assert names_pip(t), t

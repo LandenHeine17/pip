@@ -49,6 +49,7 @@ import time
 
 from ..common.messages import Message, new_id
 from .joining import Joining, in_quiet_hours
+from .names import NOT_PIP, PIP_NAMES, calls_pip, names_pip, only_name
 from . import states
 from .states import DETAILS, situation
 from .stt import RateLimited
@@ -56,18 +57,9 @@ from .transcript import Transcript
 
 log = logging.getLogger(__name__)
 
-PIP_NAMES = re.compile(r"\b(pip|pipp|pips|pippy|pippie|pippletron|pipple ?tron|pippa ?tron|piple ?tron|pipletron)\b", re.I)
-NOT_PIP = re.compile(r"\b(zig+le ?tron|zig+y|zig+)\b", re.I)
-
-
-FILLER = re.compile(r"\b(hey|hi|ok|okay|so|yo|um+|uh+|hmm+)\b", re.I)
 DANGLING = re.compile(r"\b(the|a|an|and|or|but|of|my|your|his|her|their|what's|whats|um+|uh+)\W*$", re.I)
 WANTS_DETAIL = re.compile(r"\b(story|explain|details?|in depth|describe|tell me (more|everything|all)|"
                           r"step by step|steps|recipe|list|longer)\b", re.I)
-
-
-def only_name(text: str) -> bool:
-    return not FILLER.sub("", PIP_NAMES.sub("", text)).strip(" .,?!-")
 
 
 def looks_unfinished(text: str) -> bool:
@@ -76,46 +68,6 @@ def looks_unfinished(text: str) -> bool:
     return t.endswith(("...", "…", ",", "-")) or bool(DANGLING.search(t.rstrip(".")) and not t.endswith("?"))
 
 
-GREETINGS = frozenset("hey hi hello yo oi ok okay oh so um uh and but well alright thanks thank you".split())
-
-
-def _is_pip(words: list[str]) -> bool:
-    """These words, run together, are one of Pip's names (or a close mishearing of Pippletron)."""
-    import difflib
-    joined = "".join(words)
-    if not joined:
-        return False
-    if PIP_NAMES.fullmatch(" ".join(words)) or PIP_NAMES.fullmatch(joined):
-        return True
-    return len(joined) >= 7 and not joined.startswith("zig") and \
-        difflib.SequenceMatcher(None, joined, "pippletron").ratio() >= 0.82
-
-
-def calls_pip(text: str) -> bool:
-    """Is Pip being *called* ("Pip, what's the time?", "thanks, Pip", "hey Pippletron what's up")
-    rather than just mentioned ("Pip's being weird", "ask Pip later")? Ziggletron's rule: a clause
-    that's only the name, or a greeting followed by it."""
-    for clause in re.split(r"[,.!?;:—]+", text):
-        words = re.findall(r"[a-z']+", clause.lower())
-        greeted = False
-        while words and words[0] in GREETINGS:
-            words, greeted = words[1:], True
-        if words and _is_pip(words):
-            return True
-        if greeted and any(_is_pip(words[:n]) for n in (1, 2, 3)):
-            return True
-    return False
-
-
-def names_pip(text: str) -> bool:
-    """Does this transcript call Pip? Exact names, or close mishearings of 'Pippletron' (never 'Ziggletron')."""
-    import difflib
-    if PIP_NAMES.search(text):
-        return True
-    words = re.findall(r"[a-z]+", text.lower())
-    joined = words + [a + b for a, b in zip(words, words[1:])]
-    return any(len(w) >= 7 and not w.startswith("zig") and
-               difflib.SequenceMatcher(None, w, "pippletron").ratio() >= 0.82 for w in joined)
 SAYINGS = {
     "not_caught": "Sorry, I didn't catch that. Could you say it again?",
     "stt_failed": "Sorry, I couldn't make out what you said. My hearing service isn't answering.",
@@ -1104,7 +1056,7 @@ class Conversation:
                     said.append("" if n else "Nothing's ringing.")
                 elif step[0] == "snooze":
                     n = await self.schedule.snooze(step[1], how="claude")
-                    from . import when
+                    from ..common import when
                     said.append(f"Snoozed for {when.say_duration((step[1] or self.schedule.snooze_min) * 60)}." if n
                                 else "Nothing's ringing.")
                 elif step[0] == "request_change":
@@ -1169,7 +1121,7 @@ class Conversation:
             ctx = self._action_ctx(asker[0])
             for a in looks[:3]:
                 try:
-                    _, act, plan, call = actions._module(f"look:{a.get('kind')}", a, ctx, ctx["call"].now)
+                    _, act, plan, call = actions.check_module_action(f"look:{a.get('kind')}", a, ctx, ctx["call"].now)
                     found.append(act.do(plan, call))
                 except Exception as e:
                     if not isinstance(e, (actions.Invalid, ValueError, TypeError, KeyError)):
@@ -1201,12 +1153,5 @@ class Conversation:
             self.listening_for(secs, "follow_up")
 
     async def bus_request(self, target, msg_type, data, private, timeout):
-        """Ask another program from inside core and wait for its reply."""
-        msg = Message("request", msg_type, source="core", target=target, id=new_id(), data=data, private=private)
-        fut = asyncio.get_running_loop().create_future()
-        self.bus.core_waiting[msg.id] = fut
-        try:
-            await self.bus.route(msg)
-            return await asyncio.wait_for(fut, timeout)
-        finally:
-            self.bus.core_waiting.pop(msg.id, None)
+        """Ask another program and wait for its reply (Bus.request). One place, so tests can stand in for it."""
+        return await self.bus.request(target, msg_type, data, private, timeout)

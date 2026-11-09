@@ -22,7 +22,6 @@ household name that sounds the same, and `fix_names` corrects the spelling in wh
 import asyncio
 import json
 import re
-import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +30,7 @@ import numpy as np
 
 from ..common import paths
 from ..common.messages import new_id
+from ..common.db import connect
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS people (
@@ -96,9 +96,7 @@ class Embedder:
 class People:
     def __init__(self, path: Path, cfg: dict | None = None, clock=time.time, embedder=None):
         v = (cfg or {}).get("voices", {})
-        self.db = sqlite3.connect(path)
-        self.db.row_factory = sqlite3.Row
-        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db = connect(path)
         self.db.executescript(SCHEMA)
         self.db.execute("UPDATE people SET opted_out = 0")   # "leave me out" was removed (D-90)
         self.db.commit()

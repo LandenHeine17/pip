@@ -13,9 +13,9 @@ static/ folder at /m/<name>/ and passes its requests (/api/m/<name>) to pip-core
 to the module. Everything in them (event titles, names) travels privately and is never logged;
 secrets never reach pip-web.
 
-Logins and roles arrive in step 8 (PIP-NEW-054). Until then it listens only on the addresses in
-settings (on the Pi: the Tailscale address, plus 127.0.0.1 for the monitor's own browser), so only
-the owner's devices and the Pi itself can reach it.
+There are no logins (owner, D-116). It listens only on the addresses in settings (on the Pi: the
+Tailscale address, plus 127.0.0.1 for the monitor's own browser), so only the owner's devices and the Pi
+itself can reach it, and the same-site check (web/security.py) stops other websites from changing Pip.
 """
 import asyncio
 import collections
@@ -101,6 +101,15 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         kind = mimetypes.guess_type(f.name)[0] or "application/octet-stream"
         return Response(f.read_bytes(), media_type=kind, headers={"Cache-Control": "no-store"})
 
+    async def ask(msg_type: str, data: dict | None = None, private: dict | None = None, timeout: float = 5,
+                  target: str = "core"):
+        """Hand a request to pip-core (or another program): (its reply, None), or (None, a 503 to send back) if
+        it doesn't answer. Every dashboard route that needs pip-core goes through here."""
+        try:
+            return await bus.request(target, msg_type, data or {}, private or {}, timeout=timeout), None
+        except Exception as e:
+            return None, JSONResponse({"error": f"pip-{target} not reachable ({type(e).__name__})"}, status_code=503)
+
     async def module_api(request):
         """GET ?action=…&… or POST {action, …} → the module in pip-core. All of it travels privately."""
         name = request.path_params["name"]
@@ -118,11 +127,8 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         action = str(args.pop("action", "status"))
         if request.method == "GET" and not module_get_allowed(action):
             return JSONResponse({"error": "That needs a POST (it changes something)"}, status_code=405)
-        try:
-            r = await bus.request("core", "module.request", {"module": name, "action": action}, args, timeout=60)
-        except Exception as e:
-            return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
-        return JSONResponse(r.private if r.private else r.data)
+        r, failed = await ask("module.request", {"module": name, "action": action}, args, timeout=60)
+        return failed or JSONResponse(r.private if r.private else r.data)
 
     async def index(request):
         return HTMLResponse(page, headers={"Cache-Control": "no-store"})
@@ -143,40 +149,27 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         return JSONResponse(list(state.trace)[::-1][:200])
 
     async def alerts(request):
-        try:
-            r = await bus.request("core", "core.alerts", timeout=3)
-            return JSONResponse(r.private or {"error": r.data.get("error", "no answer")})
-        except Exception as e:
-            return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
+        return await core_get("core.alerts")
 
     async def alert_action(request):
         """Shut off / snooze / cancel / new timer / typed command. Labels and typed text travel privately."""
         body = await request.json()
         private = {k: str(body.pop(k))[:200] for k in ("label", "text") if k in body}
         data = {k: body[k] for k in ("action", "id", "minutes") if k in body}
-        try:
-            r = await bus.request("core", "core.alert_action", data, private, timeout=5)
-        except Exception as e:
-            return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
-        return JSONResponse({**r.data, **r.private})
+        r, failed = await ask("core.alert_action", data, private)
+        return failed or JSONResponse({**r.data, **r.private})
 
     async def core_get(kind: str):
-        try:
-            r = await bus.request("core", kind, timeout=3)
-            return JSONResponse(r.private or {"error": r.data.get("error", "no answer")})
-        except Exception as e:
-            return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
+        r, failed = await ask(kind, timeout=3)
+        return failed or JSONResponse(r.private or {"error": r.data.get("error", "no answer")})
 
     async def core_action(request, kind: str, private_keys: tuple, data_keys: tuple):
         """Names and memory texts are personal: they travel in the private part, never logged."""
         body = await request.json()
         private = {k: str(body.pop(k))[:300] for k in private_keys if k in body}
         data = {k: body[k] for k in data_keys if k in body}
-        try:
-            r = await bus.request("core", kind, data, private, timeout=30)
-        except Exception as e:
-            return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
-        return JSONResponse({**r.data, **r.private})
+        r, failed = await ask(kind, data, private, timeout=30)
+        return failed or JSONResponse({**r.data, **r.private})
 
     async def people(request):
         return await core_get("core.people")
@@ -193,11 +186,8 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
     async def mic(request):
         """GET: is Pip listening? POST {"value": true/false}: the dashboard's Listening switch (D-91)."""
         data = {"value": bool((await request.json()).get("value"))} if request.method == "POST" else {}
-        try:
-            r = await bus.request("core", "core.mic", data, timeout=5)
-        except Exception as e:
-            return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
-        return JSONResponse(r.data)
+        r, failed = await ask("core.mic", data)
+        return failed or JSONResponse(r.data)
 
     async def prefs(request):
         """GET: the dashboard preferences (core/prefs.py) and the microphones there are.
@@ -206,11 +196,8 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         if request.method == "POST":
             body = await request.json()
             data = {"key": str(body.get("key", "")), "value": body.get("value")}
-        try:
-            r = await bus.request("core", "core.prefs", data, timeout=10)
-        except Exception as e:
-            return JSONResponse({"error": f"pip-core not reachable ({type(e).__name__})"}, status_code=503)
-        return JSONResponse(r.data)
+        r, failed = await ask("core.prefs", data, timeout=10)
+        return failed or JSONResponse(r.data)
 
     async def conversation(request):
         return JSONResponse(list(state.conversation)[::-1])
@@ -263,11 +250,8 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
                     return JSONResponse({"error": "That request isn't a JSON object"}, status_code=400)
             else:
                 body = {"action": get}
-            try:
-                r = await bus.request(target, msg_type, {}, body, timeout=timeout)
-            except Exception as e:
-                return JSONResponse({"error": f"pip-{target} not reachable ({type(e).__name__})"}, status_code=503)
-            return JSONResponse(r.private if r.private else r.data)
+            r, failed = await ask(msg_type, {}, body, timeout=timeout, target=target)
+            return failed or JSONResponse(r.private if r.private else r.data)
         return handler
 
     async def tv_data(request):

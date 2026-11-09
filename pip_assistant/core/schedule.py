@@ -18,13 +18,13 @@ messages' `private` part, never in the decision trace (D-34).
 import asyncio
 import contextlib
 import logging
-import sqlite3
 import time
 from datetime import datetime
 from pathlib import Path
 
 from ..common.messages import Message, new_id
-from . import when
+from ..common import when
+from ..common.db import connect
 
 log = logging.getLogger(__name__)
 
@@ -58,9 +58,7 @@ class Schedule:
     def __init__(self, path: Path, bus=None, cfg: dict | None = None, clock=time.time):
         s = (cfg or {}).get("alarms", {})
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path)
-        self.db.row_factory = sqlite3.Row
-        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db = connect(path)
         self.db.executescript(SCHEMA)
         if "planned" not in {r[1] for r in self.db.execute("PRAGMA table_info(alerts)")}:
             self.db.execute("ALTER TABLE alerts ADD COLUMN planned TEXT")   # databases made before this column
@@ -82,7 +80,7 @@ class Schedule:
     def _now_dt(self) -> datetime:
         return datetime.fromtimestamp(self.clock())
 
-    def _row(self, alert_id: str) -> dict | None:
+    def get(self, alert_id: str) -> dict | None:
         r = self.db.execute("SELECT * FROM alerts WHERE id = ?", (alert_id,)).fetchone()
         return dict(r) if r else None
 
@@ -98,7 +96,7 @@ class Schedule:
                         "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                         (aid, kind, label, due, length, repeat, "waiting", event_id, planned_txt, now, now))
         self.db.commit()
-        row = self._row(aid)
+        row = self.get(aid)
         if not row or row["state"] != "waiting" or abs(row["due"] - due) > 0.01:
             raise RuntimeError("alert was not saved")
         self._changed("created", row)
@@ -109,7 +107,7 @@ class Schedule:
         cols = ", ".join(f"{k} = ?" for k in fields)
         self.db.execute(f"UPDATE alerts SET {cols} WHERE id = ?", (*fields.values(), alert_id))
         self.db.commit()
-        row = self._row(alert_id)
+        row = self.get(alert_id)
         if row is None:
             raise RuntimeError("alert not found")
         if fields.get("state") == "waiting" and alert_id in self.ringing:
@@ -147,7 +145,7 @@ class Schedule:
         self.db.execute("UPDATE alerts SET state = 'cancelled', updated = ? WHERE event_id = ? AND state IN ('waiting','ringing')",
                         (self.clock(), item_id))
         self.db.commit()
-        rung = [i for i in self.ringing if (self._row(i) or {}).get("event_id") == item_id]
+        rung = [i for i in self.ringing if (self.get(i) or {}).get("event_id") == item_id]
         for i in rung:
             self.ringing.remove(i)
         if rung and not self.ringing and _loop_running():
@@ -204,10 +202,10 @@ class Schedule:
                 rep = f" ({when.say_repeat(a['repeat'])})" if a["repeat"] else ""
                 parts.append(f"{self.short(a['id'])} {a['kind']} '{a['label']}' at {due:%a %Y-%m-%d %H:%M}{rep}")
         out = ("Set: " + "; ".join(parts) + ".") if parts else "No timers, alarms or reminders set."
-        ringing = [r for r in (self._row(i) for i in self.ringing) if r]
+        ringing = [r for r in (self.get(i) for i in self.ringing) if r]
         if ringing:
             out = "RINGING NOW: " + "; ".join(f"{self.short(r['id'])} {r['kind']} '{r['label']}'" for r in ringing) + ". " + out
-        elif self.last_rung and self.clock() - self.last_rung[1] < 15 * 60 and (r := self._row(self.last_rung[0])):
+        elif self.last_rung and self.clock() - self.last_rung[1] < 15 * 60 and (r := self.get(self.last_rung[0])):
             out += f" Just rang: {self.short(r['id'])} {r['kind']} '{r['label']}'."
         return out
 
@@ -263,19 +261,19 @@ class Schedule:
 
     async def _ring(self) -> None:
         started = self.clock()
-        kind = (self._row(self.ringing[-1]) or {}).get("kind", "timer")
+        kind = (self.get(self.ringing[-1]) or {}).get("kind", "timer")
         await self._command("ears", "ears.ring", {"tone": self.tones.get(kind, "classic"),
                                                    "max_seconds": self.ring_s + 30})
         try:
             while self.ringing:
-                rows = [r for r in (self._row(i) for i in self.ringing) if r]
+                rows = [r for r in (self.get(i) for i in self.ringing) if r]
                 text = " ".join(dict.fromkeys(self.announcement(r) for r in rows))
                 await self._command("ears", "ears.say", {"reason": "alarm"}, {"text": text})
                 await asyncio.sleep(self.repeat_every)
                 if self.clock() - started >= self.ring_s:
                     ids, self.ringing = list(self.ringing), []
                     for i in ids:
-                        if r := self._row(i):
+                        if r := self.get(i):
                             self._finish(r, "done")
                     await self._stop_sound()
                     self._notify()
@@ -306,7 +304,7 @@ class Schedule:
         if self._ring_task:
             self._ring_task.cancel()
         for i in ids:
-            if r := self._row(i):
+            if r := self.get(i):
                 self._finish(r, "done")
         await self._stop_sound()
         self._notify()

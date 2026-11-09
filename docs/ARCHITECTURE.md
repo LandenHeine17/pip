@@ -303,7 +303,7 @@ pip/                          (the repo)
 │   ├── web/                  pip-web program (dashboard + TV page)
 │   ├── builder/              pip-builder (the self-change pipeline: store, sandbox, agent, pipeline)
 │   ├── release.py            versioned installs with automatic rollback (run with the system python3)
-│   ├── common/               shared bits: messages, settings, secrets, paths (SQLite code lives in core/ and the modules)
+│   ├── common/               shared bits: messages, settings, secrets, paths, db (opening pip.db), when (times)
 │   └── modules/              plug-in features: google, calendar, todos, screen (+ _template/)
 ├── models/                   generic, public-safe models
 ├── deploy/                   systemd service files (deploy/systemd/, incl. pip-builder.service), install.sh (installs the committed HEAD as a release); the monitor's kiosk (deploy/tv/, install-tv.sh); https (install-https.sh)

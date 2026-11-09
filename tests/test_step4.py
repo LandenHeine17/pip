@@ -8,7 +8,7 @@ import pytest
 from modhelp import registry
 
 from pip_assistant.common.client import BusClient
-from pip_assistant.core import when
+from pip_assistant.common import when
 from pip_assistant.core.bus import Bus
 from pip_assistant.core.commands import Commands
 from pip_assistant.core.conversation import Conversation
@@ -342,7 +342,7 @@ def test_recently_due_rings_after_restart(tmp_path):
     clock.t += 5 * 60
     s2 = Schedule(tmp_path / "pip.db", clock=clock)
     s2._startup_catch_up()
-    assert s2._row(a["id"])["state"] == "waiting" and s2._row(a["id"])["due"] < clock()  # rings on the first check
+    assert s2.get(a["id"])["state"] == "waiting" and s2.get(a["id"])["due"] < clock()  # rings on the first check
 
 
 def test_event_heads_up_and_removal(tmp_path):

@@ -20,7 +20,7 @@ import re
 import secrets
 from datetime import date, datetime, timedelta
 
-from pip_assistant.core import when
+from pip_assistant.common import when
 from pip_assistant.core.modules import Action, Call, Invalid, Module
 
 from .store import CalendarStore

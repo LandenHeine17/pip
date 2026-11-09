@@ -12,7 +12,7 @@ the calendar. core/main.py asks screen_list() for the to-do boxes on the monitor
 import asyncio
 from datetime import date, datetime
 
-from pip_assistant.core import when
+from pip_assistant.common import when
 from pip_assistant.core.modules import Action, Call, Invalid, Module
 
 from .store import TodoStore

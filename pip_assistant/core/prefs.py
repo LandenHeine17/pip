@@ -10,8 +10,8 @@
 
 Settings that are set once and rarely changed live in ~/pip-data/settings.toml instead (defaults.toml).
 """
-import sqlite3
 from pathlib import Path
+from ..common.db import connect
 
 SCHEMA = "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"   # shared with core/mic.py
 DEFAULTS = {"chime": True, "clap_mic": "", "claps": False, "state_bars": False}
@@ -19,8 +19,7 @@ DEFAULTS = {"chime": True, "clap_mic": "", "claps": False, "state_bars": False}
 
 class Prefs:
     def __init__(self, path: Path):
-        self.db = sqlite3.connect(path)
-        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db = connect(path, rows=False)
         self.db.execute(SCHEMA)
         self.db.commit()
 

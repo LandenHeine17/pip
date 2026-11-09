@@ -90,7 +90,6 @@ textarea{font:inherit;font-size:.9rem;padding:8px 12px;border-radius:12px;border
 <script>
 // A value inside an onclick="…": the browser turns esc()'s &#39; back into ' before the script runs, so a
 // name with an apostrophe would end a '…' string early. JSON gives a "…" string instead (written without quotes).
-const js = v => esc(JSON.stringify(v ?? ""));
 const DOW = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const clock = ts => new Date(ts*1000).toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});

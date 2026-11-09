@@ -54,7 +54,6 @@
 <script>
 // A value inside an onclick="…": the browser turns esc()'s &#39; back into ' before the script runs, so a
 // name with an apostrophe would end a '…' string early. JSON gives a "…" string instead (written without quotes).
-const js = v => esc(JSON.stringify(v ?? ""));
 const NAMES = {clock:"Clock", weather:"Weather", timers:"Timers", calendar:"Calendar", todos:"To-do list", notes:"Notes", health:"Pi health", conversation:"Conversation"};
 let st = null;
 const label = s => s.type === "notes" && s.title ? s.title : s.type === "todos" && s.list ? `${s.list} list` : NAMES[s.type] || s.type;

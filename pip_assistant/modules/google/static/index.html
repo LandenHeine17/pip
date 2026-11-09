@@ -60,7 +60,6 @@ code{background:var(--soft);padding:1px 6px;border-radius:6px;font-size:.85em}
 <script>
 // A value inside an onclick="…": the browser turns esc()'s &#39; back into ' before the script runs, so a
 // name with an apostrophe would end a '…' string early. JSON gives a "…" string instead (written without quotes).
-const js = v => esc(JSON.stringify(v ?? ""));
 let snap = {accounts:[], people:[]};
 async function load(){
   const r = await pip.act(pip.get("status"));

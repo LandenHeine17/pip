@@ -58,7 +58,6 @@ tr.off .cname{text-decoration:line-through;opacity:.6}
 <script>
 // A value inside an onclick="…": the browser turns esc()'s &#39; back into ' before the script runs, so a
 // name with an apostrophe would end a '…' string early. JSON gives a "…" string instead (written without quotes).
-const js = v => esc(JSON.stringify(v ?? ""));
 const account = new URLSearchParams(location.search).get("id");
 const HEADS = [["off","Off"],["own","Only ones you set"],["all","Every event (calendar's reminder)"],["5","5 min before every event"],
   ["10","10 min before"],["15","15 min before"],["30","30 min before"],["60","1 hour before"],["120","2 hours before"],["1440","1 day before"]];

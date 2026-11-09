@@ -1,6 +1,15 @@
-// Shared helpers for module pages on Pip's dashboard (/m/<name>/). Used with /pip.css.
+// Shared helpers for Pip's dashboard pages (/, /settings, /changes) and module pages (/m/<name>/). Used with
+// /pip.css. (The monitor's page, tv.html, stands alone.)
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// A value inside an onclick="…": the browser turns esc()'s &#39; back into ' before the script runs, so a name
+// like D'Andre would end a '…' string early. JSON gives a "…" string instead (no quotes around ${js(x)}).
+const js = v => esc(JSON.stringify(v ?? ""));
+// Any of Pip's /api/… routes
+async function getJSON(url){ const r = await fetch(url, {cache: "no-store"}); return r.json(); }
+async function postJSON(url, body){
+  const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  return r.json(); }
 
 // Talk to this page's module in pip-core: pip.get("range", {from, to}) · pip.post("add", {...})
 // (or another module, last argument: pip.get("all_calendars", {}, "calendar"))

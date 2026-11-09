@@ -96,12 +96,8 @@
   </details>
 </section>
 </main>
+<script src="/pip.js"></script>
 <script>
-const $ = id => document.getElementById(id);
-const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-// A value inside an onclick="…": the browser turns esc()'s &#39; back into ' before the script runs, so a name
-// like D'Andre would end a '…' string early. JSON gives a "…" string instead (no quotes around ${js(x)}).
-const js = v => esc(JSON.stringify(v ?? ""));
 const WHAT = {core:"The conductor: routes messages, keeps the trace, watches health",
   ears:"Microphone, wake words, “stop”, Pip’s voice", thinker:"Claude and the offline fallback",
   web:"This dashboard and the TV page", builder:"Self-changes: writes plans, builds and checks the changes you approve"};
