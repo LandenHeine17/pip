@@ -115,7 +115,8 @@ def _time(value, now: datetime) -> datetime:
 
 
 def check(cmds, items: list[dict], ctx: dict | None = None) -> list[tuple]:
-    """Validate everything first, so a bad action means nothing at all is changed."""
+    """Validate everything first, so a bad action means nothing at all is changed.
+    `cmds`: Pip's Commands (core/commands.py); timers, alarms and reminders are its `alerts` (core/alerts.py)."""
     now = cmds.now()
     ctx = ctx or {}
     plan = []
@@ -148,7 +149,7 @@ def check(cmds, items: list[dict], ctx: dict | None = None) -> list[tuple]:
         elif do in ("change", "cancel") and not a.get("id") and a.get("kind") not in (None, "", "timer", "alarm", "reminder"):
             plan.append(check_module_action(f"{do}:{a['kind']}", a, ctx, now))   # e.g. a whole calendar, by name
         elif do in ("change", "cancel"):
-            found = cmds.s.find(str(a.get("id") or ""))
+            found = cmds.alerts.s.find(str(a.get("id") or ""))
             if not found:
                 reg = ctx.get("modules")
                 kind = reg.kind_of(str(a.get("id") or "")) if reg else None
@@ -168,7 +169,7 @@ def check(cmds, items: list[dict], ctx: dict | None = None) -> list[tuple]:
                 raise Invalid("timer length")
             row = found[1]
             if shift is not None and at is None and length is None and row["kind"] != "timer" and not row["repeat"] \
-                    and row["due"] + shift <= cmds.clock():
+                    and row["due"] + shift <= cmds.alerts.clock():
                 raise Invalid("moved into the past")   # (timers stop at "now"; a repeat moves on to its next day)
             plan.append(("change", *found, at, shift, length))
         else:
@@ -290,7 +291,7 @@ def _refused(e: Exception, raw: str) -> str:
 
 def _done(said: list[str]) -> int:
     """How many steps really happened: a step that failed while being done isn't counted."""
-    from .commands import PASSED
+    from .alerts import PASSED
     return sum(s not in (FAILED, NO_SECRETS, NOTHING, PASSED) for s in said)
 
 
@@ -330,17 +331,17 @@ def _carry_out(cmds, plan: list[tuple], ctx: dict | None) -> list:
             except Refused:
                 said.append(NO_SECRETS)
         elif kind == "timer":
-            said.append(cmds.make_timer(step[1], step[2]))
+            said.append(cmds.alerts.make_timer(step[1], step[2]))
         elif kind == "alarm":
-            said.append(cmds.make_alarm(step[1], step[2], step[3]))
+            said.append(cmds.alerts.make_alarm(step[1], step[2], step[3]))
         elif kind == "reminder":
-            said.append(cmds.make_reminder(step[1], step[2], step[3]))
+            said.append(cmds.alerts.make_reminder(step[1], step[2], step[3]))
         elif kind == "module":
             _, act, mplan, call = step
             said.append(act.do(mplan, call))
         elif kind == "cancel":
-            said.append(cmds.cancel_item(step[1], step[2]))
+            said.append(cmds.alerts.cancel_item(step[1], step[2]))
         elif kind == "change":
             _, table, row, at, shift, length = step
-            said.append(cmds.apply_change(table, row, at=at, shift=shift, length=length))
+            said.append(cmds.alerts.apply_change(table, row, at=at, shift=shift, length=length))
     return said

@@ -438,12 +438,12 @@ async def test_cancel_an_alarm_by_a_time_it_does_not_have(cmds):
     clock.t = datetime(2026, 11, 6, 20, 0).timestamp()   # Friday evening
     await say(c, "set an alarm for 7 tomorrow")
     await say(c, "set an alarm for 9 tomorrow")
-    c._focus = None
+    c.alerts._focus = None
     assert await say(c, "cancel the 8 am alarm") == "You don't have an alarm at 8 AM."
     assert len(s.active()) == 2
     await say(c, "cancel all alarms")
     await say(c, "set an alarm for 7 every weekday")    # next rings Monday
-    c._focus = None
+    c.alerts._focus = None
     assert await say(c, "cancel my 7 am alarm") == "Cancelled your 7 AM alarm."
     assert s.active() == []
 
