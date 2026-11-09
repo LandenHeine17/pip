@@ -15,12 +15,16 @@ Commands (run with the system python3 from ~/pip: `python3 -m pip_assistant.rele
         30 s settling time. If he isn't healthy, switch back to the version before and say why.
     rollback [--reason TEXT]   go back to the version before
     list                       the installed versions
-    status                     what runs now and what happened last
+    status [--json]            what runs now and what happened last (--json: one line, for programs)
     dirty                      list uncommitted changes to tracked files in ~/pip (exit 1 if there are any)
 
 Only the standard library is used: this file must work whatever state the versions it switches are in.
 Every outside action (git, uv, systemctl, the health check over HTTP, the clock) can be swapped out, so
 tests can fake them (tests/test_release.py).
+
+Other programs (pip-builder) rely on this file as the one place that says what a release id is
+(release_id), what `install` and `rollback` exit with (the EXIT_ numbers) and how to read how an install
+went (install_outcome, or `status --json`). They import these names instead of copying them.
 """
 from __future__ import annotations
 
@@ -48,6 +52,30 @@ POLL_S = 2.0
 KEEP = 3                # newest versions kept (plus the current and the previous one)
 HISTORY_MAX = 200
 UNIT_GLOB = "pip-*.service"
+
+# What `install` and `rollback` exit with (pip-builder reads these).
+EXIT_LIVE = 0           # the new version is live and healthy (or there was nothing to do)
+EXIT_ROLLED_BACK = 1    # it wasn't healthy, so Pip went back to the version before, which is healthy
+EXIT_STOPPED = 2        # stopped before anything running was changed
+EXIT_NEEDS_OWNER = 3    # not healthy, and going back didn't work either: Pip needs the owner
+
+RELEASE_ID_LEN = 10     # a release's id is the first 10 hex digits of its commit
+
+
+def release_id(sha: str) -> str:
+    """The id of the release made from commit `sha` (also its folder name under releases/)."""
+    return sha[:RELEASE_ID_LEN]
+
+
+def install_outcome(state: dict, rid: str) -> tuple[int | None, str]:
+    """How an install of release `rid` went, read from release-state.json's contents (`state`):
+    (EXIT_LIVE, "") it's live, (EXIT_ROLLED_BACK, reason) it was rolled back, (None, "") can't tell."""
+    problem = state.get("last_problem") or {}
+    if isinstance(problem, dict) and problem.get("release") == rid:
+        return EXIT_ROLLED_BACK, str(problem.get("reason") or "")
+    if state.get("current") == rid:
+        return EXIT_LIVE, ""
+    return None, ""
 
 
 def _now_iso() -> str:
@@ -223,7 +251,7 @@ class Releases:
     # ------------------------------------------------------------------ the steps
     def make(self, commit: str, summary: str | None) -> tuple[str, Path]:
         sha = self.git("rev-parse", "--verify", f"{commit}^{{commit}}")
-        rid = sha[:10]
+        rid = release_id(sha)
         dest = self.folder(rid)
         self.releases.mkdir(parents=True, exist_ok=True)
         if dest.exists():
@@ -385,14 +413,14 @@ class Releases:
             except ReleaseError as e:
                 self.say(f"Install stopped before anything changed: {e}")
                 self.record({"action": "install", "commit": commit, "result": "failed", "reason": str(e)[:300]})
-                return 2
+                return EXIT_STOPPED
             info = self.release_info(rid)
             before = self.current_id()
             if before and not self.folder(before).exists():
                 before = None
             if before == rid and not units:
                 self.say(f"Version {rid} is already the one running. Nothing to do.")
-                return 0
+                return EXIT_LIVE
             if not now:
                 self.wait_quiet()
             first = before is None
@@ -408,7 +436,7 @@ class Releases:
                 self.record({**entry, "result": "live"}, previous=before if before != rid else
                             self.load_state().get("previous"), last_problem=None)
                 self.prune()
-                return 0
+                return EXIT_LIVE
             self.say(f"PROBLEM: version {rid} isn't healthy: {why}.")
             code = self._recover(before, units, why, entry)
             self.prune()
@@ -427,10 +455,10 @@ class Releases:
                          "back_ok": ok, **({} if ok else {"back_problem": why2[:300]})}, last_problem=note)
             if ok:
                 self.say(f"Rolled back: Pip is running version {before} again and healthy.")
-                return 1
+                return EXIT_ROLLED_BACK
             self.say(f"PROBLEM: version {before} isn't healthy either: {why2}. Pip needs the owner: "
                      f"look at `journalctl --user -u 'pip-*' -n 100`.")
-            return 3
+            return EXIT_NEEDS_OWNER
         if self.units_backup.exists() and any(self.units_backup.glob(UNIT_GLOB)):
             self.say("There's no earlier version to go back to. Putting the old service files back, "
                      "so Pip runs from ~/pip again like before…")
@@ -445,16 +473,16 @@ class Releases:
             if ok:
                 self.say("Pip is running from ~/pip again (like before versioned installs) and healthy. "
                          "Fix the problem and run deploy/install.sh again.")
-                return 1
+                return EXIT_ROLLED_BACK
             self.say(f"PROBLEM: running from ~/pip isn't healthy either: {why2}. Pip needs the owner: "
                      f"look at `journalctl --user -u 'pip-*' -n 100`.")
-            return 3
+            return EXIT_NEEDS_OWNER
         self.say("PROBLEM: this was the first versioned install and there's nothing to go back to. "
                  "Pip stays on it; it needs the owner: look at `journalctl --user -u 'pip-*' -n 100`.")
         self.record({**entry, "result": "failed", "reason": why[:300], "back_to": None},
                     last_problem={"release": entry["release"], "reason": why[:300], "time": _now_iso(),
                                   "back_to": None, "back_ok": False})
-        return 3
+        return EXIT_NEEDS_OWNER
 
     def rollback(self, reason: str = "asked for") -> int:
         with self.locked():
@@ -462,7 +490,7 @@ class Releases:
             cur, prev = self.current_id(), state.get("previous")
             if not prev or prev == cur or not self.folder(prev).exists():
                 self.say("There's no earlier version to go back to.")
-                return 2
+                return EXIT_STOPPED
             self.say(f"Rolling back from {cur} to {prev} ({reason})…")
             try:
                 ok, why = self.switch(prev, False, prev)
@@ -473,9 +501,9 @@ class Releases:
                         previous=cur)
             if ok:
                 self.say(f"Pip is running version {prev} again and healthy.")
-                return 0
+                return EXIT_LIVE
             self.say(f"PROBLEM: version {prev} isn't healthy: {why}. Run `rollback` again to go back to {cur}.")
-            return 3
+            return EXIT_NEEDS_OWNER
 
     def prune(self) -> None:
         """Keep the newest 3 versions, plus the current and the previous one; remove the rest."""
@@ -560,7 +588,9 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("rollback", help="go back to the version before")
     r.add_argument("--reason", default="asked for")
     sub.add_parser("list", help="the installed versions")
-    sub.add_parser("status", help="what runs now and what happened last")
+    st = sub.add_parser("status", help="what runs now and what happened last")
+    st.add_argument("--json", action="store_true",
+                    help="one line of JSON for programs: current, previous, running_from, last, last_problem")
     sub.add_parser("dirty", help="uncommitted changes to tracked files in the repo (exit 1 if any)")
     a = ap.parse_args(argv)
     rel = Releases()
@@ -583,7 +613,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{mark} {row['release']}  {row['time'] or '?'}  {row['summary'] or ''}")
             return 0
         if a.cmd == "status":
-            print(json.dumps(rel.status(), indent=1))
+            if a.json:   # one line, the same keys every time: what other programs read
+                print(json.dumps(rel.status(), separators=(",", ":")))
+            else:
+                print(json.dumps(rel.status(), indent=1))
             return 0
         if a.cmd == "dirty":
             files = rel.dirty()
