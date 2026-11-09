@@ -26,3 +26,13 @@ def database() -> Path:
 
 def user_settings() -> Path:
     return data_dir() / "settings.toml"
+
+
+REPO_WAKE_MODELS = Path(__file__).resolve().parents[2] / "models" / "wake"
+
+
+def wake_model_folders() -> list[Path]:
+    """Where wake-word models are looked for, in order: household-tuned ones in ~/pip-data/models/wake
+    (private), then the repo's models/wake (trained on synthetic voices only). Used by ears/wake.py to
+    find a model and by the Settings page to list them."""
+    return [data_dir() / "models" / "wake", REPO_WAKE_MODELS]

@@ -20,6 +20,8 @@ from dataclasses import asdict, dataclass, field
 KINDS = {"hello", "heartbeat", "subscribe", "event", "command", "request", "reply"}
 MAX_LINE = 4 * 1024 * 1024  # 4 MB: room for a few seconds of audio in `private`
 READ_LIMIT = 2 * MAX_LINE   # what each end of the socket will read in one line (asyncio's default is only 64 KB)
+# The "tone" an ears.ring command may carry: the ringtones ears/audio.py can play (the Settings page offers these)
+RINGTONES = ("classic", "kitchen", "chimes", "gentle")
 
 
 class BadMessage(ValueError):

@@ -10,11 +10,11 @@ import numpy as np
 
 from ..common import paths
 
-REPO_MODELS = Path(__file__).resolve().parents[2] / "models" / "wake"
+REPO_MODELS = paths.REPO_WAKE_MODELS   # also holds openWakeWord's own feature models
 
 
 def find_model(name: str) -> Path:
-    for folder in (paths.data_dir() / "models" / "wake", REPO_MODELS):
+    for folder in paths.wake_model_folders():
         f = folder / f"{name}.onnx"
         if f.exists():
             return f

@@ -426,7 +426,7 @@ async def test_the_dashboard_lists_and_household_choice(env):
 
 
 async def test_the_timers_list_shows_only_the_next_day_of_heads_ups(env, tmp_path):
-    from pip_assistant.core.main import alerts_snapshot
+    from pip_assistant.core.dashapi import alerts_snapshot
     reg, cal, fake, people, sched, clock = env
     acc, main, fam = await classes_and_dentist(env)
     await cal.dashboard("set_calendar", {"id": main["id"], "field": "heads_up", "value": "all"})
@@ -439,7 +439,7 @@ async def test_the_timers_list_shows_only_the_next_day_of_heads_ups(env, tmp_pat
 
 
 async def test_an_only_me_calendar_stays_off_the_room_monitor(env):
-    from pip_assistant.core.main import tv_snapshot
+    from pip_assistant.core.dashapi import tv_snapshot
     reg, cal, fake, people, sched, clock = env
     sam = people.add_person("Sam")
     fake.calendars["sam@example.com"] = {"summary": "Sam", "primary": True, "accessRole": "owner", "owner": "sam@example.com"}

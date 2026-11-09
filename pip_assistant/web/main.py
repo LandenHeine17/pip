@@ -256,7 +256,7 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
 
     async def tv_data(request):
         """Everything the TV page needs when it loads or refreshes: Pip's state, what pip-core sends
-        (timers, events, the screen's layout and its to-do lists: core/main.py tv_snapshot), the weather,
+        (timers, events, the screen's layout and its to-do lists: core/dashapi.py tv_snapshot), the weather,
         and the Pi's health numbers if that box is showing."""
         out = {"state": state.pip_state, "state_detail": state.pip_detail, "online": state.online, "weather": {}}
         try:

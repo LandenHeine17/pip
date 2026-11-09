@@ -358,7 +358,7 @@ def test_event_heads_up_and_removal(tmp_path):
 
 
 async def test_dashboard_can_shut_off_and_make_timers(tmp_path):
-    from pip_assistant.core.main import alert_action
+    from pip_assistant.core.dashapi import alert_action
     from pip_assistant.common.messages import Message
     clock = Clock()
     bus, sched, conv, ears, got, tasks = await setup_bus(tmp_path, clock, FakeSTT(""))

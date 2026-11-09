@@ -7,7 +7,7 @@
 Whose list: the person named ("add it to Sam's list"), else the speaker's if Pip is sure who it is
 and they've connected Google, else the household's (the first list of a connected account, admins'
 first, or Pip's own "Household" list). Sharing follows each person's setting on the Google page, like
-the calendar. core/main.py asks screen_list() for the to-do boxes on the monitor.
+the calendar. core/dashapi.py asks screen_list() for the to-do boxes on the monitor.
 """
 import asyncio
 from datetime import date, datetime
