@@ -18,14 +18,14 @@ nothing is changed and Pip says so.
     other   any verb a plugged-in module declares ("add_task" → modules/todos), see core/modules.py
     look    kind (+ the module's fields): a look-up, not a change. Pip fetches it and asks Claude again
             with the result, once ("what's on next Friday?" → the calendar for that day). Handled in
-            core/conversation.py.
+            core/acting.py (look_up).
 
-Ringing alarms and voices (handled in core/conversation.py, which has the alarm and the audio):
+Ringing alarms and voices (handled in core/acting.py, part of the Conversation, which has the alarm and the audio):
     stop_alarm     turn off what's ringing
     snooze         minutes (optional; default from settings)
     learn_voice    name: start learning that household member's voice (or remember a visitor for the visit)
 
-Changing Pip himself (M1b, PIP-NEW-069, AC-SM-01; handled in core/conversation.py):
+Changing Pip himself (M1b, PIP-NEW-069, AC-SM-01; handled in core/acting.py):
     request_change summary: a short paraphrase of what to change. Only for someone Pip recognises for sure
                    (not a guest); it goes to pip-builder, which writes a plan for the dashboard's Changes page.
                    Voice can only ask: approving and undoing happen on the dashboard.
