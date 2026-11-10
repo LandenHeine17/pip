@@ -94,6 +94,7 @@ def test_a_ten_minute_timer_is_not_a_timer_timer(tmp_path):
 
 # ---------------------------------------------------------------- D-107: approving your own memory by voice
 def test_the_person_a_memory_is_about_can_approve_it(tmp_path):
+    """Memories still waiting in the inbox (from before D-119, or the Ziggletron import) can be approved by voice."""
     people = People(tmp_path / "pip.db", embedder=FakeEmbedder())
     landen, sam = people.add_person("Landen", "admin"), people.add_person("Sam")
     mem = Memory(tmp_path / "pip.db")
@@ -112,8 +113,7 @@ def test_the_person_a_memory_is_about_can_approve_it(tmp_path):
     ctx = lambda sp: {"memory": mem, "people": people, "speaker": sp}
     raw = ('ACTION {"do": "remember", "text": "Sam is allergic to peanuts", "category": "personal", '
            '"about": ["Sam"], "sensitive": true}')
-    said, _ = actions.apply(Cmds, raw, ctx(sure(landen)))
-    assert "memory inbox" in said
+    mem.add("Sam is allergic to peanuts", "personal", [sam["id"]], sensitive=True, pending_because="from Ziggletron")
     [row] = mem.items("pending")
     # Someone else saying it again: it's waiting, not "already known"
     assert actions.apply(Cmds, raw, ctx(sure(landen)))[0] == "That's waiting in the memory inbox."
@@ -208,9 +208,8 @@ def test_what_the_owner_saw_one_memory_not_two(tmp_path):
         now = staticmethod(__import__("datetime").datetime.now)
     sure = lambda p: Match(p["id"], p["name"], "sure", 0.9)
     ctx = lambda sp: {"memory": mem, "people": people, "speaker": sp}
-    actions.apply(Cmds, 'ACTION {"do": "remember", "text": "Landen says Sam is allergic to peanuts", '
-                        '"category": "household", "sensitive": true}', ctx(sure(landen)))
-    assert len(mem.items("pending")) == 1
+    mem.add("Landen says Sam is allergic to peanuts", "household", sensitive=True, pending_because="from Ziggletron")
+    assert len(mem.items("pending")) == 1   # (waiting from before D-119)
     assert "allergic" in mem.for_claude(sam["id"], "sure", speaker_name="Sam")      # Sam is asked about it
     said, _ = actions.apply(Cmds, 'ACTION {"do": "remember", "text": "Sam is allergic to peanuts", "category": "personal", '
                                   '"about": ["Sam"], "sensitive": true}', ctx(sure(sam)))
@@ -218,8 +217,8 @@ def test_what_the_owner_saw_one_memory_not_two(tmp_path):
     assert mem.items("pending") == [] and [r["text"] for r in mem.items("active")] == ["Sam is allergic to peanuts"]
 
 
-def test_your_own_sensitive_fact_is_saved_straight_away(tmp_path):
-    """D-88 changed by the owner: about yourself, Pip sure it's you → saved; about someone else → inbox."""
+def test_every_memory_is_saved_straight_away(tmp_path):
+    """D-119 (owner, 2026-11-10): about yourself, someone else, or from a voice Pip isn't sure of: all saved."""
     people = People(tmp_path / "pip.db", embedder=FakeEmbedder())
     landen, sam = people.add_person("Landen", "admin"), people.add_person("Sam")
     mem = Memory(tmp_path / "pip.db")
@@ -232,9 +231,9 @@ def test_your_own_sensitive_fact_is_saved_straight_away(tmp_path):
     own = 'ACTION {"do": "remember", "text": "Landen has asthma", "category": "personal", "about": ["Landen"], "sensitive": true}'
     assert actions.apply(Cmds, own, ctx(Match(landen["id"], "Landen", "sure", 0.9)))[0] == "Saved: Landen has asthma."
     other = 'ACTION {"do": "remember", "text": "Sam has asthma", "category": "personal", "about": ["Sam"], "sensitive": true}'
-    assert "memory inbox" in actions.apply(Cmds, other, ctx(Match(landen["id"], "Landen", "sure", 0.9)))[0]
+    assert actions.apply(Cmds, other, ctx(Match(landen["id"], "Landen", "sure", 0.9)))[0] == "Saved: Sam has asthma."
     unsure = 'ACTION {"do": "remember", "text": "Landen hates hospitals", "category": "personal", "about": ["Landen"], "sensitive": true}'
-    assert "memory inbox" in actions.apply(Cmds, unsure, ctx(Match(landen["id"], "Landen", "probably", 0.6)))[0]
+    assert actions.apply(Cmds, unsure, ctx(Match(landen["id"], "Landen", "probably", 0.6)))[0] == "Saved: Landen hates hospitals."
 
 
 # ---------------------------------------------------------------- D-108: the conversation feed and the state colours

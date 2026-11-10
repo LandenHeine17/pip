@@ -81,16 +81,16 @@ flowchart LR
 ### Memory (built in step 5)
 - Saves things **when you ask** ("Pip, remember the bins go out Tuesday night"). **Never** saves overheard conversation. Never deletes old memories by itself (D-54). *Later:* Pip asking first ("Want me to remember that?").
 - New memories are visible to the household by default; one can be made private, and then it's only used when its owner's voice is recognised for sure. Admins can read all memories (D-15, D-16).
-- A **Memory Center** on the dashboard: an inbox to approve or reject, search, add, edit, make private, archive (kept but not used) and delete. Ziggletron's 80 memories were brought into the inbox for review in step 8 (D-117).
-- A **private** memory waiting in the inbox is only ever shown to, or approvable by, the person who made it, even if it mentions someone else. A memory about someone Pip doesn't know (not on the household list) also waits in the inbox.
+- **Every memory is saved straight away** (D-119, owner, 2026-11-10): sensitive ones, ones about someone else, ones from a voice Pip doesn't recognise, and ones said while he's offline. Only passwords, codes, card and phone numbers are refused. A memory asked to be private stays private; if Pip didn't recognise the voice, it's used for nobody until its owner is set in the Memory Center.
+- A **Memory Center** on the dashboard: search, add, edit, make private, archive (kept but not used) and delete. Its inbox only holds memories brought over from Ziggletron (D-117) or waiting from before D-119; a private one there is only shown to, or approvable by, the person who made it.
 - No conversation transcripts or recordings are kept as logs. Your test recordings and voice-trained models stay on the Pi (D-72).
 
 | Say | Pip |
 |---|---|
 | "Remember the bins go out Tuesday night" · "remember I take my coffee black" | "Saved: The bins go out Tuesday night." (exact wording, so you know what he kept) |
-| "Remember Sam is allergic to peanuts" (health, money, relationships, someone's whereabouts, children; or a preference about someone else) | "I'll remember that once it's approved in the memory inbox on the dashboard." |
-| Sam, later: "Yeah, that's right, save it" (Pip sure it's Sam) | "Saved: Sam is allergic to peanuts." (only the person it's about can approve by voice, D-107) |
-| Sam: "Remember I'm allergic to peanuts" (Pip sure it's Sam) | "Saved: Sam is allergic to peanuts." (your own sensitive facts are saved straight away, D-88) |
+| "Remember Sam is allergic to peanuts" (sensitive, or about someone else) | "Saved: Sam is allergic to peanuts." (saved straight away, D-119) |
+| "Remember the spare key is under the plant, keep it private" (a voice Pip doesn't recognise) | "Saved privately: … I didn't recognise your voice, so set whose it is in the Memory Center on the dashboard." |
+| Sam, about one still waiting in the inbox: "Yeah, that's right, save it" (Pip sure it's Sam) | "Saved: …" (only the person it's about can approve by voice, D-107) |
 | "Actually, I take it with oat milk now" · "forget what I said about coffee" | "Updated: …" · "Forgot: …" |
 | "Remember the door code is 4821" | Refused: passwords, codes, card and phone numbers aren't memories |
 | "What do you remember about me?" · "how do I take my coffee?" | Answers from what he remembers |
@@ -100,9 +100,7 @@ flowchart LR
     A["'Pip, remember…'"] --> C["Claude words it:<br/>'Sam is allergic to peanuts'<br/>and sorts it"]
     C --> K{"Pip's code checks"}
     K -- "password, code, card or phone number" --> R["Refused"]
-    K -- "sensitive · about someone else ·<br/>'my…' from an unknown voice · offline" --> I["Memory inbox:<br/>approve on the dashboard,<br/>or by voice if it's about you (D-107)"]
-    K -- "otherwise" --> S["Saved and confirmed:<br/>'Saved: …'"]
-    I -- "Approve" --> S
+    K -- "everything else (D-119)" --> S["Saved and confirmed:<br/>'Saved: …'"]
 ```
 
 ### People and voices (built in step 5)

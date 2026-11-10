@@ -9,7 +9,7 @@ replies with ACTION {"do": "learn_voice", "name": …} (or just answers); `intro
     "Pip, learn my voice"                      the same; if Pip doesn't know who's talking he asks their name
     (names are matched the way they sound, so "I'm Landon" finds Landen, D-93)
     "Pip, who am I?"           who Pip thinks is talking
-    offline "remember that…"   goes to the memory inbox, since Claude can't word and sort it right now
+    offline "remember that…"   saved straight away as said (D-119), as a household memory
 
 Returns what to say, a StartLearning (Conversation then runs the voice learning), or None when it
 isn't one of these.
@@ -87,13 +87,11 @@ class PeopleCommands:
             from .memory import Refused
             who = speaker.name if speaker and speaker.level == "sure" else "someone"
             try:
-                _, outcome = self.memory.add(m.group(1).rstrip(" .!"), "household", pending_because="said while offline",
-                                             source=f"{who}, by voice (offline)")
+                row, outcome = self.memory.add(m.group(1).rstrip(" .!"), "household", source=f"{who}, by voice (offline)")
             except Refused:
                 return "I can't keep passwords, card or phone numbers in my memory."
             return "I already knew that." if outcome == "duplicate" else "That's waiting in the memory inbox." \
-                if outcome == "waiting" else \
-                "I'm offline, so I put that in the memory inbox to check later."
+                if outcome == "waiting" else f"Saved: {row['text'].rstrip('.!')}."
         return None
 
     async def introduced(self, name: str, learn: bool, speaker, pcm: bytes):

@@ -35,8 +35,9 @@ Memory:
     forget         id ('#m1a2b3')
     update_memory  id, text
     approve_memory id: a memory waiting in the inbox, approved by the person it's about (recognised for sure, D-107)
-Sensitive memories, memories about someone other than the speaker, and private ones from a voice Pip
-doesn't recognise wait in the memory inbox instead of being saved straight away.
+Every memory is saved straight away (D-119; passwords, card and phone numbers are still refused). A private
+one from a voice Pip doesn't recognise is kept private with nobody as its owner: Pip uses it for no one until
+its owner is set on the dashboard.
 """
 import inspect
 import json
@@ -191,7 +192,7 @@ def check_module_action(verb: str, a: dict, ctx: dict, now: datetime) -> tuple:
 
 
 def _check_memory(a: dict, ctx: dict) -> tuple:
-    """Check a memory action. For a new memory, also works out whether it must wait in the inbox, and why."""
+    """Check a memory action. A new memory is saved straight away (D-119), never put in the inbox."""
     mem, people, speaker = ctx.get("memory"), ctx.get("people"), ctx.get("speaker")
     if mem is None:
         raise Invalid("no memory")
@@ -229,21 +230,14 @@ def _check_memory(a: dict, ctx: dict) -> tuple:
     category = str(a.get("category") or "household")
     personal = category in ("preference", "personal")      # household facts and rules can come from anyone
     own = bool(me) and personal and about == [me] and not strangers   # only about the speaker, and Pip is sure it's them
-    why = ""
-    if a.get("sensitive") and not own:                      # your own sensitive facts are saved straight away (D-88)
-        why = "sensitive"
-    elif personal and (strangers or any(pid != me for pid in about)):
-        why = "about someone else"
-    elif a.get("private") and not me:
-        why = "private, but I didn't recognise the voice"
-    elif personal and not about and not me:
-        why = "I didn't recognise the voice"
     if not personal:
         about = []
     who = speaker.name if me else "someone"
     subject = me if me and (me in about or speaker.name.lower() in text.lower()) else None   # may confirm a waiting one
-    return ("remember", text, category, about, me or "", bool(a.get("private")) and bool(me),
-            bool(a.get("sensitive")), why, f"{who}, by voice", own, subject, speaker.name if me else "")
+    # Private stays private even if Pip didn't recognise the voice: then it has no owner and is used for nobody
+    # until it's given one on the dashboard (never household-visible by mistake).
+    return ("remember", text, category, about, me or "", bool(a.get("private")),
+            bool(a.get("sensitive")), "", f"{who}, by voice", own, subject, speaker.name if me else "")
 
 
 def apply(cmds, raw: str, ctx: dict | None = None) -> tuple[str, int]:
@@ -313,6 +307,10 @@ def _carry_out(cmds, plan: list[tuple], ctx: dict | None) -> list:
                 row, outcome = mem.add(text, cat, about, owner, private, sensitive, why, source, own=own)
             except Refused as e:
                 said.append(NO_SECRETS if str(e) == "credential" else NOTHING)
+                continue
+            if outcome == "saved" and private and not owner:
+                said.append(f"Saved privately: {row['text'].rstrip('.!')}. I didn't recognise your voice, so set whose it "
+                            "is in the Memory Center on the dashboard.")
                 continue
             said.append({"saved": f"Saved: {row['text'].rstrip('.!')}.", "duplicate": "I already knew that.",
                          "waiting": "That's waiting in the memory inbox.",
