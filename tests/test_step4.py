@@ -348,7 +348,7 @@ def test_recently_due_rings_after_restart(tmp_path):
 def test_event_heads_up_and_removal(tmp_path):
     clock = Clock()
     s = Schedule(tmp_path / "pip.db", clock=clock)
-    cal = registry(tmp_path, s, clock).get("calendar")
+    cal = registry(tmp_path, s, clock).module("calendar").store
     ev = cal.add_event("dentist", datetime(2026, 11, 10, 15, 0), heads_up_before=1800)
     [h] = s.active(("event",))
     assert h["due"] == datetime(2026, 11, 10, 14, 30).timestamp()

@@ -51,20 +51,6 @@ def say(reg, verb, a, call=None):
     return act.do(act.check(a, call), call)
 
 
-def test_old_events_move_into_the_module(tmp_path):
-    db = sqlite3.connect(tmp_path / "pip.db")
-    db.execute("CREATE TABLE events (id TEXT PRIMARY KEY, title TEXT, start REAL, all_day INTEGER, repeat TEXT, created REAL)")
-    db.execute("INSERT INTO events VALUES ('abc123', 'dentist', ?, 0, '', 0)", (NOW.timestamp() + 86400,))
-    db.commit()
-    clock = Clock()
-    sched = Schedule(tmp_path / "pip.db", clock=clock)
-    reg = Registry.load({}, infos=[read(ROOT / "google"), read(ROOT / "calendar")], schedule=sched,
-                        db_path=tmp_path / "pip.db", clock=clock)
-    [ev] = reg.get("calendar").all_events()
-    assert ev["id"] == "abc123" and ev["title"] == "dentist" and ev["end"] - ev["start"] == 3600
-    assert not db.execute("SELECT 1 FROM sqlite_master WHERE name = 'events'").fetchone()
-
-
 async def test_pips_own_calendar_works_without_google(env):
     reg, cal, fake, people, sched, clock = env
     assert say(reg, "add:event", {"title": "dentist", "at": "2026-11-13T15:00", "heads_up_minutes": 30}) == \

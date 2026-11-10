@@ -29,7 +29,6 @@ class ScreenModule(Module):
             self.screen = Screen(json.loads(row["data"]) if row else None)
         except Exception:   # an unreadable saved state: start from the ready-made screens
             self.screen = Screen()
-        self.api = self
         self.actions = {verb: Action(self.check, self.do) for verb in
                         ("show_screen", "save_screen", "delete_screen", "add_box", "remove_box", "move_box",
                          "change_box", "undo_screen", "screen_fix", "screen_options")}

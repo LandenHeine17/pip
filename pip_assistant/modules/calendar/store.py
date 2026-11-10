@@ -65,8 +65,8 @@ CREATE INDEX IF NOT EXISTS calendar_events_google ON calendar_events (calendar_i
 
 
 class CalendarStore:
-    def __init__(self, db: sqlite3.Connection, schedule=None, clock=None):
-        self.db, self.schedule, self.clock = db, schedule, clock or time.time
+    def __init__(self, db: sqlite3.Connection, alerts=None, clock=None):
+        self.db, self.alerts, self.clock = db, alerts, clock or time.time   # alerts: ctx.alerts (core/modules.ModuleAlerts)
         self.db.executescript(SCHEMA)
         have = {r[1] for r in self.db.execute("PRAGMA table_info(calendar_calendars)")}
         for col in ("owner INTEGER NOT NULL DEFAULT 1", "ignored INTEGER NOT NULL DEFAULT 0",
@@ -86,19 +86,8 @@ class CalendarStore:
         self.db.commit()
         self.on_change = []          # called with the event id after any change Pip makes (sync, dashboard)
         self.version = 0             # goes up whenever anything changes (so the dashboard knows to refresh)
-        self._take_legacy()
         if remake:   # heads-ups made under the old rule (every event) go now; the next sync brings back the right ones
             self.remake_alerts()
-
-    def _take_legacy(self) -> None:
-        """Events from before the calendar became a module (core/schedule.py kept them) move in, same ids."""
-        take = getattr(self.schedule, "take_legacy_events", None)
-        for ev in (take() if take else []):
-            end = ev["start"] + (86400 if ev["all_day"] else 3600)
-            self.db.execute("INSERT OR IGNORE INTO calendar_events (id, calendar_id, title, start, end, all_day, repeat, "
-                            "created, updated) VALUES (?,?,?,?,?,?,?,?,?)",
-                            (ev["id"], "pip", ev["title"], ev["start"], end, ev["all_day"], ev["repeat"], ev["created"], ev["created"]))
-        self.db.commit()
 
     # ---------------------------------------------------------------- calendars
     def calendars(self, ignored: bool = False) -> list[dict]:
@@ -293,8 +282,8 @@ class CalendarStore:
 
     # ---------------------------------------------------------------- heads-ups
     def _cancel_alerts(self, eid: str) -> None:
-        if self.schedule is not None:
-            self.schedule.cancel_for(eid)
+        if self.alerts is not None:
+            self.alerts.cancel_for(eid)
 
     def heads_up_minutes(self, ev: dict, cal: dict | None) -> float | None:
         """How long before this event Pip gives a heads-up, by the calendar's setting (D-109): off, only events
@@ -314,9 +303,9 @@ class CalendarStore:
     def sync_alerts(self, ev: dict) -> None:
         """Re-make an event's heads-up: none if private, past, more than a week away (re-checked later), not
         wanted for that calendar, or at night when that's switched off (D-109)."""
-        if self.schedule is None:
+        if self.alerts is None:
             return
-        self.schedule.cancel_for(ev["id"])
+        self.alerts.cancel_for(ev["id"])
         cal = self.calendar(ev["calendar_id"])
         mins = self.heads_up_minutes(ev, cal)
         if ev["private"] or mins is None or ev["pending"] == "delete" or ev["calendar_id"] not in self.ticked():
@@ -329,14 +318,14 @@ class CalendarStore:
             return   # no heads-ups at night
         soon_enough = ev["repeat"] or due < self.clock() + 7 * 86400   # repeats re-arm themselves after ringing
         if due > self.clock() and soon_enough:
-            self.schedule.add("event", ev["title"], due, length=mins * 60, repeat=ev["repeat"], event_id=ev["id"])
+            self.alerts.add(ev["title"], due, length=mins * 60, repeat=ev["repeat"], item_id=ev["id"])
 
     def refresh_alerts(self) -> None:
         """Daily: give events coming into the next week their heads-up."""
         soon = self.clock() + 7 * 86400
         for ev in self.all_events():
             if self.clock() < ev["start"] < soon and not ev["repeat"]:
-                if not self.schedule or not self.schedule.has_alert_for(ev["id"]):
+                if not self.alerts or not self.alerts.has_alert_for(ev["id"]):
                     self.sync_alerts(ev)
 
     def remake_alerts(self, cids: set[str] | None = None) -> None:

@@ -25,10 +25,11 @@ setup returns a Module. Each of its parts is optional:
 Pip-core and pip-web never name a module: they ask every module for these (tools/check_map.py checks).
 
 What a module gets (ModuleContext): its settings; its own tables in pip.db (named <module>_…); its
-own section of secrets.toml; events it publishes (module.<name>.*); the schedule (for alerts);
-people; whether Pip is online; the clock; the modules it `needs`; the kinds of box every module adds to
-the monitor (`boxes`, for the screen module); and an HTTP client that can only reach the hosts its
-module.toml lists under permissions.
+own section of secrets.toml; events it publishes (module.<name>.*); heads-ups for its own items
+(`alerts`, ModuleAlerts below); who's in the household (`people`, ModulePeople: names and roles, never
+voices); whether Pip is online; the clock; the modules it `needs` (their small `api`); the kinds of box
+every module adds to the monitor (`boxes`, for the screen module); and an HTTP client that can only reach
+the hosts its module.toml lists under permissions. Nothing else of pip-core.
 """
 import asyncio
 import importlib
@@ -163,12 +164,58 @@ class HostNotAllowed(PermissionError):
     pass
 
 
+class ModuleAlerts:
+    """What a module may do with Pip's alerts (core/schedule.py): heads-ups for its own items. A heads-up rings
+    like a reminder ("Heads up: dentist in half an hour"), and is linked to the item by its id."""
+
+    def __init__(self, schedule):
+        self._s = schedule
+
+    def add(self, label: str, due: float, length: float | None = None, repeat: str = "", item_id: str = "") -> dict:
+        """A heads-up at `due` (a timestamp); `length`: how long before the item it is (the words say "in …")."""
+        return self._s.add("event", label, due, length=length, repeat=repeat, event_id=item_id)
+
+    def cancel_for(self, item_id: str) -> None:
+        """Every heads-up for this item goes (the item was moved, changed or removed)."""
+        self._s.cancel_for(item_id)
+
+    def has_alert_for(self, item_id: str) -> bool:
+        return self._s.has_alert_for(item_id)
+
+    def waiting(self) -> int:
+        """How many heads-ups (any module's) are waiting."""
+        return len(self._s.active(("event",)))
+
+
+class ModulePeople:
+    """Who's in the household (core/people.py), read-only: id, name and role. Never voices or anything else."""
+    FIELDS = ("id", "name", "role")
+
+    def __init__(self, people):
+        self._p = people
+
+    def _small(self, p: dict | None) -> dict | None:
+        return {k: p[k] for k in self.FIELDS} if p else None
+
+    def all(self) -> list[dict]:
+        return [self._small(p) for p in self._p.all()]
+
+    def get(self, person_id: str) -> dict | None:
+        return self._small(self._p.get(person_id))
+
+    def by_name(self, name: str) -> dict | None:
+        """The household member with this name, allowing for how speech-to-text spells it ("Landon" → Landen)."""
+        return self._small(self._p.by_name(name))
+
+
 class ModuleContext:
     def __init__(self, info: ModuleInfo, bus=None, schedule=None, people=None, net=None, clock=time.time,
                  db_path=None, modules: dict | None = None, transport=None, boxes: dict | None = None):
         self.info, self.name, self.settings = info, info.name, info.settings
         self.boxes = boxes or {}   # every loaded module's kinds of monitor box ({kind: {label, size, …, "module"}})
-        self.bus, self.schedule, self.people, self.net, self.clock = bus, schedule, people, net, clock
+        self.bus, self.net, self.clock = bus, net, clock
+        self.alerts = ModuleAlerts(schedule) if schedule is not None else None   # heads-ups for its own items
+        self.people = ModulePeople(people) if people is not None else None       # names and roles only
         self.secrets = ScopedSecrets(info.name)
         self._db_path = db_path or paths.database()
         self._modules = modules or {}

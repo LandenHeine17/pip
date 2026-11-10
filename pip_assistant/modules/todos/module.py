@@ -16,6 +16,7 @@ from datetime import date, datetime
 from pip_assistant.common import when
 from pip_assistant.core.modules import Action, Call, Invalid, Module
 
+from .api import TodosAPI
 from .store import TodoStore
 from .sync import TodoSync
 
@@ -29,7 +30,7 @@ class Todos(Module):
         self.ctx = ctx
         self.google = ctx.module("google")
         self.store = TodoStore(ctx.db(), ctx.clock)
-        self.api = self.store
+        self.api = TodosAPI(self)   # api.py: what other modules may use
         self.sync = TodoSync(self.store, self.google, ctx.clock)
         self._wake = asyncio.Event()
         self.store.on_change.append(self._wake.set)

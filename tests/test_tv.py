@@ -89,7 +89,7 @@ def test_pip_core_sends_the_tv_no_private_events_and_only_soon_heads_ups(tmp_pat
     from modhelp import registry
     sched = Schedule(tmp_path / "pip.db")
     reg = registry(tmp_path, schedule=sched, names=("google", "calendar"))
-    cal = reg.get("calendar")
+    cal = reg.module("calendar").store
     soon = datetime.now() + timedelta(hours=3)
     cal.add_event("Dentist", soon)
     cal.add_event("Therapy", soon + timedelta(hours=1), private=True)
@@ -163,7 +163,7 @@ def test_pip_core_sends_the_screen_and_only_the_lists_on_it(tmp_path):
     from modhelp import registry
     sched = Schedule(tmp_path / "pip.db")
     reg = registry(tmp_path, schedule=sched, names=("google", "todos", "screen"))
-    reg.get("todos").add("milk", "pip")
+    reg.module("todos").store.add("milk", "pip")
     snap = tv_snapshot(sched, reg)
     assert snap["screen"]["name"] == "default" and "todos" not in snap["boxes"]
     reg.modules["screen"].screen.show("morning")    # it has the household's to-do list

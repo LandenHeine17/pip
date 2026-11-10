@@ -321,7 +321,7 @@ async def test_claude_action_is_carried_out_and_confirmed_by_pip(tmp_path):
     await ears.emit("heard.utterance", d, private=p)
     await asyncio.sleep(0.4)
     assert [t for k, t, _ in got if k == "ears.say"] == ["Added dentist, Friday at 2 PM."]
-    assert [e["title"] for e in conv.modules.get("calendar").all_events()] == ["dentist"]
+    assert [e["title"] for e in conv.modules.module("calendar").store.all_events()] == ["dentist"]
     trace = json.dumps(bus.trace.recent())
     assert "dentist" not in trace                                   # what was asked for is never logged
     await finish(bus, tasks)

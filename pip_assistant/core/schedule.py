@@ -156,15 +156,6 @@ class Schedule:
         return bool(self.db.execute("SELECT 1 FROM alerts WHERE event_id = ? AND state IN ('waiting','ringing')",
                                     (item_id,)).fetchone())
 
-    def take_legacy_events(self) -> list[dict]:
-        """Calendar events saved before the calendar became a module: handed over once, then removed."""
-        if not self.db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'events'").fetchone():
-            return []
-        rows = [dict(r) for r in self.db.execute("SELECT * FROM events")]
-        self.db.execute("DROP TABLE events")
-        self.db.commit()
-        return rows
-
     def find(self, ref: str) -> tuple[str, dict] | None:
         """A timer, alarm or reminder from the short id Claude sees ('#a1b2c3'): ('alert', row)."""
         ref = ref.strip().lstrip("#").lower()
