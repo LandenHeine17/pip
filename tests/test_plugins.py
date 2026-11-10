@@ -99,3 +99,42 @@ def test_pips_programs_never_name_a_module():
     check = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(check)
     assert check.modules_named(root) == []
+
+
+# ---------------------------------------------------------------- the room_heard hook (room speech offered to modules)
+class Echo:
+    """A made-up module that answers any room speech, to prove the hook needs no module's name in pip-core."""
+    def __init__(self):
+        self.seen = []
+
+    def room_heard(self, text, call):
+        self.seen.append(text)
+        return "echo"
+
+
+async def _room(tmp_path, quiet_hours, heard):
+    import asyncio
+    from test_step6 import finish, room, says, setup
+    reg = Registry()
+    reg.modules["echo"] = echo = Echo()
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, heard, modules=reg, social={"quiet_hours": quiet_hours})
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.2)
+    out = says(got)
+    await finish(bus, tasks)
+    return out, echo
+
+
+async def test_room_speech_is_offered_to_modules_and_their_answer_is_said(tmp_path):
+    out, echo = await _room(tmp_path, "", "did you see the game")
+    assert echo.seen == ["did you see the game"] and out == ["echo"]
+
+
+async def test_speech_to_pip_is_not_offered_to_modules(tmp_path):
+    out, echo = await _room(tmp_path, "", "pip what time is it")
+    assert echo.seen == [] and "echo" not in out
+
+
+async def test_modules_are_not_asked_in_quiet_hours(tmp_path):
+    out, echo = await _room(tmp_path, "00:00-23:59", "did you see the game")
+    assert echo.seen == [] and out == []

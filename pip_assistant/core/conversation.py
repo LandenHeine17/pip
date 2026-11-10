@@ -68,6 +68,7 @@ from .feed import Feed
 from .hearing import Hearing
 from .joining import Joining, in_quiet_hours
 from .micctl import MicControl
+from .modules import Call
 from .names import NOT_PIP, PIP_NAMES, calls_pip, names_pip
 from . import states
 from .states import DETAILS, situation
@@ -492,7 +493,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         if how == "room":
             self.room_until = time.monotonic() + 4.0   # following the conversation (D-112)
             self.refresh_state()
-            if not await self.welcome_back(speaker, quiet_for):
+            if not await self.welcome_back(speaker, quiet_for) and not await self.modules_answer_room(text, speaker):
                 self.joining.heard()
             return
         self.joining.cancel_wait()
@@ -507,6 +508,17 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             await self.command("thinker", "thinker.cancel")
         await self.addressed(text, "expected" if expected else "transcript", offline=offline, chime=not expected,
                              heard_s=msg.data.get("seconds") or 0)
+
+    async def modules_answer_room(self, text: str, speaker) -> bool:
+        """Offer room speech (not meant for Pip) to the modules; one may answer with something for him to say.
+        Only when he is free to speak and it isn't quiet hours. Nothing is kept of the words."""
+        if self.modules is None or in_quiet_hours(self.quiet_hours) or not self.can_join():
+            return False
+        reply = self.modules.room_heard(text, Call(speaker=speaker))
+        if not reply:
+            return False
+        await self.speak_reply(reply, "room")
+        return True
 
     async def welcome_back(self, speaker, quiet_for: float) -> bool:
         """Someone Pip knows speaks after the room was quiet a while: "Hey Landen, welcome back." (once an hour)"""

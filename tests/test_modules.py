@@ -71,7 +71,7 @@ def test_a_module_can_only_write_its_own_tables(tmp_path):
 
 def test_claudes_action_reaches_the_module_that_declares_it(tmp_path):
     from pip_assistant.common.modules import ROOT
-    reg = Registry.load({}, infos=[read(ROOT / "_template")])
+    reg = Registry.load({}, infos=[read(ROOT / "_template")], db_path=tmp_path / "pip.db")
 
     class Cmds:
         class s:

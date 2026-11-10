@@ -250,6 +250,9 @@ Sounds without a human voice in them (a click, a cough, a hiss) are dropped befo
 - Answers "how does your memory work?" from an up-to-date feature list, the docs and his own code (read-only), and says when the docs and code disagree (PIP-NEW-064–067).
 - Answers "why didn't you answer me?" from a 48-hour record of what he decided and why, never by guessing (PIP-NEW-066).
 
+### Joining the chant (built 2026-11-10, D-121)
+- Pip offers every sentence said in the room that isn't meant for him to his modules, and a module may answer with something for him to say. The `six_seven` module uses it: when a six and a seven both come up (words, digits or "67"), Pip says "six seven, six seven, six fucking seven", then stays quiet for 30 seconds (setting `pause_seconds`). It keeps nothing of what was said. He only does it when he is free to talk, and never between 23:00 and 07:00. Switch it off with `enabled = false` under `[modules.six_seven]`.
+
 ### Changing himself (built in M1b, 2026-11-09)
 - **Asking:** say it to Pip ("Pip, keep track of whose turn it is for the dishes"), or type it on the dashboard's **Changes** page. By voice, only people he recognises for sure may ask; guests and voices he isn't sure of are told to ask on the dashboard. Questions about how he works never start a change (D-118).
 - **Two approvals, both on the dashboard.** Claude Code reads his code and writes a plan (what changes, why, which files, how risky, how it's tested, how to undo it). If something is unclear, its questions wait on the Changes page. You approve the plan; then it's built in a **sandbox** and tested; you see the diff and the test report and approve again. Voice can ask, never approve. A change to security-sensitive code also needs "I've read the diff".

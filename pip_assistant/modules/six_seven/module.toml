@@ -1,0 +1,15 @@
+# Chants "six seven, six seven, six fucking seven" when a six and a seven both come up in room speech.
+# It listens to every sentence not meant for Pip (the room_heard hook in core/modules.py), keeps nothing of
+# the words, and has no page, tables or box on the monitor. Pip's quiet hours (no sound 23:00-07:00) still apply.
+
+name = "six_seven"
+kind = "skill"
+summary = "Chants 'six seven' when someone in the room says a six and a seven."
+says_examples = []
+offline = true                      # needs no internet
+permissions = []
+needs = []
+
+[settings.pause_seconds]
+default = 30
+explain = "After a chant, how many seconds Pip stays quiet before he will chant again (so a long chat doesn't set it off over and over)."
