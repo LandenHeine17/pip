@@ -71,3 +71,14 @@ def test_the_owners_session_f_recordings():
         d = ClapDetector()
         return sum(d.feed(x[i:i + 1280]) for i in range(0, len(x), 1280))
     assert [fires(n) for n in range(1, 15)] == [1] * 7 + [0] * 7
+
+
+def test_a_switch_records_how_the_claps_measured():
+    """Owner's feedback (2026-11-10): Pip sometimes switched himself off. Each switch now says how loud the two
+    claps were, how far above the room, how long, and how far apart (numbers only), so false ones can be found."""
+    d = ClapDetector()
+    x = np.concatenate([quiet(1), clap(), quiet(0.4), clap(), quiet(1.2)])
+    assert sum(d.feed(x[i:i + 1280]) for i in range(0, len(x), 1280)) == 1
+    assert set(d.last) == {"peak_dbfs", "jump_db", "ms", "gap_ms"}
+    assert all(p >= -12 for p in d.last["peak_dbfs"]) and all(j >= 25 for j in d.last["jump_db"])
+    assert 150 <= d.last["gap_ms"] <= 1500 and all(m <= 250 for m in d.last["ms"])

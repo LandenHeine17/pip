@@ -163,6 +163,7 @@ async def test_ears_hears_claps_only_on_the_clap_microphone(monkeypatch):
 
     class Claps:
         fed = 0
+        last = {}
 
         def reset(self):
             pass

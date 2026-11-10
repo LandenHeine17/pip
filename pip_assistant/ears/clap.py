@@ -39,7 +39,9 @@ class ClapDetector:
         self.room = deque(maxlen=20)     # recent levels while nothing stood out (the room's background)
         self.sound = None                # a sound going on: {start, bg, top, loud}
         self.claps: list[int] = []       # when recent claps started
+        self.shapes: dict[int, dict] = {}   # each recent clap's measurements, by when it started
         self.spoiled_until = 0           # after a third clap: ignore until things calm down
+        self.last: dict = {}             # the measurements of the last two claps that switched (numbers only)
 
     def feed(self, frame) -> bool:
         """Feed one frame (int16 samples). True when exactly two claps were just heard."""
@@ -68,6 +70,8 @@ class ClapDetector:
                 self.sound = None
                 is_clap = length <= self.max_len and snd["top"] >= self.peak_min and snd["top"] - snd["bg"] >= self.jump
                 if is_clap:
+                    self.shapes[snd["start"]] = {"peak_dbfs": round(snd["top"], 1), "jump_db": round(snd["top"] - snd["bg"], 1),
+                                                 "ms": length * 10}
                     self._clap(snd["start"])
                 elif length > self.max_len and snd["top"] >= self.peak_min:
                     self.claps = []                                  # a loud bang or long noise: start over
@@ -86,8 +90,15 @@ class ClapDetector:
 
     def _decide(self) -> bool:
         if len(self.claps) == 2 and self.sound is None and self.t - self.claps[-1] >= self.settle:
-            self.claps = []
+            # What these two claps measured, so the trace shows how close a false switch was to the limits
+            # (owner's feedback, 2026-11-10: Pip sometimes switched himself off). Numbers only, never sound.
+            a, b = (self.shapes.get(c, {}) for c in self.claps)
+            self.last = {"peak_dbfs": [a.get("peak_dbfs"), b.get("peak_dbfs")], "jump_db": [a.get("jump_db"), b.get("jump_db")],
+                         "ms": [a.get("ms"), b.get("ms")], "gap_ms": (self.claps[1] - self.claps[0]) * 10}
+            self.claps, self.shapes = [], {}
             return True
         if self.claps and self.t - self.claps[-1] > self.gap_max + self.settle:
             self.claps = []
+        if len(self.shapes) > 8:
+            self.shapes = {k: v for k, v in self.shapes.items() if k in self.claps}
         return False

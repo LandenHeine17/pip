@@ -82,12 +82,13 @@ class Ears:
                 self.claps.reset()   # switched off on the dashboard, or it's Pip's own sound
                 continue
             if self.claps.feed(frame):
+                shape = dict(self.claps.last)   # how loud and far apart: numbers only, kept in the trace
                 if self.claps_live:
-                    log.info("heard two claps")
-                    await self.bus.emit("mic.clapped", {})
+                    log.info("heard two claps %s", shape)
+                    await self.bus.emit("mic.clapped", shape)
                 else:   # trial: the clap switch isn't ticked yet, just show it was heard (D-91)
-                    log.info("heard two claps (trial)")
-                    await self.bus.emit("mic.clapped_trial", {})
+                    log.info("heard two claps (trial) %s", shape)
+                    await self.bus.emit("mic.clapped_trial", shape)
 
     async def on_clap_mic(self, msg: Message):
         """Which microphone hears claps. With claps switched off it still listens, as a trial: two claps only
