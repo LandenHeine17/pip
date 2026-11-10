@@ -157,3 +157,23 @@ async def test_dashboard(env):
     r = await mod.dashboard("undo", {})
     assert r["showing"] == "default"
     assert "error" in await mod.dashboard("delete", {"name": "focus"})   # unchanged ready-made: nothing to put back
+
+
+def test_several_changes_at_once(env):
+    """Owner's feedback (2026-11-10): move, resize, add and take off boxes in one go, as one change."""
+    reg, mod, _ = env
+    s = mod.screen
+    say(reg, "add_box", type="notes", title="Hall of Fame", lines=["Sam: 12 wins"])
+    before = len(s.history)
+    said = say(reg, "arrange_screen", face="small", boxes=[
+        {"type": "clock", "x": 4, "y": 0, "w": 8, "h": 3}, {"type": "notes", "color": "blue"}, {"type": "health"}])
+    assert said.startswith("Done:")
+    kinds = [x["type"] for x in s.view["sections"]]
+    assert kinds == ["clock", "notes", "health"]                       # weather, timers and calendar came off
+    clock = s.view["sections"][0]
+    assert (clock["x"], clock["y"], clock["w"], clock["h"]) == (4, 0, 8, 3)
+    notes = s.view["sections"][1]
+    assert notes["lines"] == ["Sam: 12 wins"] and notes["title"] == "Hall of Fame" and notes["color"] == "blue"  # kept
+    assert len(s.history) == before + 1                                # one change: one undo
+    say(reg, "undo_screen")
+    assert "weather" in [x["type"] for x in s.view["sections"]]

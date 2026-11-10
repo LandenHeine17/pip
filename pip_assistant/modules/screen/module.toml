@@ -24,6 +24,10 @@ ACTION lines (Pip's code does it and says so):
 - {"do": "move_box", "box": "clock", "x": 4, "y": 0, "w": 8, "h": 3} · face: {"do": "move_box", "box": \
 "face", "size": "large|medium|small|tiny"} or "align": "top|middle|bottom"
 - {"do": "change_box", "box": "notes", "lines": [...], "title": "...", "color": "blue", "list": "Shopping", "room": false}
+- Several changes in one go (move, resize, add and take off boxes together): ONE {"do": "arrange_screen", \
+"face": "small", "boxes": [{"type": "clock", "x": 4, "y": 0, "w": 8, "h": 3}, {"type": "weather"}, …]}, the whole \
+new layout: boxes left out come off; a box already up keeps its notes, list and colour unless you give new ones. \
+Use it instead of several move_box / remove_box lines.
 - {"do": "undo_screen"} ("undo that", "put it back") · {"do": "screen_options"} (what can go on it)
 - {"do": "screen_fix"} only when a fix is waiting for an okay and they agree.
 Changing the screen that's showing keeps the change.
