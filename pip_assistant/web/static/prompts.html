@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · What Pip sends to Claude</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+/* What Pip sends to Claude, and what it costs (owner's feedback, 2026-11-10). The fixed part is shown in full;
+   each request is shown only as sizes and Claude's own token counts: what people said is never shown or kept
+   (CLAUDE.md rule 1). pip-thinker keeps the last 20 requests in memory only (thinker/main.py on_prompt). */
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th{text-align:left;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:6px 8px}
+td{padding:7px 8px;border-top:1px solid var(--line);vertical-align:top;font-variant-numeric:tabular-nums}
+td.n,th.n{text-align:right}
+pre{margin:0;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+.box{background:var(--soft);border-radius:12px;padding:10px 12px;max-height:420px;overflow:auto;margin-top:6px}
+details{margin:8px 0} summary{cursor:pointer;font-weight:600}
+.parts{font-size:.8rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+    <div><h1>What Pip sends to Claude</h1><div class="sub">The fixed part in full; each request as sizes and Claude's own token counts. What people said is never shown here.</div></div></div>
+</header>
+
+<section>
+  <div class="head"><h2>Recent requests</h2><span class="sub" id="sum"></span></div>
+  <div class="sub" style="margin-bottom:8px"><b>Sent</b>: tokens Claude read fresh. <b>Cached</b>: tokens it re-read from its cache (the fixed part,
+    mostly; much cheaper). <b>Written</b>: tokens added to the cache. <b>Reply</b>: tokens in Claude's answer. A token is about 4 letters.
+    Kept in memory only, the last 20; they start again when pip-thinker restarts.</div>
+  <table><thead><tr><th>When</th><th>Kind</th><th class="n">Sent</th><th class="n">Cached</th><th class="n">Written</th><th class="n">Reply</th><th class="n">Cost</th><th>What made it up (letters)</th></tr></thead>
+    <tbody id="recent"><tr><td colspan="8" class="sub">Loading…</td></tr></tbody></table>
+</section>
+
+<section>
+  <div class="head"><h2>The fixed part (sent with every request)</h2><span class="sub" id="fixedsum"></span></div>
+  <div class="sub">This is the same every time, so Claude caches it. Change the personality on the <a href="/settings">Settings</a> page;
+    the rules are in <code>thinker/main.py</code> (RULES); each module's part is its <code>module.toml</code> [claude].</div>
+  <div id="fixed"></div>
+</section>
+</main>
+<script src="/pip.js"></script>
+<script>
+const KIND = {direct: "said to Pip", mentioned: "his name came up", join: "joining in?"};
+const num = n => n == null ? "–" : Number(n).toLocaleString();
+const tokensAbout = chars => Math.round(chars / 4).toLocaleString();
+async function load(){
+  let r;
+  try { r = await getJSON("/api/prompts"); } catch (e) { r = {error: "Couldn't reach Pip"}; }
+  if (r.error) { $("recent").innerHTML = `<tr><td colspan="8" class="sub">${esc(r.error)}</td></tr>`; return; }
+  const recent = r.recent || [];
+  const total = recent.reduce((a, x) => a + (x.cost_usd || 0), 0);
+  $("sum").textContent = recent.length ? `${recent.length} request${recent.length===1?"":"s"} · $${total.toFixed(3)} together` : "";
+  $("recent").innerHTML = recent.map(x => {
+    const t = x.tokens || {};
+    const parts = Object.entries(x.parts || {}).filter(([k, v]) => v).map(([k, v]) => `${esc(k)} ${num(v)}`).join(" · ");
+    return `<tr><td>${new Date(x.at*1000).toLocaleTimeString([], {hour:"numeric", minute:"2-digit", second:"2-digit"})}</td>
+      <td>${esc(KIND[x.kind] || x.kind)}${x.searched ? " · searched the web" : ""}</td>
+      <td class="n">${num(t.input_tokens)}</td><td class="n">${num(t.cache_read_input_tokens)}</td><td class="n">${num(t.cache_creation_input_tokens)}</td>
+      <td class="n">${num(t.output_tokens)}</td><td class="n">${x.cost_usd == null ? "–" : "$" + x.cost_usd.toFixed(4)}</td>
+      <td class="parts">fixed part ${num(x.system_chars)} · this request ${num(x.user_chars)}${parts ? ": " + parts : ""}</td></tr>`;
+  }).join("") || `<tr><td colspan="8" class="sub">No requests since pip-thinker started. Ask Pip something.</td></tr>`;
+  const f = r.fixed || {};
+  const pieces = [["Personality", f.personality || ""], ["Rules (with today's weather)", f.rules || ""],
+                  ...Object.entries(f.modules || {}).map(([name, text]) => [`Module: ${name}`, text])];
+  const all = pieces.reduce((a, [, t]) => a + t.length, 0);
+  $("fixedsum").textContent = `${num(all)} letters · about ${tokensAbout(all)} tokens`;
+  $("fixed").innerHTML = pieces.map(([title, text]) => `<details><summary>${esc(title)} <span class="sub">· ${num(text.length)} letters, about ${tokensAbout(text.length)} tokens</span></summary>
+    <div class="box"><pre>${esc(text)}</pre></div></details>`).join("");
+}
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>

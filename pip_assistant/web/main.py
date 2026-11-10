@@ -242,6 +242,11 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         html = resources.files("pip_assistant.web").joinpath("static/changes.html").read_text()
         return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
+    async def prompts_page(request):
+        """What Pip sends to Claude (owner's feedback, 2026-11-10): the fixed text, and each request's size and tokens."""
+        html = resources.files("pip_assistant.web").joinpath("static/prompts.html").read_text()
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
     def passed_to_core(msg_type: str, timeout: float = 15, target: str = "core", get: str = "get"):
         """A route that hands its request to pip-core (or another program): GET → {"action": get}, POST → the
         JSON body. It travels privately and comes back privately."""
@@ -305,6 +310,8 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
                              Route("/api/personality", passed_to_core("core.personality", 70), methods=["GET", "POST"]),
                              Route("/api/migrate", passed_to_core("core.migrate", 60), methods=["GET", "POST"]),
                              Route("/changes", changes_page),
+                             Route("/prompts", prompts_page),
+                             Route("/api/prompts", passed_to_core("thinker.prompt", 10, target="thinker")),
                              Route("/api/changes", passed_to_core("builder.page", 30, target="builder", get="list"),
                                    methods=["GET", "POST"])])
 

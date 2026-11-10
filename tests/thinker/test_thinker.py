@@ -150,3 +150,29 @@ async def test_only_words_after_say_are_spoken(monkeypatch):
     spoken.clear()
     text, info = await cli.ask("a2", "sys", "hi", on_sentence, nothing, held=True)
     assert spoken == [] and info["passed"]
+
+
+async def test_what_pip_sends_keeps_sizes_and_tokens_never_the_words(monkeypatch):
+    """Owner's feedback (2026-11-10): a page showing what Pip sends to Claude and how many tokens it uses. The
+    fixed part is shown in full; each request only as sizes and Claude's token counts (CLAUDE.md rule 1)."""
+    from collections import deque
+
+    from pip_assistant.common.messages import Message
+
+    class Weather:
+        async def text(self):
+            return "sunny"
+    th = Thinker.__new__(Thinker)
+    th.recent, th.module_texts, th.location, th.weather = deque(maxlen=20), {"calendar": "Calendar: …"}, "Lincoln", Weather()
+    secret = "my bank PIN is in the drawer"
+    msg = Message("request", "thinker.ask", data={"kind": "direct"},
+                  private={"text": secret, "transcript": [f"Sam: {secret}"], "memories": "Sam likes jazz", "schedule": "a timer"})
+    th.remember_request("direct", "SYSTEM" * 100, msg, "USER" * 50, {"usage": {"input_tokens": 12, "cache_read_input_tokens": 3400,
+                                                                                "output_tokens": 30}, "cost_usd": 0.012})
+    reply = await th.on_prompt(Message("request", "thinker.prompt"))
+    [r] = reply.private["recent"]
+    assert r["system_chars"] == 600 and r["user_chars"] == 200 and r["tokens"]["cache_read_input_tokens"] == 3400
+    assert r["parts"]["memories"] == len("Sam likes jazz") and r["parts"]["lines heard"] == 1
+    assert secret not in repr(reply.private["recent"]) and "jazz" not in repr(reply.private["recent"])   # never the words
+    fixed = reply.private["fixed"]
+    assert "sunny" in fixed["rules"] and fixed["modules"] == {"calendar": "Calendar: …"} and fixed["personality"]

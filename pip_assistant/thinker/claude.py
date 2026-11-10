@@ -175,6 +175,10 @@ class ClaudeCLI:
                     elif ev.get("type") == "result":
                         info["is_error"] = bool(ev.get("is_error", False))
                         info["cost_usd"] = ev.get("total_cost_usd")
+                        # Claude's own token counts (the dashboard's "What Pip sends" page): numbers only
+                        u = ev.get("usage") or {}
+                        info["usage"] = {k: u.get(k) for k in ("input_tokens", "cache_creation_input_tokens",
+                                                               "cache_read_input_tokens", "output_tokens")}
                         if on_result is not None:
                             err = str(ev.get("result") or ev.get("subtype") or "")[:300] if info["is_error"] else ""
                             try:

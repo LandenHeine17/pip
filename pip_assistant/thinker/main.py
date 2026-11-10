@@ -17,6 +17,7 @@ Offline, Pip's own commands (timers, alarms, reminders, calendar) still work in 
 offline Qwen fallback for chat (D-75, PIP-NEW-081) is planned for M2.
 """
 import asyncio
+from collections import deque
 import logging
 import time
 from datetime import datetime, timedelta
@@ -105,7 +106,9 @@ class Thinker:
         self.bus = bus
         self.location = t["location"]
         # What each plugged-in module adds (modules/<name>/module.toml [claude]): calendar events, to-dos, …
-        self.module_text = "\n\n".join(m.claude for m in enabled(cfg) if m.claude)
+        self.module_texts = {m.name: m.claude for m in enabled(cfg) if m.claude}
+        self.module_text = "\n\n".join(self.module_texts.values())
+        self.recent: deque = deque(maxlen=20)   # the last requests' sizes and tokens (RAM only; never the words)
         self.claude = ClaudeCLI(t["model"], t["web_search"], t["timeout_seconds"], t["effort"])
         self.preview_claude = OneOffCLI(t["model"], t["web_search"], t["timeout_seconds"], t["effort"])
         self.weather = Weather(t["location"])
@@ -177,6 +180,30 @@ class Thinker:
             cancelled = aid in stopped
             stopped.discard(aid)
             await self.count(kind, report, failed, cancelled)
+
+    async def prompt_parts(self) -> dict:
+        """The fixed part of what Claude is told, piece by piece (the "What Pip sends" page): the personality, the
+        rules (with today's weather) and each module's instructions. None of it is anything people said."""
+        return {"personality": personality.render(personality.read()[0], self.name, self.location),
+                "rules": RULES.format(weather=await self.weather.text() or "not available"),
+                "modules": dict(self.__dict__.get("module_texts", {}))}
+
+    def remember_request(self, kind: str, system: str, msg: Message, user: str, info: dict) -> None:
+        """One request's sizes and Claude's token counts, for the "What Pip sends" page. Only lengths and numbers:
+        what people said is never kept (CLAUDE.md rule 1)."""
+        p = msg.private
+        lines = p.get("transcript") or []
+        self.__dict__.setdefault("recent", deque(maxlen=20)).appendleft({
+            "at": round(time.time()), "kind": kind, "system_chars": len(system), "user_chars": len(user),
+            "parts": {"room conversation": sum(len(x) + 1 for x in lines), "lines heard": len(lines),
+                      "who's here": len(p.get("people", "")), "what's set (timers, calendar, to-dos…)": len(p.get("schedule", "")),
+                      "memories": len(p.get("memories", "")), "looked up": len(p.get("looked_up", ""))},
+            "tokens": info.get("usage") or {}, "cost_usd": info.get("cost_usd"), "searched": bool(info.get("searched"))})
+
+    async def on_prompt(self, msg: Message) -> Message:
+        """The dashboard's "What Pip sends" page: the fixed text in full, and the last requests' sizes and tokens."""
+        parts = await self.prompt_parts()
+        return msg.reply({"ok": True}, private={"fixed": parts, "recent": list(self.__dict__.get("recent", ()))}, source="thinker")
 
     async def system_prompt(self, persona: str | None = None) -> str:
         """The personality (the saved one, or `persona` for a preview), then the fixed rules, then the modules'.
@@ -267,21 +294,21 @@ class Thinker:
         kind = msg.data.get("kind", "direct")
         if kind == "join" and self.paused():   # usage limit reached: no joining in until it resets (D-69)
             return msg.reply({"passed": True, "paused": True}, private={"text": ""}, source="thinker")
+        system = await self.system_prompt()
+        user = self.user_text(msg.private.get("text", ""), msg.private.get("transcript"),
+                              schedule=msg.private.get("schedule", ""), people=msg.private.get("people", ""),
+                              memories=msg.private.get("memories", ""), kind=kind, mood=msg.private.get("mood", ""),
+                              looked_up=msg.private.get("looked_up", ""))
         try:
-            text, info = await self._ask(self.claude, kind, aid, await self.system_prompt(),
-                                               self.user_text(msg.private.get("text", ""), msg.private.get("transcript"),
-                                                             schedule=msg.private.get("schedule", ""),
-                                                             people=msg.private.get("people", ""),
-                                                             memories=msg.private.get("memories", ""),
-                                                             kind=kind, mood=msg.private.get("mood", ""),
-                                                             looked_up=msg.private.get("looked_up", "")),
-                                               sentence, searching, held=kind == "join")
+            text, info = await self._ask(self.claude, kind, aid, system, user, sentence, searching, held=kind == "join")
         except Exception as e:
             log.warning("answer failed: %s", e)
             return msg.reply({"error": f"{type(e).__name__}: {str(e)[:120]}"}, source="thinker")
         if info.get("is_error") and not text and not info.get("action"):
             # The CLI answered with an error (a usage limit, …) rather than words: say so, don't go quiet
             return msg.reply({"error": "Claude reported an error"}, source="thinker")
+        self.remember_request(kind, system, msg, user, info)
+        info.pop("usage", None)            # the token counts stay here, for the page (not in the reply or the trace)
         action = info.pop("action", None)  # what was asked for: private, like everything people say (D-34)
         info["action"] = bool(action)
         if info.get("passed"):
@@ -312,6 +339,7 @@ async def main() -> None:
     th = Thinker(bus, cfg)
     bus.on("thinker.ask", th.on_ask)
     bus.on("thinker.cancel", th.on_cancel)
+    bus.on("thinker.prompt", th.on_prompt)   # the dashboard's "What Pip sends" page
     bus.status["stage"] = "Claude via Claude Code (Pro plan)"
     await serve(bus, th.keep_warm)
 
