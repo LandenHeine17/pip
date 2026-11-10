@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Guide</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+/* The Guide: how Pip's code does everything. Chapters with diagrams you can click, step-by-step tours, and the real
+   code of each step, read live from the version that's running (/api/source, web/source.py). Every code link in this
+   page is written [[path#function|label]] (or ref: "…" in a tour); tests/web/test_guide.py checks they all exist. */
+:root{--side:270px}
+body{overflow-x:hidden}
+.wrap{display:grid;grid-template-columns:var(--side) minmax(0,1fr);min-height:100vh}
+nav.side{position:sticky;top:0;height:100vh;overflow:auto;padding:16px 12px;border-right:1px solid var(--line);background:var(--card);box-sizing:border-box}
+nav.side h1{font-size:1.05rem;margin:0}
+nav.side .ch{display:flex;gap:8px;align-items:flex-start;padding:7px 9px;border-radius:10px;cursor:pointer;font-size:.9rem;color:var(--ink);text-decoration:none}
+nav.side .ch:hover{background:var(--soft)} nav.side .ch.on{background:var(--accentbg);font-weight:700}
+nav.side .ch .n{min-width:1.6em;color:var(--muted);font-variant-numeric:tabular-nums} nav.side .ch .tick{margin-left:auto;color:var(--good)}
+#search{width:100%;box-sizing:border-box;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;margin:10px 0}
+#results{position:absolute;z-index:20;background:var(--card);box-shadow:var(--shadow);border-radius:12px;max-height:60vh;overflow:auto;width:calc(var(--side) + 120px)}
+#results div{padding:7px 10px;cursor:pointer;font-size:.86rem;border-bottom:1px solid var(--line)} #results div:hover{background:var(--soft)}
+#results small{color:var(--muted);display:block}
+article{max-width:880px;padding:22px 26px 80px;box-sizing:border-box}
+article h2{font-size:1.5rem;margin:.2em 0 .4em} article h3{margin:1.4em 0 .4em}
+article p,article li{max-width:72ch}
+a.ref{color:var(--accent);text-decoration:none;border-bottom:1px dashed var(--accent);cursor:pointer;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em}
+a.go{color:var(--accent);cursor:pointer;font-weight:600}
+.note{background:var(--accentbg);border-radius:12px;padding:10px 14px;margin:12px 0;font-size:.92rem}
+.try{background:var(--goodbg);border-radius:12px;padding:10px 14px;margin:12px 0;font-size:.92rem}
+.try b:first-child{color:var(--good)}
+pre.ex{background:var(--soft);border-radius:12px;padding:10px 14px;overflow:auto;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:10px 0}
+table.t{border-collapse:collapse;width:100%;font-size:.88rem;margin:10px 0} table.t td,table.t th{border-top:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+table.t th{font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+svg.dia{width:100%;height:auto;margin:10px 0;background:var(--card);border-radius:14px}
+svg.dia .node{cursor:pointer} svg.dia .node rect{fill:var(--soft);stroke:var(--accent);stroke-width:1.2;transition:fill .15s}
+svg.dia .node:hover rect{fill:var(--accentbg)} svg.dia text{fill:var(--ink);font:13px ui-sans-serif,system-ui,sans-serif}
+svg.dia text.sub{fill:var(--muted);font-size:11px} svg.dia .ar{stroke:var(--muted);stroke-width:1.4;fill:none;marker-end:url(#arrow)}
+svg.dia text.al{fill:var(--muted);font-size:10.5px}
+.tour{border:1px solid var(--line);border-radius:16px;margin:18px 0;overflow:hidden;background:var(--card)}
+.tour .top{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;background:var(--soft)}
+.tour .top b{font-size:.95rem} .tour .dots{display:flex;gap:4px;flex-wrap:wrap}
+.tour .dots i{width:9px;height:9px;border-radius:50%;background:var(--line);cursor:pointer} .tour .dots i.on{background:var(--accent)}
+.tour .body{padding:12px 14px} .tour .body h4{margin:0 0 6px}
+.tour .nav{display:flex;justify-content:space-between;padding:0 14px 14px}
+.code{border-radius:12px;background:var(--bg);border:1px solid var(--line);margin-top:10px;overflow:hidden}
+.code .h{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 10px;font-size:.8rem;background:var(--soft);flex-wrap:wrap}
+.code .h code{font-weight:700} .code .doc{padding:6px 10px;font-size:.82rem;color:var(--muted);border-bottom:1px solid var(--line)}
+.code pre{margin:0;max-height:440px;overflow:auto;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:6px 0}
+.code pre span.l{display:block;padding:0 10px;white-space:pre} .code pre span.l::before{content:attr(data-n);display:inline-block;width:3.2em;color:var(--muted);user-select:none}
+.code pre span.l.hl{background:var(--accentbg)}
+.c-com{color:var(--muted);font-style:italic} .c-str{color:var(--good)} .c-kw{color:var(--accent);font-weight:600}
+#panel{position:fixed;top:0;right:0;height:100vh;width:min(720px,100vw);background:var(--card);box-shadow:var(--shadow);z-index:30;transform:translateX(105%);transition:transform .2s;display:flex;flex-direction:column}
+#panel.open{transform:none} #panel .ph{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
+#panel .pb{overflow:auto;padding:10px 14px;flex:1} #panel .code pre{max-height:none}
+.menu{display:none}
+@media (max-width:860px){
+  .wrap{grid-template-columns:minmax(0,1fr)} table.t{display:block;overflow-x:auto} nav.side{position:fixed;z-index:25;width:min(300px,86vw);transform:translateX(-105%);transition:transform .2s}
+  nav.side.open{transform:none} .menu{display:inline-block;position:fixed;left:10px;bottom:12px;z-index:26}
+  article{padding:16px 16px 90px} #results{width:min(380px,92vw)}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="side" id="side">
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none;width:34px;height:34px;font-size:1rem">P</a><div><h1>How Pip works</h1><div class="sub">a guide to the code</div></div></div>
+  <input id="search" placeholder="Search: a file, function, idea…" autocomplete="off">
+  <div id="results" hidden></div>
+  <div id="chapters"></div>
+  <div class="sub" style="margin-top:12px">Code is read live from the version that's running. <a href="/">Back to the dashboard</a></div>
+</nav>
+<article id="main"></article>
+</div>
+<button class="menu primary" id="menu">☰ Chapters</button>
+<div id="panel"><div class="ph"><b id="ptitle">Code</b><span><button class="ghost" id="pwhole">Whole file</button><button id="pclose">Close ✕</button></span></div><div class="pb" id="pbody"></div></div>
+<script src="/pip.js"></script>
+<script>
+// ---------------------------------------------------------------- reading Pip's code (/api/source, web/source.py)
+const FOLDERS = ["pip_assistant/", "tests/", "tools/", "deploy/", "docs/"];
+const norm = p => FOLDERS.some(f => p.startsWith(f)) ? p : "pip_assistant/" + p;   // "core/x.py" means pip_assistant/core/x.py
+const cache = {};
+async function source(ref) {
+  if (cache[ref]) return cache[ref];
+  const [path, symbol] = ref.split("#");
+  const q = new URLSearchParams({path: norm(path), symbol: symbol || ""});
+  const r = await (await fetch("/api/source?" + q, {cache: "no-store"})).json();
+  return (cache[ref] = r);
+}
+const KW = /\b(def|class|async|await|return|if|elif|else|for|while|try|except|finally|with|import|from|raise|yield|lambda|not|and|or|in|is|None|True|False|self|function|const|let|var|new|this|of)\b/g;
+function colour(line, py) {
+  // Find where a comment starts (not inside a string), colour keywords, then strings; the comment stays plain grey.
+  const mark = py ? "#" : "//";
+  let quote = null, at = -1;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quote) { if (ch === "\\") i++; else if (ch === quote) quote = null; continue; }
+    if (ch === '"' || ch === "'" || (!py && ch === "`")) { quote = ch; continue; }
+    if (line.startsWith(mark, i)) { at = i; break; }
+  }
+  const code = at >= 0 ? line.slice(0, at) : line, rest = at >= 0 ? line.slice(at) : "";
+  let s = esc(code).replace(KW, m => `<span class="c-kw">${m}</span>`);
+  s = s.replace(/(&quot;.*?&quot;|&#39;.*?&#39;)/g, '<span class="c-str">$1</span>');
+  return s + (rest ? `<span class="c-com">${esc(rest)}</span>` : "");
+}
+function codeBox(r, opts = {}) {
+  if (r.error) return `<div class="code"><div class="h">Couldn't load: ${esc(r.error)}</div></div>`;
+  const py = r.path.endsWith(".py"), lines = r.code.split("\n");
+  const body = lines.map((l, i) => `<span class="l${opts.hl === r.start + i ? " hl" : ""}" data-n="${r.start + i}">${colour(l, py) || " "}</span>`).join("");
+  const where = r.symbol ? `${esc(r.symbol)} · lines ${r.start}–${r.end} of ${r.total}` : `${r.total} lines`;
+  return `<div class="code"><div class="h"><span><code>${esc(r.path)}</code> · ${where}</span>
+    <span><a class="ref" data-ref="${esc(r.path)}" title="Open the whole file">whole file</a></span></div>
+    ${r.doc ? `<div class="doc">${esc(r.doc)}</div>` : ""}<pre>${body}</pre></div>`;
+}
+let panelRef = "";
+async function openCode(ref) {
+  panelRef = ref;
+  $("ptitle").textContent = ref.replace("#", " · ");
+  $("pbody").innerHTML = `<div class="sub">Loading…</div>`;
+  $("panel").classList.add("open");
+  const r = await source(ref);
+  $("pbody").innerHTML = codeBox(r);
+}
+$("pclose").onclick = () => $("panel").classList.remove("open");
+$("pwhole").onclick = async () => {
+  const [path, symbol] = panelRef.split("#");
+  if (!symbol) return;
+  const part = await source(panelRef), whole = await source(path);
+  $("ptitle").textContent = path;
+  $("pbody").innerHTML = codeBox(whole, {hl: part.start});
+  const hl = $("pbody").querySelector(".hl"); if (hl) hl.scrollIntoView({block: "center"});
+};
+
+// ---------------------------------------------------------------- writing chapters: [[path#symbol|label]] links, diagrams
+const links = s => s.replace(/\[\[([^|\]]+)\|([^\]]+)\]\]/g, (_, ref, label) => `<a class="ref" data-ref="${esc(ref)}">${label}</a>`)
+                    .replace(/\{\{([a-z]+)\|([^}]+)\}\}/g, (_, id, label) => `<a class="go" data-go="${id}">${label}</a>`);
+// A diagram: boxes (each opens code or a chapter: "ref:path#symbol" or "go:chapter") and arrows between them.
+function diagram(w, h, boxes, arrows = []) {
+  const b = Object.fromEntries(boxes.map(x => [x.id, x]));
+  const mid = (x, side) => side === "r" ? [x.x + x.w, x.y + x.h / 2] : side === "l" ? [x.x, x.y + x.h / 2] : side === "b" ? [x.x + x.w / 2, x.y + x.h] : [x.x + x.w / 2, x.y];
+  const ar = arrows.map(([from, fs, to, ts, label]) => {
+    const [x1, y1] = mid(b[from], fs), [x2, y2] = mid(b[to], ts);
+    const lx = (x1 + x2) / 2, ly = (y1 + y2) / 2 - 4;
+    return `<path class="ar" d="M${x1},${y1} L${x2},${y2}"/>${label ? `<text class="al" x="${lx}" y="${ly}" text-anchor="middle">${esc(label)}</text>` : ""}`;
+  }).join("");
+  const nodes = boxes.map(x => `<g class="node" data-target="${esc(x.to)}"><rect x="${x.x}" y="${x.y}" width="${x.w}" height="${x.h}" rx="10"/>
+    <text x="${x.x + x.w / 2}" y="${x.y + (x.sub ? x.h / 2 - 3 : x.h / 2 + 4)}" text-anchor="middle" font-weight="700">${esc(x.label)}</text>
+    ${x.sub ? `<text class="sub" x="${x.x + x.w / 2}" y="${x.y + x.h / 2 + 13}" text-anchor="middle">${esc(x.sub)}</text>` : ""}</g>`).join("");
+  return `<svg class="dia" viewBox="0 0 ${w} ${h}" role="img"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor" style="color:var(--muted)"/></marker></defs>${ar}${nodes}</svg>
+    <div class="sub">Click a box to see its code (or its chapter).</div>`;
+}
+</script>
+<script>
+// ================================================================ THE CHAPTERS
+// Each: id, title, html (the text; [[path#symbol|label]] opens code, {{chapter|label}} goes to a chapter),
+// tour (steps: title, text, ref: "path#symbol" shown live under the text).
+const CHAPTERS = [
+// ---------------------------------------------------------------- 1
+{id: "start", title: "Start here", html: `
+<h2>How to read this guide</h2>
+<p>Pip is a few small programs that talk to each other. This guide walks through what each one does, <b>in the real code</b>: every
+<a class="ref" data-ref="core/conversation.py#Conversation.answer">dashed link</a> opens the actual function, read live from the version of Pip
+that's running, so what you see here is always what Pip really does.</p>
+<ul>
+<li><b>Chapters</b> are on the left (☰ on a phone). Read them in order the first time; tick each one off at the bottom.</li>
+<li><b>Tours</b> step through one real path in the code (◀ Back / Next ▶). Each step explains one function and shows it underneath.</li>
+<li><b>Diagrams</b>: click a box to open its code or its chapter.</li>
+<li><b>Search</b> (top left) finds any file, function or idea.</li>
+<li>In a code panel, <b>Whole file</b> shows the function in its file, highlighted.</li>
+</ul>
+<div class="note"><b>The one idea to hold on to.</b> Nothing in Pip calls anything in another program directly. Programs send each other
+small <b>messages</b> (like "someone said something", "say this", "Pip is now thinking"), and pip-core passes them on. If you know
+which message a part sends and which it listens for, you can follow anything.</div>
+<p>Suggested path: {{big|1 The big picture}} → {{request|2 Follow a request}} → {{face|4 The face}} → {{modules|5 Modules}} →
+{{make|6 Make a module}}. The rest are reference: read them when you work on that part.</p>
+<div class="try"><b>Try it alongside:</b> keep Pip's dashboard open in another tab. The <b>Conversation</b> card shows each step of what this
+guide describes as it happens (heard, waiting, thinking, answered), the <b>Claude</b> page shows what's sent to Claude, and
+<a href="/tv" target="_blank">/tv</a> is the face.</div>`},
+
+// ---------------------------------------------------------------- 2
+{id: "big", title: "The big picture", html: `
+<h2>Five programs and a message hub</h2>
+<p>Pip runs as five programs on the Pi, each its own systemd service (so if one crashes, the others carry on and it's restarted).
+They never call each other: they send <b>messages</b> through <b>pip-core</b>, which is also the brain.</p>
+${diagram(760, 330, [
+  {id: "ears", x: 20, y: 30, w: 200, h: 62, label: "pip-ears", sub: "microphone, wake words, voice", to: "ref:ears/main.py#Ears"},
+  {id: "core", x: 280, y: 130, w: 200, h: 70, label: "pip-core", sub: "the hub and the brain", to: "ref:core/main.py#build"},
+  {id: "thinker", x: 540, y: 30, w: 200, h: 62, label: "pip-thinker", sub: "asks Claude", to: "ref:thinker/main.py#Thinker"},
+  {id: "web", x: 20, y: 240, w: 200, h: 62, label: "pip-web", sub: "dashboard and monitor", to: "ref:web/main.py#build_app"},
+  {id: "builder", x: 540, y: 240, w: 200, h: 62, label: "pip-builder", sub: "Pip changing himself", to: "go:builder"},
+  {id: "mods", x: 300, y: 250, w: 160, h: 50, label: "modules", sub: "calendar, to-dos, screen…", to: "go:modules"},
+], [["ears", "r", "core", "l", "heard.utterance"], ["core", "r", "thinker", "l", "thinker.ask"], ["web", "r", "core", "l", "core.alerts…"],
+    ["core", "r", "builder", "l", "builder.page"], ["core", "b", "mods", "t", "hooks"]])}
+<table class="t"><tr><th>Program</th><th>Folder</th><th>Its job</th></tr>
+<tr><td>pip-ears</td><td>[[ears/main.py#Ears|ears/]]</td><td>Listens to the speakerphone, cuts each thing said out of the sound, spots wake words and claps, speaks with Pip's voice (Piper) and rings alarms. Knows nothing about what words mean.</td></tr>
+<tr><td>pip-core</td><td>[[core/main.py#build|core/]]</td><td>Passes every message on, and decides everything: turns speech into text, works out whether it was said to Pip, waits for the end of your turn, asks pip-thinker, does actions, runs timers, memory, people, modules and Pip's state.</td></tr>
+<tr><td>pip-thinker</td><td>[[thinker/main.py#Thinker|thinker/]]</td><td>Builds what Claude is told and asks Claude (through the Claude Code program), streaming the answer back a sentence at a time.</td></tr>
+<tr><td>pip-web</td><td>[[web/main.py#build_app|web/]]</td><td>The dashboard and the monitor's page. Stores nothing: it asks pip-core for everything and passes live events to your browser.</td></tr>
+<tr><td>pip-builder</td><td>[[builder/pipeline.py#Builder|builder/]]</td><td>Self-changes: plans and builds a change in a sandbox, for you to approve ({{builder|chapter 11}}).</td></tr>
+</table>
+<p>Code shared by more than one program is in [[common/messages.py#Message|common/]]; features that plug in are in <code>modules/</code>.</p>
+<h3>What a message looks like</h3>
+<p>One line of JSON over a Unix socket (<code>~/pip-data/run/core.sock</code>). Everything personal travels in <code>private</code>, which is
+never written to the decision trace or the logs:</p>
+<pre class="ex">{"kind": "event", "type": "heard.utterance", "source": "ears",
+ "data":    {"reason": "wake", "seconds": 2.1, "had_speech": true, "word": "pippletron"},
+ "private": {"audio_b64": "…the sound, base64…"}}</pre>
+<p>Kinds: an <b>event</b> (to anyone who subscribed: "this happened"), a <b>command</b> (to one program: "do this") and a
+<b>request</b> (to one program, which sends back a <b>reply</b>).</p>`,
+tour: [
+  {title: "A message", text: "Every message is one of these. <code>encode()</code> turns it into a line of JSON; <code>decode()</code> reads one back and refuses anything malformed. <code>private</code> is where anything personal goes.", ref: "common/messages.py#Message"},
+  {title: "How a program connects", text: "Every program except pip-core uses a BusClient: it connects to the socket, says who it is, sends a heartbeat every few seconds (that's how the watchdog knows it's alive), and reconnects by itself if pip-core restarts. <code>on()</code> says which function handles which message type.", ref: "common/client.py#BusClient"},
+  {title: "Asking and waiting for a reply", text: "<code>request()</code> sends a request with a fresh id and waits until the reply with that id comes back (or a timeout). This is how pip-core asks pip-thinker for an answer, and how pip-web asks pip-core for the timers.", ref: "common/client.py#BusClient.request"},
+  {title: "The hub routes each message", text: "In pip-core, every incoming message goes through <code>route()</code>: events go to everyone subscribed, commands and requests to their target, replies back to whoever asked. Each one is also written to the decision trace, without <code>private</code>.", ref: "core/bus.py#Bus.route"},
+  {title: "pip-core starts up", text: "<code>build()</code> makes every part (the hub, the trace, the watchdog, timers, people, memory, modules, the conversation) and connects them, including the answers to the dashboard's <code>core.*</code> requests. Read it top to bottom once: it's the table of contents of pip-core.", ref: "core/main.py#build"},
+  {title: "How each program is started", text: "Each program's <code>run()</code> calls <code>start()</code>, which sets up logging, the clean stop on Ctrl-C or systemd, and runs its main. systemd starts them from <code>~/pip-app/current</code> (the installed version) and restarts any that stop.", ref: "common/program.py#start"},
+  {title: "The service file", text: "This is how systemd knows how to run pip-core. The other programs have one each in the same folder.", ref: "deploy/systemd/pip-core.service"},
+]},
+
+// ---------------------------------------------------------------- 3
+{id: "request", title: "Follow a request", html: `
+<h2>"Pippletron, set a pasta timer for 10 minutes"</h2>
+<p>This chapter follows one request from the moment you say it to the moment the timer rings and you say "stop". It's the path almost
+everything Pip does takes, so once you've followed it, the rest of the code is variations on it.</p>
+${diagram(780, 250, [
+  {id: "a", x: 10, y: 20, w: 140, h: 54, label: "ears", sub: "wake word, cut out", to: "ref:ears/main.py#Ears.listen"},
+  {id: "b", x: 170, y: 20, w: 140, h: 54, label: "on_utterance", sub: "core: to text", to: "ref:core/conversation.py#Conversation.on_utterance"},
+  {id: "c", x: 330, y: 20, w: 140, h: 54, label: "addressed", sub: "wait for your turn", to: "ref:core/turns.py#TurnTaking.addressed"},
+  {id: "d", x: 490, y: 20, w: 140, h: 54, label: "answer", sub: "ask pip-thinker", to: "ref:core/conversation.py#Conversation.answer"},
+  {id: "e", x: 640, y: 120, w: 130, h: 54, label: "Claude", sub: "ACTION line", to: "ref:thinker/main.py#Thinker.on_ask"},
+  {id: "f", x: 470, y: 180, w: 150, h: 54, label: "actions", sub: "check, then do", to: "ref:core/actions.py#apply"},
+  {id: "g", x: 290, y: 180, w: 150, h: 54, label: "alerts + schedule", sub: "the timer is saved", to: "ref:core/alerts.py#Alerts.make_timer"},
+  {id: "h", x: 110, y: 180, w: 150, h: 54, label: "ringing", sub: "10 min later", to: "ref:core/schedule.py#Schedule._ring"},
+], [["a", "r", "b", "l"], ["b", "r", "c", "l"], ["c", "r", "d", "l"], ["d", "r", "e", "t"], ["e", "b", "f", "r"], ["f", "l", "g", "r"], ["g", "l", "h", "r"]])}
+<div class="try"><b>Try it:</b> set a timer while the dashboard's <b>Conversation</b> card is open: you'll see "heard", "waiting to see if you're
+done", "thinking" and the reply appear in order, each one a step below.</div>`,
+tour: [
+  {title: "1 · ears hears the wake word", text: "pip-ears reads the speakerphone 80 ms at a time. Each frame goes to the segmenter (is someone talking?) and the wake-word detector. When the detector hears \"Pippletron\", ears stops Pip talking (if he was) and starts capturing, keeping the moment before the word too (\"lookback\"), so \"set a timer, Pippletron\" also works.", ref: "ears/main.py#Ears.listen"},
+  {title: "2 · the wake-word detector", text: "An openWakeWord model gives each frame a score for each wake word; above its strictness (Pippletron 0.8, Hey Pip 0.5, D-74) it counts as heard.", ref: "ears/wake.py#WakeDetector.feed"},
+  {title: "3 · cutting out what you said", text: "The segmenter keeps capturing until you've been quiet for a moment (end_silence), or a maximum length, then hands back an Utterance: the sound, how long, and why it was captured (wake, follow_up, room, barge_in).", ref: "ears/segmenter.py#Segmenter.feed"},
+  {title: "4 · ears sends it to pip-core", text: "One event, <code>heard.utterance</code>, with the reason and length in <code>data</code> and the sound in <code>private</code> (never logged). That's all ears does: it never knows what the words were.", ref: "ears/main.py#Ears._send_utterance"},
+  {title: "5 · pip-core: the chime", text: "Earlier, the moment the wake word was heard, ears sent <code>heard.wake</code>: pip-core cancels anything in progress, plays the chime (so you know he's listening) and shows \"listening\" on the face.", ref: "core/conversation.py#Conversation.on_wake"},
+  {title: "6 · pip-core: from sound to words", text: "<code>on_utterance</code> checks there's a voice in it at all (not just a cough), then turns it into text. At the same time it works out whose voice it is (chapter 8). Room talk (no wake word) goes to <code>on_room</code> instead ({{room|chapter 3}}).", ref: "core/conversation.py#Conversation.on_utterance"},
+  {title: "7 · speech-to-text", text: "Groq's Whisper does it in about half a second, told the household's names so it spells them right. If Groq is down, Pip is offline: Whisper on the Pi takes over, but only for things said to him (room talk is never transcribed on the Pi, D-50).", ref: "core/hearing.py#Hearing.transcribe"},
+  {title: "8 · was it said to Pip? Is the turn over?", text: "<code>addressed</code> holds what you said instead of answering at once: people pause mid-sentence. If more speech arrives soon, it's joined on. Just \"Pippletron\" on its own means \"go on\": he waits for the rest.", ref: "core/turns.py#TurnTaking.addressed"},
+  {title: "9 · how long to wait", text: "The wait depends on how finished the sentence sounds: \"set a timer for\" waits longer than \"set a timer for ten minutes.\" (D-106). This is one of the places to tune if Pip feels slow or cuts in.", ref: "core/turns.py#TurnTaking.turn_wait"},
+  {title: "10 · asking Claude", text: "When the turn is over, <code>answer</code> gathers what Claude needs to know (next step) and sends a <code>thinker.ask</code> request to pip-thinker, with everything personal in <code>private</code>. The face shows \"thinking\", and a thinking tone plays if it takes a while.", ref: "core/conversation.py#Conversation.answer"},
+  {title: "11 · what Claude is told", text: "Who's speaking and who lives here, what's set (timers, today's calendar, to-dos: only what this speaker may hear), what Pip remembers, and the room conversation. Each module adds its own short part. See it for real on the dashboard's <b>Claude</b> page.", ref: "core/context.py#Context.for_claude"},
+  {title: "12 · pip-thinker asks Claude", text: "It puts together the fixed part (personality, rules, the modules' instructions) and this request's part, and runs the Claude Code program, which streams the answer back. A pre-started Claude process saves about a second.", ref: "thinker/main.py#Thinker.on_ask"},
+  {title: "13 · speak, PASS, or ACTION?", text: "As the first words arrive, <code>classify</code> decides: words to say (sent sentence by sentence, so Pip starts talking before Claude finishes), PASS (stay quiet), or an ACTION line, which is held back and never spoken: <code>ACTION {\"do\": \"add\", \"kind\": \"timer\", \"seconds\": 600, \"label\": \"pasta\"}</code>.", ref: "thinker/claude.py#classify"},
+  {title: "14 · Pip's code does the action", text: "Claude never does anything itself: it asks, and Pip's code checks. <code>claude_action</code> runs the checks and the doing, and says the confirmation itself (D-79), so what's said always matches what was done.", ref: "core/acting.py#Acting.claude_action"},
+  {title: "15 · check everything first", text: "Every action in the list is checked before any is done: a bad time, an unknown id, a password in a memory: nothing at all happens (D-84). A module's actions are checked by the module.", ref: "core/actions.py#check"},
+  {title: "16 · then do it", text: "Each checked step is carried out and its sentence collected: here, <code>make_timer</code>.", ref: "core/actions.py#apply"},
+  {title: "17 · the timer is made", text: "Saved to the database straight away (so it survives a restart), remembered as \"that\" (so \"cancel that\" works), and Pip says \"Pasta timer's on, 10 minutes.\"", ref: "core/alerts.py#Alerts.make_timer"},
+  {title: "18 · saved in the schedule", text: "One row in the <code>alerts</code> table of pip.db: kind, label, when it's due, length. The dashboard and monitor are told it changed.", ref: "core/schedule.py#Schedule.add"},
+  {title: "19 · ten minutes later", text: "The schedule's loop checks what's due. When the timer is, it rings: the face goes red, ears plays the ringtone and Pip says \"Your pasta timer is done.\" every so often, until it's answered or it gives up after a few minutes.", ref: "core/schedule.py#Schedule._ring"},
+  {title: "20 · ears rings", text: "The ringtone loops in pip-ears until told to stop, and stops by itself after max_seconds even if pip-core is stuck, so it can never ring forever.", ref: "ears/main.py#Ears.on_ring"},
+  {title: "21 · \"stop\"", text: "While something rings, anything heard is checked here first: \"stop\", \"okay\", \"I'm up\" or his name stop it instantly, without Claude; \"snooze ten minutes\" snoozes. Anything else said to Pip goes on to Claude as usual.", ref: "core/commands.py#Commands.while_ringing"},
+]},
+
+// ---------------------------------------------------------------- 4
+{id: "room", title: "Listening to the room", html: `
+<h2>Room talk, mentions, joining in</h2>
+<p>Like Ziggletron, Pip hears <b>everything</b> said in the room (D-92), not only what follows a wake word. Each thing said is turned into
+text and kept for a while in the <b>room transcript</b> (in memory only, never on disk), so Claude knows what the conversation is about.
+Then it's one of three things:</p>
+<table class="t"><tr><th>It was…</th><th>How Pip tells</th><th>What he does</th></tr>
+<tr><td>said to Pip</td><td>his name at the start ([[core/names.py#calls_pip|calls_pip]]), or in the follow-up window after he spoke</td><td>answers ({{request|chapter 2}})</td></tr>
+<tr><td>about Pip</td><td>his name somewhere else ([[core/names.py#names_pip|names_pip]])</td><td>asks Claude, which may PASS</td></tr>
+<tr><td>just room talk</td><td>neither</td><td>after a pause, may join in (if he has something worth saying)</td></tr></table>
+<p>Modules hear all of it too, through the <code>room_heard</code> hook (that's how {{modules|six seven}} works).</p>`,
+tour: [
+  {title: "Room speech arrives", text: "Same <code>heard.utterance</code> event, reason \"room\". It's transcribed, put in the transcript and the feed, then sorted: called (direct), mentioned, or room talk. The modules are offered it, and if nothing answers, joining in is considered.", ref: "core/conversation.py#Conversation.on_room"},
+  {title: "The room transcript", text: "The last 40 lines, at most 3 hours back, with who said each (a name if Pip is sure, \"Name?\" if probably, \"Someone\" if he doesn't know). This is what Claude reads as \"the conversation so far\".", ref: "core/transcript.py#Transcript"},
+  {title: "Into the transcript and the feed", text: "Every line heard goes into the transcript; the dashboard's Conversation card gets it too, live only, never saved (D-108).", ref: "core/feed.py#Feed.hear"},
+  {title: "The follow-up window", text: "After Pip speaks, for a few seconds whatever's said next counts as said to him, without his name, so a conversation can go back and forth.", ref: "core/conversation.py#Conversation._maybe_follow_up"},
+  {title: "Joining in: waiting for a pause", text: "Every room line resets a short timer. When the room goes quiet, Pip may ask Claude whether he'd say something now (at most every few minutes, and never in quiet hours).", ref: "core/joining.py#Joining.heard"},
+  {title: "Is he free to join in?", text: "Not while listening is off, an alarm rings, he's learning a voice, someone's mid-turn, or he's already talking or thinking.", ref: "core/conversation.py#Conversation.can_join"},
+  {title: "Asking Claude to join in", text: "A \"join\" request: Claude replies PASS (nearly always) or SAY: followed by exactly the words. Joining in never does an action: nothing overheard is acted on.", ref: "core/conversation.py#Conversation.join_in"},
+  {title: "Modules hear everything", text: "Every sentence (room talk, and what's said to Pip) is offered to the modules. One may answer with something for Pip to say: for speech to Pip, that replaces asking Claude.", ref: "core/conversation.py#Conversation.modules_answer"},
+  {title: "Being talked over", text: "While Pip speaks, sound from the speakerphone means someone is talking over him (his own voice is removed by the speakerphone). He stops at once and listens. A sentence already under way when he started (an alarm going off mid-sentence) carries on whole.", ref: "ears/main.py#Ears.talked_over"},
+  {title: "Two claps", text: "A plain USB mic listens only for claps. Two sharp, loud sounds 0.15–1.5 s apart, then nothing, switch listening off or on (D-91). Each switch now records how the claps measured, to tune false switch-offs.", ref: "ears/clap.py#ClapDetector"},
+  {title: "What the claps change", text: "pip-core flips the clap switch, tells ears (which then listens only for claps), plays the mic-off tone and shows it on the face and dashboard. The dashboard's Listening switch is separate, and both must be on.", ref: "core/micctl.py#MicControl.on_clapped"},
+]},
+
+// ---------------------------------------------------------------- 5
+{id: "face", title: "The face (Pip's state)", html: `
+<h2>The face state machine</h2>
+<p>Pip is always in one <b>state</b> (idle, listening, thinking, speaking, interrupted, ringing, mic off, offline), and within it one
+<b>situation</b> ("waiting to see if you're done", "heard my name: go on"…), each with words under the face (D-108, D-112).</p>
+${diagram(780, 200, [
+  {id: "a", x: 10, y: 60, w: 150, h: 60, label: "something happens", sub: "a field changes", to: "ref:core/conversation.py#Conversation.on_wake"},
+  {id: "b", x: 190, y: 60, w: 140, h: 60, label: "refresh_state()", sub: "core/conversation.py", to: "ref:core/conversation.py#Conversation.refresh_state"},
+  {id: "c", x: 360, y: 60, w: 130, h: 60, label: "situation()", sub: "core/states.py", to: "ref:core/states.py#situation"},
+  {id: "d", x: 520, y: 20, w: 120, h: 50, label: "pip.state", sub: "event", to: "ref:core/conversation.py#Conversation.state_message"},
+  {id: "e", x: 660, y: 20, w: 110, h: 50, label: "pip-web", sub: "on_state", to: "ref:web/main.py#listen"},
+  {id: "f", x: 660, y: 110, w: 110, h: 60, label: "the face", sub: "tv.html", to: "ref:web/static/tv.html#expression"},
+], [["a", "r", "b", "l"], ["b", "r", "c", "l"], ["c", "r", "d", "l"], ["d", "r", "e", "l"], ["e", "b", "f", "t"]])}
+<p><b>The rule:</b> nothing sets the state directly. Code changes a plain field ("speaking", "pending", "listen_until"…) and calls
+<code>refresh_state()</code>; <code>situation()</code> looks at all the fields and the <b>first rule that's true wins</b>. So to change how Pip
+looks in some moment, you change one rule, in one place.</p>
+<p>To change the words: [[core/states.py#SITUATIONS|SITUATIONS]]. To change how a situation looks on the monitor: <code>FACES</code> in
+[[web/static/tv.html#FACES|tv.html]]. HOW-PIP-WORKS §3 lists the common changes step by step.</p>`,
+tour: [
+  {title: "Every situation and its words", text: "Grouped by state. The detail names (\"turn\", \"hearing\", \"called\"…) are what the face and the dashboard look up.", ref: "core/states.py#SITUATIONS"},
+  {title: "The rules, in order", text: "<code>situation()</code> reads the Conversation's fields and returns (state, detail). Read it top to bottom: ringing beats everything, then mic off, then offline, then speaking, thinking, listening… The first that matches wins.", ref: "core/states.py#situation"},
+  {title: "Publishing a change", text: "<code>refresh_state()</code> runs situation(); if the state, the detail or the quiet moment changed, it publishes <code>pip.state</code>. It also works out when to check again (a wait that runs out).", ref: "core/conversation.py#Conversation.refresh_state"},
+  {title: "The message", text: "The state, the detail, the words, how long until a wait ends, and whether it's a quiet moment (used to restart safely, chapter 10).", ref: "core/conversation.py#Conversation.state_message"},
+  {title: "A quiet moment", text: "One rule for \"nothing would be cut off if Pip restarted now\": used by the Settings page and by installs.", ref: "core/states.py#quiet"},
+  {title: "pip-web passes it on", text: "pip-web listens for events and pushes them to the open dashboard pages and to the monitor (its own narrow stream: only what the face shows).", ref: "web/main.py#listen"},
+  {title: "The monitor's page handles it", text: "Each pushed event (state, captions, refresh, reaction…) arrives here.", ref: "web/static/tv.html#handle"},
+  {title: "Which face", text: "The state (or \"state:detail\" if it has its own face), or a reaction on top (six seven, pleased).", ref: "web/static/tv.html#expression"},
+  {title: "The faces", text: "Each face is a handful of numbers (eye size, smile, lean…); the face eases towards it 30 times a second.", ref: "web/static/tv.html#FACES"},
+]},
+
+// ---------------------------------------------------------------- 6
+{id: "modules", title: "Modules: how they plug in", html: `
+<h2>Modules</h2>
+<p>Every feature that isn't Pip's core is a <b>module</b>: a folder in <code>pip_assistant/modules/</code> with a description file
+(<code>module.toml</code>) and a little code (<code>module.py</code>). Pip finds them at startup. Today: google, calendar, todos, screen,
+six_seven (and _template, the example).</p>
+<div class="note"><b>The rule (D-120):</b> Pip's programs <b>never name a module</b>. pip-core and pip-web ask <i>every</i> module the same
+questions through <b>hooks</b>, so a module can be added, changed or switched off without touching them.
+[[tools/check_map.py#modules_named|tools/check_map.py]] refuses a commit that breaks this, and the tests check it too.</div>
+${diagram(780, 230, [
+  {id: "a", x: 10, y: 80, w: 150, h: 60, label: "module.toml", sub: "what it is, settings", to: "ref:modules/calendar/module.toml#dashboard"},
+  {id: "b", x: 190, y: 80, w: 150, h: 60, label: "read()", sub: "common/modules.py", to: "ref:common/modules.py#read"},
+  {id: "c", x: 370, y: 80, w: 150, h: 60, label: "Registry.load", sub: "core/modules.py", to: "ref:core/modules.py#Registry.load"},
+  {id: "d", x: 550, y: 20, w: 210, h: 50, label: "setup(ctx) → Module", sub: "the module's code", to: "ref:modules/calendar/module.py#Calendar"},
+  {id: "e", x: 550, y: 100, w: 210, h: 50, label: "hooks", sub: "pip-core asks every module", to: "ref:core/modules.py#Module"},
+  {id: "f", x: 550, y: 170, w: 210, h: 50, label: "pip-thinker, pip-web", sub: "[claude] text, its page", to: "ref:thinker/main.py#Thinker.system_prompt"},
+], [["a", "r", "b", "l"], ["b", "r", "c", "l"], ["c", "r", "d", "l"], ["c", "r", "e", "l"], ["b", "b", "f", "l"]])}
+<h3>Every hook, with a real module that uses it</h3>
+<table class="t"><tr><th>Hook</th><th>What it adds</th><th>Example</th></tr>
+<tr><td>[[core/modules.py#Module|actions]]</td><td>ACTION verbs Claude may use; each is a check and a do</td><td>[[modules/calendar/actions.py#ClaudeActions.check_add|calendar: add an event]]</td></tr>
+<tr><td>[[core/modules.py#Module.summary|summary(call)]]</td><td>its part of what Claude reads (keep it short: every request)</td><td>[[modules/calendar/actions.py#ClaudeActions.summary|today and tomorrow]]</td></tr>
+<tr><td>[[core/modules.py#Module.offline|offline()]]</td><td>its own phrases when Pip is offline</td><td>[[modules/calendar/offline.py#CalendarOffline|calendar's offline.py]]</td></tr>
+<tr><td>[[core/modules.py#Module.home|home()]]</td><td>a card on the dashboard's front page</td><td>[[modules/calendar/dashboard.py#DashboardPage.home|next two weeks]]</td></tr>
+<tr><td>[[core/modules.py#Module.tv|tv(shown)]] + <code>[monitor.kind]</code> + <code>monitor.js</code></td><td>a kind of box on the monitor</td><td>[[modules/calendar/static/monitor.js|the calendar box]]</td></tr>
+<tr><td>[[core/modules.py#Module.room_heard|room_heard]]</td><td>hears everything said; may answer for Pip</td><td>[[modules/six_seven/module.py#SixSeven.room_heard|six seven]]</td></tr>
+<tr><td>[[core/modules.py#Module.room_may_see|room_may_see]]</td><td>may an alert show on the room's monitor?</td><td>[[modules/calendar/dashboard.py#DashboardPage.room_may_see|calendar privacy]]</td></tr>
+<tr><td>[[core/modules.py#Module.people_links|people_links]]</td><td>links on the People card</td><td>[[modules/google/module.py#Google.people_links|Connect Google]]</td></tr>
+<tr><td><code>account_panel</code> (module.toml)</td><td>its part of a Google account's page</td><td>[[modules/calendar/static/account.js|calendar's account.js]]</td></tr>
+<tr><td>[[core/modules.py#Module.dashboard|dashboard()]], [[core/modules.py#Module.tasks|tasks()]]</td><td>its own page's requests; background jobs</td><td>[[modules/calendar/dashboard.py#DashboardPage.dashboard|the calendar page]]</td></tr>
+<tr><td><code>api</code></td><td>a small object other modules may use</td><td>[[modules/calendar/api.py#CalendarAPI|CalendarAPI]]</td></tr></table>
+<h3>What a module gets (its ctx), and nothing more</h3>
+<p>[[core/modules.py#ModuleContext|ModuleContext]]: its settings, <b>its own tables</b> in pip.db (named <code>name_…</code>: writing any
+other table is refused by a guard on the connection), its own section of secrets.toml, an internet client that only reaches the hosts
+its module.toml allows, heads-ups for its own items ([[core/modules.py#ModuleAlerts|ctx.alerts]]), names and roles of people
+([[core/modules.py#ModulePeople|ctx.people]], never voices), whether Pip is online, and the small <code>api</code> of modules it needs.</p>
+<p>Ready to make one? {{make|Make a module}} walks through the template, file by file.</p>`,
+tour: [
+  {title: "Reading module.toml", text: "Checks the description (name matches the folder, a summary, each setting has a default and an explanation), merges your settings over the defaults, and reads its [monitor] boxes and dashboard page.", ref: "common/modules.py#read"},
+  {title: "Finding every module", text: "Every folder with a module.toml (not starting with _), ordered so a module comes after the ones it needs. A module whose needs are switched off is switched off too.", ref: "common/modules.py#discover"},
+  {title: "Loading them", text: "For each: import its module.py and call setup(ctx). If one fails to start, it's logged and Pip carries on without it.", ref: "core/modules.py#Registry.load"},
+  {title: "The context it gets", text: "Everything a module may use, and nothing more. Look at db(): the guard refuses writing any table not named after the module.", ref: "core/modules.py#ModuleContext"},
+  {title: "The hooks (the base class)", text: "Every hook, with what it does by default (nothing). A module overrides only what it needs.", ref: "core/modules.py#Module"},
+  {title: "A real module: the calendar", text: "setup returns one Calendar, put together from its parts (visibility, actions, dashboard). Look at <code>self.actions</code>: each verb Claude may use, with its check and its do.", ref: "modules/calendar/module.py#Calendar"},
+  {title: "How pip-core finds an action", text: "When Claude sends ACTION {\"do\": \"add\", \"kind\": \"event\"…}, pip-core asks each module whether it has \"add:event\".", ref: "core/modules.py#Registry.action"},
+  {title: "What Claude reads from modules", text: "Each module's summary, joined. A module that fails is skipped (and logged), never stopping Pip answering.", ref: "core/modules.py#Registry.summary"},
+  {title: "The monitor asks every module", text: "The screen module lays out the screen; then every module is asked what its boxes show.", ref: "core/modules.py#Registry.tv"},
+  {title: "The calendar's box: its data", text: "Only today's and tomorrow's events Pip may show the room.", ref: "modules/calendar/dashboard.py#DashboardPage.tv"},
+  {title: "The calendar's box: drawn", text: "The module's own script draws its box on the monitor (tv.html loads it).", ref: "modules/calendar/static/monitor.js"},
+  {title: "A module that hears everything", text: "six seven: the whole module is one hook.", ref: "modules/six_seven/module.py#SixSeven.room_heard"},
+  {title: "The guard", text: "Reads the code of Pip's programs and fails if any names a module.", ref: "tools/check_map.py#modules_named"},
+]},
+
+// ---------------------------------------------------------------- 7
+{id: "make", title: "Make a module", html: `
+<h2>Your first module</h2>
+<p>The template, <code>modules/_template/</code>, is a tiny working module (it rolls dice) that shows <b>every part</b> a module can
+have. To make yours: copy the folder, rename it, keep what you need and delete the rest. The recipe is also in HOW-PIP-WORKS
+("Making a module"), and Pip's own self-changes follow it.</p>
+<pre class="ex">cp -r pip_assistant/modules/_template pip_assistant/modules/shopping
+# edit module.toml (name = "shopping"…) and module.py, then:
+uv run pytest pip_assistant/modules/shopping      # (on the Pi: memory-capped, CONTRIBUTING §4)
+git commit …  &&  sh deploy/install.sh</pre>
+<div class="try"><b>Or ask Pip:</b> "Pip, I'd like a shopping list" (or the Changes page). He plans it, you approve, he builds it as a
+module from this template, you approve the result.</div>`,
+tour: [
+  {title: "module.toml: what it is", text: "The part people read: name (must match the folder), what it does, examples of what to say, whether it works offline, which internet hosts it may reach, which modules it needs, its settings (each with a plain explanation: they appear on the Settings page), what Claude is told, its monitor box, its dashboard page.", ref: "modules/_template/module.toml"},
+  {title: "module.py: setup", text: "The class pip-core gets from setup(ctx). Its own table is made here (named _template_…: the only kind it may write). <code>self.actions</code> lists the verbs Claude may use.", ref: "modules/_template/module.py#Dice"},
+  {title: "An action: check first", text: "Raise Invalid and nothing is done (and nothing else in the same reply either).", ref: "modules/_template/module.py#Dice.check_roll"},
+  {title: "…then do", text: "Returns what Pip says.", ref: "modules/_template/module.py#Dice.do_roll"},
+  {title: "An offline phrase", text: "\"roll a die\" when the internet is down: each rule gets the cleaned-up words and returns a reply, or None if it isn't that phrase.", ref: "modules/_template/module.py#DiceOffline.roll"},
+  {title: "A card on the dashboard", text: "home() returns a card (title, link, items) or None.", ref: "modules/_template/module.py#Dice.home"},
+  {title: "A box on the monitor: its data", text: "Only when its box is on the screen.", ref: "modules/_template/module.py#Dice.tv"},
+  {title: "A box on the monitor: drawn", text: "PipMonitor.box(kind, draw): draw fills the box from the data tv() sent.", ref: "modules/_template/static/monitor.js"},
+  {title: "Its own page", text: "Served at /m/name/; pip.get / pip.post reach the module's dashboard().", ref: "modules/_template/static/index.html"},
+  {title: "Its tests", text: "Load it like pip-core would, and try each part through the same hooks.", ref: "modules/_template/test_template.py"},
+]},
+
+// ---------------------------------------------------------------- 8
+{id: "timers", title: "Timers and Pip's own commands", html: `
+<h2>Timers, alarms, reminders, and the offline commands</h2>
+<p>Online, everything said goes to Claude in plain language (D-94), and timers come back as ACTION lines ({{request|chapter 2}}). Pip
+also understands the basics <b>himself</b>, on the Pi: used when the internet is down, for the instant "stop"/"snooze" while ringing,
+and for commands typed on the dashboard. The phrase rules are in <code>commands.py</code>; <b>making and changing</b> things is in
+<code>alerts.py</code>, used by both, so a timer is the same however it was asked for.</p>`,
+tour: [
+  {title: "The phrase rules, in order", text: "Each rule looks at the words and returns a reply, or None if it isn't that phrase; the first that answers wins. Modules' rules (the calendar's) sit among them.", ref: "core/commands.py#Commands._handle"},
+  {title: "What a module's phrase gets", text: "Who's asking, the time, and Pip's helpers: asking a question back (\"What day is the dentist?\"), what \"that\" means.", ref: "core/commands.py#Asking"},
+  {title: "Changing anything", text: "\"Move it to 7:30\", \"add a minute\", \"push it back an hour\": one function for every kind of item. A calendar event is handed to the calendar module.", ref: "core/alerts.py#Alerts.apply_change"},
+  {title: "The schedule's loop", text: "Checks what's due every moment, rings it, and on startup catches up on anything missed while Pip was off (rings if recent, else notes it).", ref: "core/schedule.py#Schedule.run"},
+  {title: "Snooze", text: "The same alert rings again later (a snoozed timer counts down the snooze).", ref: "core/schedule.py#Schedule.snooze"},
+  {title: "What Pip says when it rings", text: "", ref: "core/schedule.py#Schedule.announcement"},
+  {title: "Calendar heads-ups", text: "The calendar module makes heads-ups for its events (\"Heads up: dentist in half an hour\") through ctx.alerts.", ref: "modules/calendar/store.py#CalendarStore.sync_alerts"},
+]},
+
+// ---------------------------------------------------------------- 9
+{id: "memory", title: "Memory and people", html: `
+<h2>Memory, people and voices</h2>
+<p><b>Memory:</b> Pip saves only what someone <b>asks</b> him to remember; Claude words it ("Landen takes his coffee black") and Pip's code
+checks and saves it straight away (D-119). Passwords, codes, card and phone numbers are refused. Private memories are used only when
+Pip is sure their owner is speaking.</p>
+<p><b>People and voices:</b> each person's voice is learned on the Pi (a voiceprint from TitaNet; never sent anywhere). Every time
+someone speaks, Pip compares: <b>sure</b> (a name), <b>probably</b> ("Name?"), or <b>someone</b>.</p>`,
+tour: [
+  {title: "A memory is checked", text: "Text, category, who it's about, private or not: worked out before anything is saved.", ref: "core/actions.py#_check_memory"},
+  {title: "…and saved", text: "Duplicates are merged, credentials refused.", ref: "core/memory.py#Memory.add"},
+  {title: "Who may see a private one", text: "", ref: "core/memory.py#Memory.may_see"},
+  {title: "What Claude is told", text: "Household memories, plus the speaker's private ones if Pip is sure who it is.", ref: "core/memory.py#Memory.for_claude"},
+  {title: "Whose voice?", text: "Runs alongside speech-to-text, so it adds no wait.", ref: "core/hearing.py#Hearing.identify"},
+  {title: "Comparing voiceprints", text: "", ref: "core/people.py#People.identify"},
+  {title: "\"Pip, I'm Sam\" without Claude", text: "Introductions and \"learn my voice\" handled on the Pi.", ref: "core/peoplecmds.py#PeopleCommands.handle"},
+  {title: "Learning a voice", text: "Five sentences on the dashboard, read after each beep.", ref: "core/enrolment.py#VoiceLearning.start_enrolment"},
+]},
+
+// ---------------------------------------------------------------- 10
+{id: "web", title: "The dashboard and the monitor", html: `
+<h2>pip-web</h2>
+<p>pip-web serves the pages and keeps them live, but stores nothing: every page asks pip-core (or pip-builder, pip-thinker) for what it
+shows, and live changes arrive as a stream of events (server-sent events). The monitor has its own, narrower stream: only what the face
+and its boxes show (D-110).</p>
+<p>No logins (D-116): the dashboard is reachable only on your Tailscale devices. The <b>same-site check</b> stops any other website open
+on your phone from changing Pip: changes must be JSON from Pip's own pages.</p>`,
+tour: [
+  {title: "Every page and route", text: "build_app lists them all at the bottom: /, /tv, /settings, /changes, /prompts, /guide, /m/name/ (module pages) and the /api/… routes.", ref: "web/main.py#build_app"},
+  {title: "Live events", text: "pip-web subscribes to pip-core's events and pushes them to the open pages (and only the right ones to the monitor).", ref: "web/main.py#listen"},
+  {title: "The timers card", text: "pip-core's answer to /api/alerts: the schedule, plus every module's front-page card.", ref: "core/dashapi.py#alerts_snapshot"},
+  {title: "What the monitor gets", text: "Only alerts the room may see, the layout, and each box's data.", ref: "core/dashapi.py#tv_snapshot"},
+  {title: "The same-site check", text: "", ref: "web/security.py#SameSite"},
+  {title: "The dashboard draws the timers", text: "", ref: "web/static/index.html#renderSched"},
+  {title: "Pages talking to their module", text: "pip.get / pip.post: a module's page reaching its module's dashboard().", ref: "web/static/pip.js#pip"},
+]},
+
+// ---------------------------------------------------------------- 11
+{id: "settings", title: "Settings and the personality", html: `
+<h2>Settings</h2>
+<p>Every setting is in <code>pip_assistant/defaults.toml</code>, each with a comment saying what it does; yours are in
+<code>~/pip-data/settings.toml</code> (written by the Settings page). Changing one restarts only the program that reads it, at a
+<b>quiet moment</b> (D-117). The personality is the first part of what Claude is told; the rules after it stay fixed in the code.</p>`,
+tour: [
+  {title: "Every setting and its default", text: "", ref: "pip_assistant/defaults.toml"},
+  {title: "Loading them", text: "Defaults, with your file over them, checked.", ref: "common/settings.py#load"},
+  {title: "What the Settings page shows and checks", text: "Each setting's label, explanation, type and limits.", ref: "core/settings_schema.py#SCHEMA"},
+  {title: "Saving", text: "Checked, written, then only the programs that need it restart.", ref: "core/settingsapi.py#SettingsAPI.set"},
+  {title: "…at a quiet moment", text: "Waits (at most 2 minutes) until nothing would be cut off.", ref: "core/settingsapi.py#SettingsAPI._restart_when_quiet"},
+  {title: "The personality", text: "", ref: "common/personality.py#render"},
+  {title: "The fixed part of what Claude is told", text: "Personality, then the rules, then each module's [claude] text.", ref: "thinker/main.py#Thinker.system_prompt"},
+]},
+
+// ---------------------------------------------------------------- 12
+{id: "builder", title: "Pip changing himself", html: `
+<h2>Self-changes and installs</h2>
+<p>Ask by voice or on the Changes page. pip-builder plans the change (Claude Code, reading only), you approve the plan, it's built in
+a <b>sandbox</b> (a copy of the project, no network, no access to your data or logins), checked again in a stricter sandbox, you approve
+the finished change, and it's installed as a new version that <b>rolls back by itself</b> if Pip isn't healthy on it (D-118). Pip never
+pushes to GitHub.</p>
+${diagram(780, 110, [
+  {id: "a", x: 10, y: 30, w: 110, h: 50, label: "plan", sub: "read only", to: "ref:builder/pipeline.py#Builder._plan"},
+  {id: "b", x: 140, y: 30, w: 110, h: 50, label: "you approve", sub: "Changes page", to: "go:builder"},
+  {id: "c", x: 270, y: 30, w: 110, h: 50, label: "build", sub: "in a sandbox", to: "ref:builder/pipeline.py#Builder._build"},
+  {id: "d", x: 400, y: 30, w: 110, h: 50, label: "check", sub: "strict sandbox", to: "ref:builder/pipeline.py#Builder._check"},
+  {id: "e", x: 530, y: 30, w: 110, h: 50, label: "you approve", sub: "the diff", to: "go:builder"},
+  {id: "f", x: 660, y: 30, w: 110, h: 50, label: "install", sub: "rolls back", to: "ref:release.py#Releases.install"},
+], [["a", "r", "b", "l"], ["b", "r", "c", "l"], ["c", "r", "d", "l"], ["d", "r", "e", "l"], ["e", "r", "f", "l"]])}`,
+tour: [
+  {title: "The steps", text: "One change at a time: this moves the change on to its next step (plan, build, check, deploy); each step sets a status the Changes page shows. Click \"whole file\" to see the whole Builder.", ref: "builder/pipeline.py#Builder._step"},
+  {title: "Planning", text: "", ref: "builder/agent.py#ClaudeAgent.plan"},
+  {title: "The sandbox", text: "What Claude Code may and mayn't reach while building.", ref: "builder/sandbox.py#agent_command"},
+  {title: "What a change may not touch", text: "", ref: "builder/checks.py#forbidden"},
+  {title: "No secrets in a change", text: "The same scan as the commit check.", ref: "builder/checks.py#secret_problems"},
+  {title: "Installing a version", text: "Make the version folder, wait for a quiet moment, switch, check health, go back by itself if unhealthy.", ref: "release.py#Releases.install"},
+  {title: "Health", text: "", ref: "release.py#Releases.check_health"},
+]},
+
+// ---------------------------------------------------------------- 13
+{id: "data", title: "Where data lives, and privacy", html: `
+<h2>Data and privacy</h2>
+<table class="t"><tr><th>Where</th><th>What</th></tr>
+<tr><td><code>~/pip</code></td><td>the code (this guide reads it). Never anything personal: a check before every commit enforces it.</td></tr>
+<tr><td><code>~/pip-app/current</code></td><td>the installed version Pip runs from</td></tr>
+<tr><td><code>~/pip-data/pip.db</code></td><td>one database: timers, memories, people and voiceprints, the 48-hour decision trace, each module's own tables, self-changes, usage</td></tr>
+<tr><td><code>~/pip-data/settings.toml</code>, <code>secrets.toml</code></td><td>your settings; API keys (each module sees only its own section)</td></tr>
+<tr><td>memory only</td><td>the room transcript, the conversation feed, what Claude was sent (only its size is kept)</td></tr></table>
+<div class="note"><b>Rule 1 (CLAUDE.md):</b> never put credentials, phone numbers, recordings or what people said into the repo, commit
+messages, logs or the dashboard. In code, that's the <code>private</code> part of every message: never written to the trace.</div>`,
+tour: [
+  {title: "Where the data folder is", text: "", ref: "common/paths.py#data_dir"},
+  {title: "One way to open the database", text: "", ref: "common/db.py#connect"},
+  {title: "The decision trace", text: "Every message, without its private part; kept 48 hours. Some noisy types aren't kept at all.", ref: "core/trace.py#Trace"},
+  {title: "Secrets, one section per module", text: "", ref: "common/secrets.py#ScopedSecrets"},
+]},
+
+// ---------------------------------------------------------------- 14
+{id: "tests", title: "Tests and tools", html: `
+<h2>Tests</h2>
+<p>Tests are sorted by the part they test: <code>tests/common</code>, <code>core</code>, <code>ears</code>, <code>thinker</code>,
+<code>web</code>, <code>builder</code>; a module's tests are next to it. Shared fakes (fake programs on a real message hub, fake
+speech-to-text, a clock you move) are in <code>tests/helpers.py</code>. Every test gets a throwaway data folder, so none can touch
+<code>~/pip-data</code>.</p>
+<pre class="ex">systemd-run --user --same-dir -p MemoryMax=4500M --wait --pipe --collect uv run pytest          # everything
+… uv run pytest tests/core/test_alarms.py                         # one part
+… uv run pytest tests/core/test_alarms.py -k snooze               # one test
+… uv run pytest -m "not pi_data"                                  # without the Pi's recordings</pre>`,
+tour: [
+  {title: "The fake programs", text: "Real pip-core, fake ears and thinker: a test says something and checks what Pip did.", ref: "tests/helpers.py#room_setup"},
+  {title: "A test, start to finish", text: "", ref: "tests/core/test_alarms.py#test_a_snoozed_timer_counts_down_the_snooze"},
+  {title: "The commit check", text: "No secrets or phone numbers in a commit.", ref: "tools/check_secrets.py"},
+]},
+
+// ---------------------------------------------------------------- 15
+{id: "files", title: "Every file", html: `
+<h2>Every file in pip_assistant/</h2>
+<p>Read live from the code: each file's own first line says what it's for. Click one to read it.</p>
+<input id="filter" placeholder="Filter: e.g. calendar, voice, screen" style="width:100%;box-sizing:border-box;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit">
+<table class="t" id="filetable"><tr><td class="sub">Loading…</td></tr></table>`},
+];
+</script>
+<script>
+// ================================================================ the page itself
+let DONE = new Set();
+try { DONE = new Set(JSON.parse(localStorage.getItem("pip-guide-done") || "[]")); } catch (e) { /* private window: no ticks */ }
+const saveDone = () => { try { localStorage.setItem("pip-guide-done", JSON.stringify([...DONE])); } catch (e) {} };
+const steps = {};   // chapter id → tour step shown
+let FILES = [];
+
+function sidebar(current) {
+  $("chapters").innerHTML = CHAPTERS.map((c, i) => `<a class="ch${c.id === current ? " on" : ""}" href="#${c.id}">
+    <span class="n">${i}</span><span>${esc(c.title)}</span>${DONE.has(c.id) ? `<span class="tick">✓</span>` : ""}</a>`).join("");
+}
+async function show(id, step) {
+  const c = CHAPTERS.find(x => x.id === id) || CHAPTERS[0];
+  sidebar(c.id);
+  const i = CHAPTERS.indexOf(c), prev = CHAPTERS[i - 1], next = CHAPTERS[i + 1];
+  if (step != null) steps[c.id] = step;
+  $("main").innerHTML = links(c.html) + (c.tour ? `<div class="tour" id="tour"></div>` : "") +
+    `<div style="display:flex;justify-content:space-between;gap:10px;margin-top:26px;flex-wrap:wrap">
+      ${prev ? `<a href="#${prev.id}"><button>◀ ${esc(prev.title)}</button></a>` : "<span></span>"}
+      <button class="${DONE.has(c.id) ? "" : "primary"}" id="done">${DONE.has(c.id) ? "✓ Read" : "Mark as read"}</button>
+      ${next ? `<a href="#${next.id}"><button class="primary">${esc(next.title)} ▶</button></a>` : "<span></span>"}</div>`;
+  $("done").onclick = () => { DONE.has(c.id) ? DONE.delete(c.id) : DONE.add(c.id); saveDone(); show(c.id); };
+  if (c.tour) drawTour(c);
+  if (c.id === "files") drawFiles();
+  window.scrollTo(0, 0);
+  $("side").classList.remove("open");
+}
+async function drawTour(c) {
+  const n = Math.min(steps[c.id] || 0, c.tour.length - 1), s = c.tour[n];
+  $("tour").innerHTML = `<div class="top"><b>Tour: step ${n + 1} of ${c.tour.length}</b>
+      <span class="dots">${c.tour.map((_, k) => `<i class="${k === n ? "on" : ""}" data-step="${k}" title="${esc(c.tour[k].title)}"></i>`).join("")}</span></div>
+    <div class="body"><h4>${esc(s.title)}</h4><div>${links(s.text || "")}</div><div id="tourcode"><div class="sub" style="margin-top:8px">Loading the code…</div></div></div>
+    <div class="nav"><button ${n === 0 ? "disabled" : ""} id="tprev">◀ Back</button><button class="primary" ${n === c.tour.length - 1 ? "disabled" : ""} id="tnext">Next ▶</button></div>`;
+  $("tprev").onclick = () => { steps[c.id] = n - 1; drawTour(c); $("tour").scrollIntoView({block: "start", behavior: "smooth"}); };
+  $("tnext").onclick = () => { steps[c.id] = n + 1; drawTour(c); $("tour").scrollIntoView({block: "start", behavior: "smooth"}); };
+  $("tour").querySelectorAll("[data-step]").forEach(d => d.onclick = () => { steps[c.id] = +d.dataset.step; drawTour(c); });
+  const r = await source(s.ref);
+  if (steps[c.id] === n || (steps[c.id] == null && n === 0)) $("tourcode").innerHTML = codeBox(r);
+}
+async function drawFiles() {
+  if (!FILES.length) {
+    try { FILES = (await getJSON("/api/source?index=1")).files || []; } catch (e) { FILES = []; }
+  }
+  const draw = () => {
+    const f = ($("filter").value || "").toLowerCase();
+    const rows = FILES.filter(x => !f || x.path.toLowerCase().includes(f) || x.about.toLowerCase().includes(f));
+    $("filetable").innerHTML = `<tr><th>File</th><th>What it's for</th><th>Lines</th></tr>` + rows.map(x =>
+      `<tr><td><a class="ref" data-ref="${esc(x.path)}">${esc(x.path.replace("pip_assistant/", ""))}</a></td><td>${esc(x.about)}</td><td>${x.lines}</td></tr>`).join("");
+  };
+  $("filter").oninput = draw; draw();
+}
+
+// clicks: code links, chapter links, diagram boxes
+document.addEventListener("click", ev => {
+  const a = ev.target.closest("[data-ref]");
+  if (a) { ev.preventDefault(); return openCode(a.dataset.ref); }
+  const g = ev.target.closest("[data-go]");
+  if (g) { ev.preventDefault(); location.hash = g.dataset.go; return; }
+  const node = ev.target.closest(".node");
+  if (node) {
+    const t = node.dataset.target;
+    if (t.startsWith("ref:")) openCode(t.slice(4)); else if (t.startsWith("go:")) location.hash = t.slice(3);
+  }
+});
+
+// search: chapters, tour steps, code links in the text, and every file
+function searchIndex() {
+  const out = [];
+  for (const c of CHAPTERS) {
+    out.push({label: c.title, kind: "chapter", go: c.id});
+    (c.tour || []).forEach((s, k) => out.push({label: s.title.replace(/^\d+ · /, ""), kind: `${c.title} · tour step ${k + 1}`, go: c.id, step: k, ref: s.ref}));
+    for (const m of c.html.matchAll(/\[\[([^|\]]+)\|([^\]]+)\]\]/g)) out.push({label: m[2].replace(/<[^>]+>/g, ""), kind: m[1], ref: m[1], go: c.id});
+  }
+  for (const f of FILES) out.push({label: f.path.replace("pip_assistant/", ""), kind: f.about, ref: f.path});
+  return out;
+}
+$("search").oninput = async () => {
+  const q = $("search").value.trim().toLowerCase();
+  if (!FILES.length) { try { FILES = (await getJSON("/api/source?index=1")).files || []; } catch (e) {} }
+  if (q.length < 2) { $("results").hidden = true; return; }
+  const hits = searchIndex().filter(x => (x.label + " " + x.kind + " " + (x.ref || "")).toLowerCase().includes(q)).slice(0, 30);
+  $("results").innerHTML = hits.map((h, i) => `<div data-i="${i}">${esc(h.label)}<small>${esc(h.kind)}</small></div>`).join("") || `<div>Nothing found.</div>`;
+  $("results").hidden = false;
+  $("results").querySelectorAll("[data-i]").forEach(d => d.onclick = () => {
+    const h = hits[+d.dataset.i];
+    $("results").hidden = true; $("search").value = "";
+    if (h.step != null) { steps[h.go] = h.step; location.hash = h.go; show(h.go, h.step); }
+    else if (h.go && !h.ref) location.hash = h.go;
+    else openCode(h.ref);
+  });
+};
+document.addEventListener("click", ev => { if (!ev.target.closest("#results,#search")) $("results").hidden = true; });
+$("menu").onclick = () => $("side").classList.toggle("open");
+addEventListener("hashchange", () => show(location.hash.slice(1)));
+show(location.hash.slice(1) || "start");
+</script>
+</body>
+</html>
