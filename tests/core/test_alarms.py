@@ -199,3 +199,18 @@ async def test_dashboard_can_shut_off_and_make_timers(tmp_path):
     r = await alert_action(sched, conv, Message("request", "core.alert_action", data={"action": "stop"}))
     assert r["stopped"] == 1 and not sched.ringing
     await finish(bus, tasks)
+
+
+async def test_a_snoozed_timer_counts_down_the_snooze(tmp_path):
+    """Owner's feedback (2026-11-10): a 5-minute timer snoozed for 15 showed its bar out of 5 minutes."""
+    clock = Clock()
+    s = Schedule(tmp_path / "pip.db", clock=clock)
+    t = s.add("timer", "pasta", clock() + 300, length=300)
+    s.ringing = [t["id"]]
+    assert await s.snooze(15) == 1
+    row = s.get(t["id"])
+    assert row["length"] == 900 and row["due"] == clock() + 900 and row["state"] == "waiting"
+    alarm = s.add("event", "dentist", clock() + 60, length=1800)   # a heads-up keeps "in half an hour"
+    s.ringing = [alarm["id"]]
+    await s.snooze(5)
+    assert s.get(alarm["id"])["length"] == 1800
