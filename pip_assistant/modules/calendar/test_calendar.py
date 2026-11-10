@@ -544,7 +544,7 @@ async def test_offline_an_only_me_calendar_is_heard_and_changed_only_by_its_owne
     acc = await connect(reg.modules["google"], fake, sam["id"], "sam@example.com")
     await cal.sync.run_once()
     await reg.modules["google"].dashboard("sharing", {"id": acc["id"], "value": "me"})
-    cmds = Commands(sched, clock=clock, calendar=cal.api, may_hear=cal.may_hear)
+    cmds = Commands(sched, clock=clock, items=[cal.offline()])
     assert "interview" not in await cmds.handle("what's on the calendar today", me(landen))
     assert "interview" not in await cmds.handle("what's on the calendar today", Call(now=NOW))   # an unknown voice
     assert "can't find" in await cmds.handle("delete interview from the calendar", me(landen))

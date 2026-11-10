@@ -68,7 +68,7 @@ def test_saying_durations():
 def cmds(tmp_path):
     clock = Clock()
     s = Schedule(tmp_path / "pip.db", clock=clock)
-    c = Commands(s, clock=clock, calendar=registry(tmp_path, s, clock).get("calendar"))   # the calendar module (D-96)
+    c = Commands(s, clock=clock, items=registry(tmp_path, s, clock).offline_items())   # with the calendar module's (D-96)
     return c, s, clock
 
 

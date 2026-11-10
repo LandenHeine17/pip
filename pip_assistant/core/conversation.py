@@ -131,9 +131,9 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.last_started = 0.0              # when ears last started capturing someone
         self.schedule = schedule
         self.modules = modules       # plugged-in modules (core/modules.py): calendar, to-dos, …
-        cal = modules.module("calendar") if modules else None   # offline calendar commands follow its privacy rule
-        self.commands = Commands(schedule, clock=schedule.clock, calendar=cal.api if cal else None,
-                                 may_hear=cal.may_hear if cal else None) if schedule is not None else None
+        # Pip's own offline commands, with what modules add to them (the calendar's phrases and events)
+        self.commands = Commands(schedule, clock=schedule.clock, items=modules.offline_items() if modules else ()) \
+            if schedule is not None else None
         self.local_stt = local_stt
         c = (cfg or {}).get("conversation", {})
         self.follow_up_s = c.get("follow_up_seconds", 8.0)
