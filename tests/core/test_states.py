@@ -2,10 +2,15 @@
 Conversation's state bars (only when switched on)."""
 import asyncio
 import time
+from datetime import datetime
 
-from pip_assistant.core.states import DETAILS
+import numpy as np
+from helpers import FakeSTT, clock_at, finish, room, states, utt
+from helpers import room_setup as setup
+from helpers import state_bus as setup_bus
+
 from pip_assistant.core.prefs import Prefs
-from test_step6 import finish, room, setup
+from pip_assistant.core.states import DETAILS
 
 
 def watch(conv):
@@ -126,6 +131,7 @@ async def test_a_dashboard_that_connects_is_sent_the_state_once_it_is_listening(
 def test_a_quiet_moment_means_nothing_would_be_cut_off():
     """One rule for settings restarts and installs (core/states.py quiet())."""
     from types import SimpleNamespace
+
     from pip_assistant.core.states import quiet
     calm = dict(state="idle", answer_id=None, pending="", transcribing=False, ringing=False, speaking=False)
     assert quiet(SimpleNamespace(**calm))
@@ -133,3 +139,75 @@ def test_a_quiet_moment_means_nothing_would_be_cut_off():
     assert not quiet(SimpleNamespace(**{**calm, "state": "interrupted"}))
     assert not quiet(SimpleNamespace(**{**calm, "state": "mic_off", "answer_id": "a1"}))   # still answering (D-114)
     assert not quiet(SimpleNamespace(**{**calm, "state": "listening", "pending": "what time"}))
+
+
+NOW = datetime(2026, 11, 4, 23, 55)  # the thinking-tone tests' moment: a Wednesday, just before midnight
+Clock = clock_at(NOW)
+
+
+# ---------------------------------------------------------------- the thinking tone and Pip's state (D-86), with the fake programs of 2026-11-05
+
+
+async def test_thinking_tone_plays_instantly_and_state_follows(tmp_path):
+    clock = Clock()
+    bus, sched, conv, ears, got, tasks = await setup_bus(tmp_path, clock, FakeSTT("Pip, what's the capital of Australia?"))
+    await ears.emit("heard.wake", {"word": "hey_pip"})
+    await asyncio.sleep(0.05)
+    d, p = utt("wake")
+    await ears.emit("heard.utterance", d, private=p)
+    await asyncio.sleep(0.02)
+    assert "ears.tone" in [k for k, _, _ in got]                     # instantly, before the answer
+    await ears.emit("speech.started", {})
+    await asyncio.sleep(0.15)
+    await ears.emit("speech.finished", {"interrupted": False})
+    await asyncio.sleep(0.6)
+    s = states(bus)
+    assert s == ["listening", "thinking", "speaking", "listening", "idle"]  # no flicker in between (for the face)
+    assert states(bus, details=True)[:3] == [("listening", "called"), ("listening", "hearing"), ("listening", "turn")]
+    assert ("listening", "follow_up") in states(bus, details=True)
+    assert "One sec." not in [t for k, t, _ in got]
+    await finish(bus, tasks)
+
+
+async def test_no_tone_for_pips_own_commands_or_when_off(tmp_path):
+    clock = Clock()
+    bus, sched, conv, ears, got, tasks = await setup_bus(
+        tmp_path, clock, FakeSTT("Pip, set a timer for ten minutes"),
+        cfg={"conversation": {"follow_up_seconds": 0.3}, "thinker": {"thinking_tone": "off"}})
+    d, p = utt("wake")
+    await ears.emit("heard.utterance", d, private=p)
+    await asyncio.sleep(0.2)
+    conv.stt.text = "Pip, what's the capital of Australia?"
+    await ears.emit("heard.utterance", d, private=p)
+    await asyncio.sleep(0.3)
+    assert "ears.tone" not in [k for k, _, _ in got]
+    await finish(bus, tasks)
+
+
+async def test_ringing_state(tmp_path):
+    clock = Clock()
+    bus, sched, conv, ears, got, tasks = await setup_bus(tmp_path, clock, FakeSTT("okay"))
+    sched.add("timer", "pasta", clock() + 1, length=1)
+    clock.t += 2
+    await asyncio.sleep(0.3)
+    assert conv.state == "ringing"
+    await sched.acknowledge("test")
+    await asyncio.sleep(0.05)
+    assert conv.state != "ringing" and "ringing" in states(bus)
+    await finish(bus, tasks)
+
+
+async def test_noise_never_reaches_speech_to_text(tmp_path):
+    clock = Clock()
+    stt = FakeSTT("Thank you.")
+    bus, sched, conv, ears, got, tasks = await setup_bus(
+        tmp_path, clock, stt, cfg={"conversation": {"follow_up_seconds": 0.3}, "stt": {"voice_check": True}})
+    click = np.zeros(16000, np.int16)
+    click[8000:8040] = 20000
+    for reason in ("follow_up", "barge_in", "room"):
+        d, p = utt(reason, click.tobytes())
+        await ears.emit("heard.utterance", d, private=p)
+    await asyncio.sleep(0.5)
+    assert stt.calls == 0 and "thinker.ask" not in [k for k, _, _ in got]
+    assert len([r for r in bus.trace.recent() if r["type"] == "heard.noise"]) == 3
+    await finish(bus, tasks)

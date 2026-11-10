@@ -8,7 +8,12 @@ from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from pip_assistant.web.security import SameSite, host_allowed, module_get_allowed, same_site
+from pip_assistant.web.security import (
+    SameSite,
+    host_allowed,
+    module_get_allowed,
+    same_site,
+)
 
 PIP = "100.118.171.118:8790"
 

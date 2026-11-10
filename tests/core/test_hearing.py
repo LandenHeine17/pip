@@ -1,13 +1,57 @@
-"""Groq's daily limit (D-115): a spare model takes over, and when every limit is used up Pip isn't
-"offline": what's said to him is heard on the Pi and Claude still answers."""
+"""Hearing (core/hearing.py, voicecheck.py, stt.py): noise without a voice is dropped (D-85), speech-to-text is told the
+household's names and fixed after (D-93), and Groq's daily limit moves to the second model (D-115)."""
 import asyncio
+from datetime import datetime
 
 import httpx
+import numpy as np
 import pytest
+from helpers import FakeSTT, clock_at, finish, room, utt
+from helpers import OneVoice as FakeEmbedder
+from helpers import alarms_bus as setup_bus
+from helpers import room_setup as setup
 
+from pip_assistant.core.people import Match, People
+from pip_assistant.core.peoplecmds import PeopleCommands, StartLearning
 from pip_assistant.core.stt import GroqSTT, RateLimited
-from test_step4 import Clock, setup_bus, utt
-from test_step6 import FakeSTT, finish
+
+NOW = datetime(2026, 11, 4, 19, 30)  # a Wednesday evening
+Clock = clock_at(NOW)
+
+
+
+def test_voice_check_ignores_noise():
+    from pip_assistant.core.voicecheck import voice_seconds_sync
+    rng = np.random.default_rng(0)
+    hiss = (rng.standard_normal(16000) * 32768 * 10 ** (-45 / 20)).astype(np.int16)
+    click = np.zeros(16000, np.int16)
+    click[8000:8040] = 20000
+    assert voice_seconds_sync(hiss.tobytes()) == 0 and voice_seconds_sync(click.tobytes()) == 0
+
+# ---------------------------------------------------------------- names heard right (D-93)
+
+
+async def test_landon_is_landen(tmp_path):
+    people = People(tmp_path / "pip.db", embedder=FakeEmbedder())
+    landen = people.add_person("Landen", "admin")
+    assert people.by_name("Landon")["id"] == landen["id"]
+    assert people.fix_names("Landon said London is lovely") == "Landen said London is lovely"
+    r = await PeopleCommands(people).handle("Pip, I'm Landon.", Match(), b"x" * 64000)
+    assert isinstance(r, StartLearning) and r.person_id == landen["id"] and not people.guests
+
+
+async def test_speech_to_text_is_told_the_names_and_fixed_after(tmp_path):
+    people = People(tmp_path / "pip.db", embedder=FakeEmbedder())
+    people.add_person("Landen", "admin")
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, "Landon, your turn for the dishes",
+                                                    social={"join_in": False}, people=people)
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.2)
+    assert conv.stt.names == ["Landen"]
+    assert conv.transcript.last()["text"] == "Landen, your turn for the dishes"
+    await finish(bus, tasks)
+
+# ---------------------------------------------------------------- Groq's daily limit (D-115)
 
 
 def groq(monkeypatch, limited: set[str]):

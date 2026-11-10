@@ -84,9 +84,10 @@ def test_the_tv_page_and_its_snapshot(monkeypatch):
 def test_pip_core_sends_the_tv_no_private_events_and_only_soon_heads_ups(tmp_path):
     from datetime import datetime, timedelta
 
+    from helpers import registry
+
     from pip_assistant.core.dashapi import tv_snapshot
     from pip_assistant.core.schedule import Schedule
-    from modhelp import registry
     sched = Schedule(tmp_path / "pip.db")
     reg = registry(tmp_path, schedule=sched, names=("google", "calendar"))
     cal = reg.module("calendar").store
@@ -144,9 +145,10 @@ def test_pi_health_only_while_its_box_is_up():
 
 
 def test_pip_core_sends_the_screen_and_only_the_lists_on_it(tmp_path):
+    from helpers import registry
+
     from pip_assistant.core.dashapi import tv_snapshot
     from pip_assistant.core.schedule import Schedule
-    from modhelp import registry
     sched = Schedule(tmp_path / "pip.db")
     reg = registry(tmp_path, schedule=sched, names=("google", "todos", "screen"))
     reg.module("todos").store.add("milk", "pip")
@@ -162,9 +164,11 @@ def test_every_situation_has_words_and_its_faces_match_and_it_reaches_the_tv():
     each expression in tv.html keyed "state:detail" is a real situation, and the busy ones have their own."""
     import asyncio
     import re
-    from pathlib import Path
+
+    from helpers import REPO
+
     from pip_assistant.core.states import DETAILS, SITUATIONS
-    page = (Path(__file__).parent.parent / "pip_assistant/web/static/tv.html").read_text()
+    page = (REPO / "pip_assistant/web/static/tv.html").read_text()
     assert all(words for words in DETAILS.values())
     assert sum(len(d) for d in SITUATIONS.values()) == len(DETAILS)          # no detail name used twice
     for key in re.findall(r'"(\w+):(\w+)":', page):

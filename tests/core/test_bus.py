@@ -1,55 +1,19 @@
-"""M1a step 1 tests: messages, settings, trace privacy, the watchdog, and the hub over real sockets
-(routing, requests, no impersonation, reconnecting, big replies)."""
+"""pip-core's message hub over real sockets (routing, requests, no impersonation, reconnecting, big replies), the
+decision trace (never anything private) and the watchdog (core/bus.py, trace.py, health.py)."""
 import asyncio
 import json
 
 import pytest
 
-from pip_assistant.common import settings
 from pip_assistant.common.client import BusClient
-from pip_assistant.common.messages import BadMessage, Message
+from pip_assistant.common.messages import Message
 from pip_assistant.core.bus import Bus
 from pip_assistant.core.health import MISSING, OK, STUCK, Health
 from pip_assistant.core.trace import Trace
 
-
-# ------------------------------------------------------------------ messages
-def test_message_round_trip():
-    m = Message("event", "timer.done", source="core", data={"id": 3}, private={"text": "pasta"})
-    back = Message.decode(m.encode())
-    assert back == m
+# ---------------------------------------------------------------- the decision trace
 
 
-@pytest.mark.parametrize("line", [b"not json", b'{"kind":"nope","type":"x"}', b'{"kind":"event"}', b'[1,2]',
-                                  b'{"kind":"event","type":"x","data":[]}'])
-def test_bad_messages_rejected(line):
-    with pytest.raises(BadMessage):
-        Message.decode(line)
-
-
-# ------------------------------------------------------------------ settings
-def test_settings_defaults_without_user_file(tmp_path):
-    cfg = settings.load(tmp_path / "missing.toml")
-    assert cfg["web"]["port"] == 8790 and cfg["trace"]["keep_hours"] == 48
-
-
-def test_settings_override_and_validation(tmp_path):
-    f = tmp_path / "s.toml"
-    f.write_text('[web]\nport = 9000\n[programs]\nstuck_after_seconds = 5\n')
-    cfg = settings.load(f)
-    assert cfg["web"]["port"] == 9000 and cfg["programs"]["stuck_after_seconds"] == 5.0
-    f.write_text('[web]\nprot = 9000\n')
-    with pytest.raises(settings.SettingsError, match="Unknown setting 'web.prot'"):
-        settings.load(f)
-    f.write_text('[web]\nport = "9000"\n')
-    with pytest.raises(settings.SettingsError, match="should be int"):
-        settings.load(f)
-    f.write_text('[programs]\nrestart_stuck = 1\n')
-    with pytest.raises(settings.SettingsError, match="should be bool"):
-        settings.load(f)
-
-
-# ------------------------------------------------------------------ trace
 def test_trace_never_stores_private(tmp_path):
     t = Trace(tmp_path / "pip.db")
     t.add(Message("event", "heard.utterance", source="ears", data={"seconds": 2.1},
@@ -68,8 +32,9 @@ def test_trace_prunes_old_entries(tmp_path):
     assert t.prune() == 1
     assert [r["type"] for r in t.recent()] == ["new"]
 
+# ---------------------------------------------------------------- the watchdog
 
-# ------------------------------------------------------------------ health
+
 def test_health_states_and_restart():
     now = [1000.0]
     restarted = []
@@ -85,8 +50,9 @@ def test_health_states_and_restart():
     assert h.check() == []  # not again within 60 s
     assert restarted == ["ears"]
 
+# ---------------------------------------------------------------- the hub, over real sockets
 
-# ------------------------------------------------------------------ bus (real sockets)
+
 @pytest.fixture
 async def hub(tmp_path):
     sock = tmp_path / "core.sock"

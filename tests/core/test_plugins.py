@@ -6,11 +6,10 @@ pip-core. And what modules get of pip-core, and of each other, is small and keep
 """
 import importlib.util
 from datetime import date, datetime
-from pathlib import Path
 
 import pytest
-
 from fakes.google import FakeGoogle, connect
+
 from pip_assistant.common.modules import ROOT, read
 from pip_assistant.core.commands import Commands
 from pip_assistant.core.dashapi import alerts_snapshot, tv_snapshot
@@ -94,7 +93,7 @@ async def test_another_module_gets_only_events_the_asker_may_hear_about(tmp_path
 def test_pips_programs_never_name_a_module():
     """tools/check_map.py's check, here too so the builder's sandbox runs it: core, ears, thinker, web, builder and
     common ask every module through core/modules.py's hooks, never by name."""
-    root = Path(__file__).resolve().parents[1]
+    from helpers import REPO as root
     spec = importlib.util.spec_from_file_location("pip_check_map", root / "tools" / "check_map.py")
     check = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(check)
@@ -114,7 +113,9 @@ class Echo:
 
 async def _room(tmp_path, quiet_hours, heard):
     import asyncio
-    from test_step6 import finish, room, says, setup
+
+    from helpers import finish, room, says
+    from helpers import room_setup as setup
     reg = Registry()
     reg.modules["echo"] = echo = Echo()
     bus, conv, ears, got, asks, tasks = await setup(tmp_path, heard, modules=reg, social={"quiet_hours": quiet_hours})
