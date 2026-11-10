@@ -376,6 +376,9 @@ def listen(bus, state: State) -> None:
     async def on_module(msg: Message):
         _, name, kind = (msg.type.split(".", 2) + ["", ""])[:3]
         state.push("module", {"module": name, "type": kind})   # module pages reload what changed
+        if kind == "reaction":   # a module asks the face for a reaction (the six-seven freak-out); only its name travels
+            state.push_tv("reaction", {"name": str(msg.data.get("reaction", ""))[:30]})
+            return
         if msg.data.get("layout"):   # the screen changed (D-111): the monitor fetches its new layout
             state.screen(msg.data.get("boxes", []), msg.data.get("room", False))
             state.push_tv("options" if kind == "options" else "refresh", {})

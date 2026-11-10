@@ -254,20 +254,17 @@ const WORDS = {
 const SCREEN_WORDS = { loading: "Connecting to Pip…", lost: "Trying again…", dozing: "Quiet for a while: say my name" };
 
 // --- "Six seven" ------------------------------------------------------------------------------
-// A joke kept from Ziggletron (D-35): when someone says "six seven" to him, he freaks out for a few
-// seconds: wide eyes, a grin, a little shake, two hands see-sawing (the meme) and "6" "7" floating up.
-// Only for what people say, not his own replies ("It's 67 degrees" shouldn't set him off), and at most
-// once every half a minute so it stays funny (the calm rule, PIP-NEW-062).
+// A joke kept from Ziggletron (D-35, D-121): when someone says "six seven" (to Pip or just in the room), he
+// freaks out for a few seconds: wide eyes, a grin, a little shake, two hands see-sawing (the meme) and "6" "7"
+// floating up, while he chants it. Hearing it is the six_seven module's job (modules/six_seven), which asks for
+// this reaction; at most once every half a minute so it stays funny (the calm rule, PIP-NEW-062).
 const SIXSEVEN = {
   seconds: 4, every: 30,
   face: { w: 1.08, h: 1.18, smile: .75, mouth: 1.15, gape: .7, lean: .07, lookY: -.15 },
   color: "#ffb347",
-  // "six seven", "six, seven!", "6 7", "6-7" or "67" as a word; not "6:07", "167", "6.7" or "67.5".
-  words: /(?<![\d.:])\b(?:six[\s,.!?\-–—]*seven|6[ \-–—]?7)\b(?![.:]\d)/i,
 };
 FACES.sixseven = SIXSEVEN.face;
 COLORS.sixseven = SIXSEVEN.color;
-function heardSixSeven(text) { return SIXSEVEN.words.test(text || ""); }
 
 const canvas = $("face"), ctx = canvas.getContext("2d");
 const face = { ...REST, ...FACES.loading };
@@ -902,10 +899,12 @@ function handle(kind, d) {
     live.activeAt = performance.now();
     showCaption(d.who, d.text, d.speaker);
     remember(d);
-    if (d.who === "you" && heardSixSeven(d.text)) sixSeven();
-    else if (d.who === "you" && /\b(thanks|thank you|good job|nice one|love you)\b/i.test(d.text)) react("pleased", 3);
+    if (d.who === "you" && /\b(thanks|thank you|good job|nice one|love you)\b/i.test(d.text)) react("pleased", 3);
   } else if (kind === "line") {      // room talk: only sent while a conversation box shows it (D-111)
     remember(d);
+  } else if (kind === "reaction") {   // a module asks for one (the six-seven freak-out); only known faces
+    if (d.name === "sixseven") sixSeven();
+    else if (FACES[d.name]) react(d.name, 3);
   } else if (kind === "refresh") {
     refresh();
   } else if (kind === "options") {
@@ -927,7 +926,7 @@ function connect() {
     setConnected(true);
     refresh();
   };
-  for (const kind of ["state", "level", "caption", "line", "refresh", "options", "ping"])
+  for (const kind of ["state", "level", "caption", "line", "refresh", "options", "reaction", "ping"])
     live.stream.addEventListener(kind, (m) => handle(kind, JSON.parse(m.data)));
   live.stream.onerror = () => lost();
 }

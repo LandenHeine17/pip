@@ -217,7 +217,7 @@ Every new feature is a module: a folder in `pip_assistant/modules/`. Pip finds i
    - `home()`: a card on the dashboard's front page.
    - `tv(shown)` with a `[monitor.<kind>]` table and `static/monitor.js`: a box on the monitor ("put the shopping list up").
    - `dashboard(action, args)` with `static/index.html`: its own page, with a button on the dashboard.
-   - `room_heard(text, call)`: hears room speech not meant for Pip and may return something for him to say (`modules/six_seven/` is just this). `on_room` in `core/conversation.py` offers it, only when he's free to talk and not in quiet hours. Read the words, keep nothing.
+   - `room_heard(text, call)`: hears everything (room talk, and what's said to or about Pip: `call.kind`) and may return something for him to say; for speech to Pip that replaces asking Claude (`modules/six_seven/` is just this). `modules_answer` in `core/conversation.py` offers it at any hour; Pip says the answer only when he's free to talk. To make the monitor's face react, `ctx.publish("reaction", {"reaction": "pleased"})`. Read the words, keep nothing.
    - `tasks()`: background jobs (syncing, checking a website).
    - Its data goes in its own tables (`ctx.db()`, named `<name>_…`); its secrets in its own section of `secrets.toml` (`ctx.secrets`).
 4. **Tests:** `test_<name>.py` in the folder, like the template's. `tests/modhelp.py` loads real modules the way pip-core does; `tests/fakes/` has a pretend Google.

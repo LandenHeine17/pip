@@ -493,10 +493,12 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         if how == "room":
             self.room_until = time.monotonic() + 4.0   # following the conversation (D-112)
             self.refresh_state()
-            if not await self.welcome_back(speaker, quiet_for) and not await self.modules_answer_room(text, speaker):
+            if not await self.welcome_back(speaker, quiet_for) and not await self.modules_answer(text, speaker, "room"):
                 self.joining.heard()
             return
         self.joining.cancel_wait()
+        if not expected and await self.modules_answer(text, speaker, how):
+            return   # a module answered it instead (the six-seven chant): Claude isn't asked
         if how == "mentioned":
             if self.answer_id is None and not self.speaking and not offline:
                 self.speaker, self.last_pcm = speaker, pcm
@@ -509,15 +511,17 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         await self.addressed(text, "expected" if expected else "transcript", offline=offline, chime=not expected,
                              heard_s=msg.data.get("seconds") or 0)
 
-    async def modules_answer_room(self, text: str, speaker) -> bool:
-        """Offer room speech (not meant for Pip) to the modules; one may answer with something for him to say.
-        Only when he is free to speak and it isn't quiet hours. Nothing is kept of the words."""
-        if self.modules is None or in_quiet_hours(self.quiet_hours) or not self.can_join():
+    async def modules_answer(self, text: str, speaker, how: str) -> bool:
+        """Offer something heard to the modules (room_heard, D-121): room talk, or something said to or about Pip
+        (`how`: room / direct / mentioned). One may answer with something for him to say; for speech to Pip that
+        answer replaces asking Claude. He says it only when he's free to talk (any hour: the owner, 2026-11-10);
+        a module can still react on the monitor's face when he isn't. Nothing is kept of the words."""
+        if self.modules is None:
             return False
-        reply = self.modules.room_heard(text, Call(speaker=speaker))
-        if not reply:
+        reply = self.modules.room_heard(text, Call(speaker=speaker, kind=how))
+        if not reply or not self.can_join():
             return False
-        await self.speak_reply(reply, "room")
+        await self.speak_reply(reply, how)
         return True
 
     async def welcome_back(self, speaker, quiet_for: float) -> bool:
