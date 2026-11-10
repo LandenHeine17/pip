@@ -135,7 +135,7 @@ class Module:
 
     def home(self) -> dict | None:
         """A card on the dashboard's front page, or None. Sent privately (titles are personal):
-        {"title": "Calendar · next two weeks", "link": "/m/calendar/", "empty": "Nothing on the calendar.",
+        {"title": "Calendar · next two weeks", "link": "/m/<its name>/", "empty": "Nothing on the calendar.",
          "items": [{"id", "title", "at" (timestamp), "all_day", "repeat", "private", "color"}],
          "remove": "delete" (its dashboard action that removes one item by "id"; "" for none)}"""
         return None
@@ -338,13 +338,13 @@ class Registry:
         return [{**card, "module": name} for name, card in self._each("home", lambda m: m.home(), None) if card]
 
     def tv(self) -> dict:
-        """What the monitor shows from modules: the screen's layout ("screen") and each box kind's data ("boxes")."""
+        """What the monitor shows from modules: the screen's layout ("layout") and each box kind's data ("boxes")."""
         out, layout = {"boxes": {}}, None
         for _, lay in self._each("tv_layout", lambda m: m.tv_layout(), None):
             layout = layout or lay
         shown = []
         if layout:
-            out["screen"] = layout
+            out["layout"] = layout
             shown = list(layout.get("view", {}).get("sections", []))
         for _, boxes in self._each("tv", lambda m: m.tv(shown), {}):
             out["boxes"].update(boxes or {})

@@ -852,10 +852,10 @@ async function refresh() {
     loadBoxScripts(r.box_scripts);
     live.weather = data.weather;   // live.weather.wear dresses the face (wearing())
     if (r.state) { live.state = r.state; setDetail(r.state_detail || {}); }
-    if (r.screen) {
-      live.screen = r.screen;
-      showRail(r.screen.kinds);
-      if (showScreen(r.screen.view) && live.shownOnce) wakeRail();
+    if (r.layout) {   // the screen's layout (modules/screen, D-111)
+      live.screen = r.layout;
+      showRail(r.layout.kinds);
+      if (showScreen(r.layout.view) && live.shownOnce) wakeRail();
       live.shownOnce = true;
     }
     showBanner(); redraw(); showState();

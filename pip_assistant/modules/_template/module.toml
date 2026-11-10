@@ -1,5 +1,6 @@
-# A worked example: copy this folder, rename it, and fill in the marked parts (ARCHITECTURE §7).
-# Folders starting with "_" are never loaded, so this one stays an example.
+# A worked example: copy this folder, rename it, and fill in the marked parts (ARCHITECTURE §7;
+# the recipe: docs/HOW-PIP-WORKS.md "Making a module"). Folders starting with "_" are never loaded,
+# so this one stays an example. It rolls dice, and shows every part a module can have.
 
 name = "_template"                  # ← must match the folder's name
 kind = "skill"                      # skill / widget / provider / device / plugin
@@ -7,19 +8,25 @@ summary = "Rolls dice."
 says_examples = ["Pip, roll a die", "roll a twenty-sided die"]
 offline = true                      # works without the internet
 permissions = []                    # e.g. ["network:example.com"] to reach a website
-needs = []                          # other modules it uses, e.g. ["google"]
+needs = []                          # other modules it uses, e.g. ["google"] (then ctx.module("google") is allowed)
 
 [settings.sides]                    # every setting: a default and a plain-language explanation
-                                    # (changed in ~/pip-data/settings.toml under [modules.<name>])
+                                    # (changed on the Settings page, saved under [modules.<name>])
 default = 6
 explain = "How many sides a die has unless you say otherwise."
 
 [claude]                            # added to what Claude is told, so it knows it can use this module's actions
 instructions = """
 Dice: to roll, reply with ONLY: ACTION {"do": "roll", "sides": 6} (sides optional).
+Screen box: dice (the last roll).
 """
 
-# [dashboard]                       # a page on Pip's dashboard (put it in static/), with a button;
-#                                   # it is served at /m/<name>/ and its requests reach module.py's dashboard()
-# page = "index.html"
-# label = "Dice"
+[monitor.dice]                      # a kind of box it adds to the monitor ("put the dice up"); drawn by static/monitor.js
+label = "Dice"
+size = [3, 2]                       # [w, h] it likes on the 12 × 8 grid
+once = true                         # at most one on the screen
+aliases = ["die", "last roll"]      # other words for it
+
+[dashboard]                         # a page on Pip's dashboard (in static/), with a button on the front page;
+page = "index.html"                 # it is served at /m/<name>/ and its requests reach module.py's dashboard()
+label = "Dice"

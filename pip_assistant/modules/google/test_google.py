@@ -7,7 +7,7 @@ import pytest
 from pip_assistant.common.modules import ROOT, read
 from pip_assistant.core.modules import Registry
 from pip_assistant.core.people import People
-from pip_assistant.modules.google.testing import FakeGoogle
+from fakes.google import FakeGoogle
 
 
 class NoVoices:

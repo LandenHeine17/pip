@@ -204,6 +204,26 @@ Two cautions before you start:
   - Restarting doesn't make a sound, but testing by talking to Pip does: not between 23:00 and 07:00.
 - **Watch it:** tick the state bars option on the dashboard, and open `http://100.118.171.118:8790/tv` in a browser to see the face next to the feed.
 
+### Making a module
+
+Every new feature is a module: a folder in `pip_assistant/modules/`. Pip finds it at startup; nothing else in Pip changes (`tools/check_map.py` and `tests/test_plugins.py` fail if pip-core or pip-web ever name one). ARCHITECTURE §7 explains the design; this is the recipe.
+
+1. **Copy the template:** `cp -r pip_assistant/modules/_template pip_assistant/modules/shopping` (a lowercase name). Folders starting with `_` are never loaded, so the template stays an example.
+2. **`module.toml`:** set `name` to the folder's name, a one-line `summary`, `says_examples`, whether it works `offline`, any internet hosts it may reach (`permissions`), and the modules it `needs`. Each setting has a `default` and an `explain` line (they appear on the Settings page). `[claude] instructions` tells Claude its ACTION lines: keep it short.
+3. **`module.py`:** `setup(ctx)` returns your Module. Keep the parts you need and delete the rest:
+   - `actions`: what Claude can do (`check` first, raising `Invalid` if it doesn't make sense; then `do`, returning what Pip says).
+   - `summary(call)`: what Claude should know with every request. It goes with *every* request, so keep it to a line, or nothing.
+   - `offline()`: its own phrases when the internet is down (`OfflineItems`; the template's dice, the calendar's `offline.py`).
+   - `home()`: a card on the dashboard's front page.
+   - `tv(shown)` with a `[monitor.<kind>]` table and `static/monitor.js`: a box on the monitor ("put the shopping list up").
+   - `dashboard(action, args)` with `static/index.html`: its own page, with a button on the dashboard.
+   - `tasks()`: background jobs (syncing, checking a website).
+   - Its data goes in its own tables (`ctx.db()`, named `<name>_…`); its secrets in its own section of `secrets.toml` (`ctx.secrets`).
+4. **Tests:** `test_<name>.py` in the folder, like the template's. `tests/modhelp.py` loads real modules the way pip-core does; `tests/fakes/` has a pretend Google.
+5. **Try it:** run its tests (`uv run pytest pip_assistant/modules/shopping`, memory-capped), add it to `docs/PROJECT-MAP.md` if it's a new kind of thing, commit, then `sh deploy/install.sh`. To switch it off without deleting it: `enabled = false` under `[modules.shopping]` in `~/pip-data/settings.toml`.
+
+Or ask Pip ("Pip, I'd like a shopping list"): his self-changes are told to follow this recipe (§6).
+
 ## 5. Settings and the personality
 
 - **Settings** start in `pip_assistant/defaults.toml`; your changes are in `~/pip-data/settings.toml`; `common/settings.py` loads both when a program starts (`load()`).
@@ -314,10 +334,10 @@ Exit codes: **0** live, **1** rolled back (healthy again), **2** stopped before 
 | what Claude is told about the room, people and what's set | `core/context.py` (`for_claude`) |
 | when he joins in by himself | `core/joining.py` |
 | knowing who's talking | `core/people.py`, `core/peoplecmds.py` |
-| timers, alarms, reminders | `core/schedule.py` (saving and ringing), `core/alerts.py` (making and changing them), `common/when.py`, `core/commands.py` (offline phrasings) |
+| timers, alarms, reminders | `core/schedule.py` (saving and ringing), `core/alerts.py` (making and changing them), `common/when.py`, `core/commands.py` (offline phrasings; modules add theirs, e.g. `modules/calendar/offline.py`) |
 | what Claude is told, and the ACTION lines | `common/personality.py` (his personality, editable on the Settings page), `thinker/main.py` (`RULES`: the fixed part), `core/actions.py` |
-| how a module plugs in | `modules/_template/`, `core/modules.py` |
-| the boxes on the monitor | `modules/screen/` (the layout) and `BOXES` in `tv.html` (drawing them) |
+| how a module plugs in | "Making a module" in §4, `modules/_template/`, `core/modules.py` (every hook), `tests/test_plugins.py` |
+| the boxes on the monitor | `modules/screen/` (the layout), `BOXES` in `tv.html` (the screen's own boxes) and each module's `static/monitor.js` (its boxes) |
 | the wake word, claps, cutting up speech | `ears/wake.py`, `ears/clap.py`, `ears/segmenter.py` |
 | self-changes | `builder/pipeline.py` (`Builder`), `builder/checks.py`, `builder/sandbox.py`, `tools/sandbox-test` |
 | installs and rollback | `release.py`, `deploy/install.sh` |
