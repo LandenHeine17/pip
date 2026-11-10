@@ -52,6 +52,7 @@ class State:
         self.pip_quiet = None        # pip-core's "a good moment to restart" (core/states.py quiet())
         self.tv_listeners: set[asyncio.Queue] = set()   # the TV page's own, narrower stream (D-110)
         self.tv_boxes: list[str] = []   # the kinds of box on the monitor now (D-111)
+        self.module_boxes: dict[str, list[str]] = {}   # module → the kinds of box it adds to the monitor
         self.tv_room = False            # a conversation box showing room talk is up: room lines go to the TV too
 
     def push(self, kind: str, data: dict) -> None:
@@ -77,6 +78,8 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
     css = resources.files("pip_assistant.web").joinpath("static/pip.css").read_text()
     js = resources.files("pip_assistant.web").joinpath("static/pip.js").read_text()
     mods = {m.name: m for m in enabled_modules(cfg or {})}
+    state.module_boxes = {m.name: list(m.boxes) for m in mods.values() if m.boxes}
+    box_scripts = [f"/m/{name}/monitor.js" for name in state.module_boxes]   # each draws its module's boxes
 
     async def stylesheet(request):
         return Response(css, media_type="text/css", headers={"Cache-Control": "no-store"})
@@ -85,7 +88,9 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         return Response(js, media_type="text/javascript", headers={"Cache-Control": "no-store"})
 
     async def module_list(request):
-        return JSONResponse([{"name": m.name, "label": m.label or m.name.title(), "page": f"/m/{m.name}/"}
+        """Modules with a dashboard page (their buttons); "account" is a module's part of a Google account's page."""
+        return JSONResponse([{"name": m.name, "label": m.label or m.name.title(), "page": f"/m/{m.name}/",
+                              **({"account": f"/m/{m.name}/{m.account_panel}"} if m.account_panel else {})}
                              for m in sorted(mods.values(), key=lambda m: m.label or m.name) if m.page])
 
     async def module_file(request):
@@ -256,9 +261,10 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
 
     async def tv_data(request):
         """Everything the TV page needs when it loads or refreshes: Pip's state, what pip-core sends
-        (timers, events, the screen's layout and its to-do lists: core/dashapi.py tv_snapshot), the weather,
-        and the Pi's health numbers if that box is showing."""
-        out = {"state": state.pip_state, "state_detail": state.pip_detail, "online": state.online, "weather": {}}
+        (timers, the screen's layout and what each module's boxes show: core/dashapi.py tv_snapshot), the
+        scripts that draw modules' boxes, the weather, and the Pi's health numbers if that box is showing."""
+        out = {"state": state.pip_state, "state_detail": state.pip_detail, "online": state.online, "weather": {},
+               "box_scripts": box_scripts}
         try:
             r = await bus.request("core", "core.tv", timeout=3)
             out.update(r.private or {})
@@ -370,11 +376,11 @@ def listen(bus, state: State) -> None:
     async def on_module(msg: Message):
         _, name, kind = (msg.type.split(".", 2) + ["", ""])[:3]
         state.push("module", {"module": name, "type": kind})   # module pages reload what changed
-        if name == "calendar" or (name == "todos" and "todos" in state.tv_boxes):
-            state.push_tv("refresh", {})
-        if name == "screen":   # the screen changed (D-111): the monitor fetches its new layout
+        if msg.data.get("layout"):   # the screen changed (D-111): the monitor fetches its new layout
             state.screen(msg.data.get("boxes", []), msg.data.get("room", False))
             state.push_tv("options" if kind == "options" else "refresh", {})
+        elif set(state.module_boxes.get(name, ())) & set(state.tv_boxes):   # one of its boxes is showing
+            state.push_tv("refresh", {})
 
     bus.subscribe("health.snapshot", on_health)
     bus.subscribe("trace.entry", on_trace)

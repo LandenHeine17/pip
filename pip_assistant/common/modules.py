@@ -5,7 +5,8 @@ Each feature that plugs into Pip is a folder in pip_assistant/modules/:
     modules/calendar/
     ├── module.toml   what it is, what it may do, its settings (the part people read and edit)
     ├── module.py     setup(ctx) → the code (pip-core runs it; see core/modules.py)
-    ├── static/       its dashboard page, if it has one (served at /m/calendar/)
+    ├── static/       its dashboard page, if it has one (served at /m/calendar/); monitor.js if it adds
+    │                 boxes to the monitor; account.js if it adds a part to a Google account's page
     └── test_*.py     its tests
 
 Folders starting with "_" (like _template) are examples and never loaded.
@@ -42,6 +43,8 @@ class ModuleInfo:
     claude: str = ""                                  # instructions added to Claude's system prompt
     page: str = ""                                    # dashboard page (in static/), if any
     label: str = ""                                   # its button on the main dashboard
+    account_panel: str = ""                           # its part of a Google account's settings page (in static/)
+    boxes: dict = field(default_factory=dict)         # kinds of box it adds to the monitor ([monitor.<kind>])
     enabled: bool = True
 
     @property
@@ -88,11 +91,38 @@ def read(folder: Path, user: dict | None = None) -> ModuleInfo:
             raise ModuleError(f"Unknown setting 'modules.{name}.{key}'. Check {f}.")
         merged[key] = _check_value(f"modules.{name}.{key}", defaults[key], value)
     dash = t.get("dashboard") or {}
+    boxes = {kind: _box(f, kind, b) for kind, b in (t.get("monitor") or {}).items()}
+    if boxes and not (folder / "static" / "monitor.js").is_file():
+        raise ModuleError(f"{f}: a module that adds boxes to the monitor draws them in static/monitor.js")
     return ModuleInfo(name=name, kind=t["kind"], summary=t["summary"], path=folder,
                       says_examples=list(t.get("says_examples") or []), offline=bool(t.get("offline", False)),
                       permissions=list(t.get("permissions") or []), needs=list(t.get("needs") or []),
                       settings=merged, explain=explain, claude=(t.get("claude") or {}).get("instructions", "").strip(),
-                      page=dash.get("page", ""), label=dash.get("label", ""), enabled=enabled)
+                      page=dash.get("page", ""), label=dash.get("label", ""), account_panel=dash.get("account_panel", ""),
+                      boxes=boxes, enabled=enabled)
+
+
+def _box(f: Path, kind: str, b) -> dict:
+    """One [monitor.<kind>] table: a kind of box the module adds to the monitor's screen (modules/screen).
+
+        label    what people call it ("Calendar"); the monitor's list of boxes shows it
+        size     [w, h] it likes on the 12 × 8 grid, when Claude doesn't say
+        once     true: at most one on the screen (a second calendar box is never useful)
+        takes    what Claude can tell one box (["list"]: which to-do list); each is a short text
+        aliases  other words for it ("events", "coming up"), so "put my schedule up" finds it
+        explain  a short name for it in the screen's own words ("to-do list")"""
+    if not re.fullmatch(r"[a-z][a-z0-9_]*", kind):
+        raise ModuleError(f"{f}: [monitor.{kind}]: a box kind is lowercase letters, digits and _")
+    if not isinstance(b, dict) or not isinstance(b.get("label"), str) or not b["label"]:
+        raise ModuleError(f"{f}: [monitor.{kind}] needs a label")
+    size = b.get("size", [4, 3])
+    if not (isinstance(size, list) and len(size) == 2 and all(isinstance(x, int) and 2 <= x <= 12 for x in size)):
+        raise ModuleError(f"{f}: [monitor.{kind}] size is [w, h], each 2 to 12")
+    takes, aliases = list(b.get("takes") or []), [str(a).lower() for a in b.get("aliases") or []]
+    if any(t in ("type", "x", "y", "w", "h", "color", "colour") or not re.fullmatch(r"[a-z_]+", str(t)) for t in takes):
+        raise ModuleError(f"{f}: [monitor.{kind}] takes: short lowercase names, not type/x/y/w/h/color")
+    return {"label": b["label"], "size": tuple(size), "once": bool(b.get("once", False)), "takes": tuple(takes),
+            "aliases": aliases, "name": str(b.get("explain") or b["label"].lower())}
 
 
 def discover(cfg: dict | None = None, root: Path | None = None) -> list[ModuleInfo]:

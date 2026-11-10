@@ -13,12 +13,22 @@ setup returns a Module. Each of its parts is optional:
     find(ref)         an item from a short id Claude used ("#e1a2b3") → kind name, e.g. "event"
     dashboard(...)    answers its dashboard page (/m/<name>/ ↔ /api/m/<name>)
     tasks()           background jobs (e.g. syncing every two minutes)
-    api               an object other modules (or Pip's offline commands) may use
+    offline()         its part of Pip's own offline commands (OfflineItems below; the calendar's phrases)
+    home()            a card on the dashboard's front page (the calendar's next two weeks)
+    tv(shown)         what its boxes on the monitor show (the box kinds are in module.toml's [monitor.<kind>],
+                      drawn by static/monitor.js); tv_layout() is only for the module that lays out the screen
+    room_may_see(a)   may this timer, alarm or heads-up show on the room's monitor? (the calendar hides the
+                      heads-ups of events it mayn't mention to everyone)
+    people_links(id)  links for a person on the dashboard's People card ("Connect Google")
+    api               a small object other modules may use (each module documents its own)
+
+Pip-core and pip-web never name a module: they ask every module for these (tools/check_map.py checks).
 
 What a module gets (ModuleContext): its settings; its own tables in pip.db (named <module>_…); its
 own section of secrets.toml; events it publishes (module.<name>.*); the schedule (for alerts);
-people; whether Pip is online; the clock; the modules it `needs`; and an HTTP client that can
-only reach the hosts its module.toml lists under permissions.
+people; whether Pip is online; the clock; the modules it `needs`; the kinds of box every module adds to
+the monitor (`boxes`, for the screen module); and an HTTP client that can only reach the hosts its
+module.toml lists under permissions.
 """
 import asyncio
 import importlib
@@ -122,6 +132,32 @@ class Module:
         """What it adds to Pip's offline commands (see OfflineItems), or None."""
         return None
 
+    def home(self) -> dict | None:
+        """A card on the dashboard's front page, or None. Sent privately (titles are personal):
+        {"title": "Calendar · next two weeks", "link": "/m/calendar/", "empty": "Nothing on the calendar.",
+         "items": [{"id", "title", "at" (timestamp), "all_day", "repeat", "private", "color"}],
+         "remove": "delete" (its dashboard action that removes one item by "id"; "" for none)}"""
+        return None
+
+    def tv(self, shown: list[dict]) -> dict:
+        """What its boxes on the monitor show: {box kind: data for that kind's drawing in static/monitor.js}.
+        `shown`: the boxes on the screen now ({"type", and what each was told}). Only what the room may
+        see; sent privately."""
+        return {}
+
+    def tv_layout(self) -> dict | None:
+        """Only for the module that lays out the screen (modules/screen): its layout, or None."""
+        return None
+
+    def room_may_see(self, alert: dict) -> bool | None:
+        """May this alert (a timer, alarm, reminder or heads-up) show on the room's monitor? None: not
+        this module's business. An alert linked to an item (`event_id`) shows only if its module says yes."""
+        return None
+
+    def people_links(self, person_id: str) -> list[dict]:
+        """Links for one person on the dashboard's People card: [{"label", "href"}]."""
+        return []
+
 
 class HostNotAllowed(PermissionError):
     pass
@@ -129,8 +165,9 @@ class HostNotAllowed(PermissionError):
 
 class ModuleContext:
     def __init__(self, info: ModuleInfo, bus=None, schedule=None, people=None, net=None, clock=time.time,
-                 db_path=None, modules: dict | None = None, transport=None):
+                 db_path=None, modules: dict | None = None, transport=None, boxes: dict | None = None):
         self.info, self.name, self.settings = info, info.name, info.settings
+        self.boxes = boxes or {}   # every loaded module's kinds of monitor box ({kind: {label, size, …, "module"}})
         self.bus, self.schedule, self.people, self.net, self.clock = bus, schedule, people, net, clock
         self.secrets = ScopedSecrets(info.name)
         self._db_path = db_path or paths.database()
@@ -190,12 +227,12 @@ class Registry:
     @classmethod
     def load(cls, cfg: dict, infos: list[ModuleInfo] | None = None, **ctx_kw) -> "Registry":
         reg = cls()
-        for info in (infos if infos is not None else enabled(cfg)):
-            if not info.enabled:
-                continue
+        infos = [i for i in (infos if infos is not None else enabled(cfg)) if i.enabled]
+        boxes = {kind: {**b, "module": i.name} for i in infos for kind, b in i.boxes.items()}
+        for info in infos:
             try:
                 code = importlib.import_module(f"pip_assistant.modules.{info.name}.module")
-                mod = code.setup(ModuleContext(info, modules=reg.modules, **ctx_kw))
+                mod = code.setup(ModuleContext(info, modules=reg.modules, boxes=boxes, **ctx_kw))
             except Exception:
                 log.exception("module %s failed to start; Pip carries on without it", info.name)
                 continue
@@ -236,6 +273,46 @@ class Registry:
             except Exception:
                 log.exception("module %s offline commands failed", name)
         return out
+
+    # ---------------------------------------------------------------- the dashboard and the monitor
+    def _each(self, what: str, call, default):
+        """call(module) for every module, skipping (and logging) one that fails."""
+        out = []
+        for name, m in self.modules.items():
+            try:
+                out.append((name, call(m)))
+            except Exception:
+                log.exception("module %s %s failed", name, what)
+                out.append((name, default))
+        return out
+
+    def home_cards(self) -> list[dict]:
+        """The cards modules add to the dashboard's front page, each with its module's name."""
+        return [{**card, "module": name} for name, card in self._each("home", lambda m: m.home(), None) if card]
+
+    def tv(self) -> dict:
+        """What the monitor shows from modules: the screen's layout ("screen") and each box kind's data ("boxes")."""
+        out, layout = {"boxes": {}}, None
+        for _, lay in self._each("tv_layout", lambda m: m.tv_layout(), None):
+            layout = layout or lay
+        shown = []
+        if layout:
+            out["screen"] = layout
+            shown = list(layout.get("view", {}).get("sections", []))
+        for _, boxes in self._each("tv", lambda m: m.tv(shown), {}):
+            out["boxes"].update(boxes or {})
+        return out
+
+    def room_may_see(self, alert: dict) -> bool:
+        """May this alert show on the room's monitor? One linked to an item (a calendar event's heads-up) only if
+        its module says so (so it stays hidden if that module is off); others unless a module says no."""
+        said = [v for _, v in self._each("room_may_see", lambda m: m.room_may_see(alert), False) if v is not None]
+        if alert.get("event_id"):
+            return bool(said) and all(said)
+        return all(said)
+
+    def people_links(self, person_id: str) -> list[dict]:
+        return [link for _, links in self._each("people_links", lambda m: m.people_links(person_id), []) for link in links or []]
 
     # ---------------------------------------------------------------- what Claude reads
     def summary(self, call: Call) -> str:

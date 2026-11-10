@@ -449,11 +449,11 @@ async def test_an_only_me_calendar_stays_off_the_room_monitor(env):
     acc = await connect(reg.modules["google"], fake, sam["id"], "sam@example.com")
     await cal.sync.run_once()
     snap = tv_snapshot(sched, reg)
-    assert "Sam's therapy" in [e["title"] for e in snap["events"]]           # shared with everyone: on the monitor
+    assert "Sam's therapy" in [e["title"] for e in snap["boxes"]["calendar"]["events"]]           # shared with everyone: on the monitor
     await reg.modules["google"].dashboard("sharing", {"id": acc["id"], "value": "me"})
     sched.add("event", "Sam's therapy", clock() + 60, event_id=next(iter(cal.store.all_events()))["id"])
     snap = tv_snapshot(sched, reg)
-    assert "Sam's therapy" not in [e["title"] for e in snap["events"]]       # only for Sam: not on the room's screen
+    assert "Sam's therapy" not in [e["title"] for e in snap["boxes"]["calendar"]["events"]]       # only for Sam: not on the room's screen
     assert "Sam's therapy" not in [a["label"] for a in snap["alerts"]]       # nor its heads-up
     assert [e["shared"] for e in cal.upcoming(2)] == [False]
 

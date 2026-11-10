@@ -650,11 +650,14 @@ function fitCanvas() {
 // --- The boxes ------------------------------------------------------------------------------------
 // The screen module (modules/screen, D-111) says what's on the screen: the face's size and each box's
 // kind and place on the 12×8 grid. Each kind has a function that fills its box; it runs again whenever
-// what it shows changes. The layout and box animations are Ziggletron's.
+// what it shows changes. The layout and box animations are Ziggletron's. The screen's own kinds are in
+// BOXES below; other modules add theirs (the calendar, a to-do list) in their static/monitor.js, which
+// calls PipMonitor.box(kind, draw): draw(box, section, data, h) gets what that module's tv() sent
+// (data.boxes[kind]) and the helpers in h.
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const KEEP_LINES = 40, LINE_S = 15 * 60;   // the conversation box: the last 40 lines, none older than 15 minutes
 const VITALS_S = 10;                       // how often the Pi health box updates
-let data = { alerts: [], events: [], weather: {}, lists: {}, now: Date.now() / 1000 }, skew = 0;
+let data = { alerts: [], boxes: {}, weather: {}, now: Date.now() / 1000 }, skew = 0;
 const said = [];   // the conversation box's lines: {who: "room" | "you" | "pip", speaker, text, at}
 
 function showState() {
@@ -715,22 +718,6 @@ const BOXES = {
     fill(box, "Timers & alarms", `<div class="body">${rows.join("") || none("Nothing set")}</div>`);
     box.classList.toggle("empty", !rows.length);
   },
-  calendar(box) {
-    const now = serverNow(), today = new Date().getDate();
-    const rows = data.events.filter((e) => e.all_day ? e.at + 86400 > now : e.at > now - 1800).slice(0, 8).map((e) => {
-      const tomorrow = new Date(e.at * 1000).getDate() !== today;
-      const when = (tomorrow ? "Tomorrow " : "") + (e.all_day ? "all day" : at(e.at));
-      const soon = !e.all_day && e.at - now < 3600;
-      return `<div class="item${soon ? " soon" : ""}"><span class="what">${esc(e.title)}</span><span class="when">${esc(when)}</span></div>`;
-    });
-    fill(box, "Coming up", `<div class="body">${rows.join("") || none("Nothing today or tomorrow")}</div>`);
-    box.classList.toggle("empty", !rows.length);
-  },
-  todos(box, section) {
-    const list = (data.lists || {})[section.list || ""] || { name: section.list || "To-dos", items: [] };
-    const why = list.private ? "That list is private" : list.missing ? `No list called ${list.name}` : "All done";
-    fill(box, list.name, `<div class="body">${list.items.map((t) => `<div class="item"><span class="what">○ ${esc(t)}</span></div>`).join("") || none(why)}</div>`);
-  },
   notes(box, section) {
     fill(box, section.title || "Notes", `<div class="body">${(section.lines || []).map((l) => `<div class="note">${esc(l)}</div>`).join("") || none("Nothing written yet")}</div>`);
   },
@@ -753,9 +740,31 @@ const BOXES = {
   },
 };
 
+// Modules' kinds of box (module.toml [monitor.<kind>]), each drawn by its module's static/monitor.js.
+const MODULE_BOXES = {};
+const H = { fill, esc, none, at, serverNow };   // what a module's drawing may use
+window.PipMonitor = { box(kind, draw) { MODULE_BOXES[kind] = draw; redraw(kind); } };
+const loadedScripts = new Set();
+function loadBoxScripts(urls) {
+  for (const url of urls || []) {
+    if (loadedScripts.has(url)) continue;
+    loadedScripts.add(url);
+    const tag = document.createElement("script");
+    tag.src = url;
+    document.head.appendChild(tag);
+  }
+}
+
 function boxes(type) { return [...$("board").children].filter((b) => !type || b.dataset.type === type); }
+function drawBox(box) {
+  const type = box.dataset.type;
+  if (BOXES[type]) return BOXES[type](box, box.section);
+  if (MODULE_BOXES[type]) {
+    try { MODULE_BOXES[type](box, box.section, (data.boxes || {})[type] || {}, H); } catch (e) { console.error(type, e); }
+  }
+}
 function redraw(...types) {
-  for (const box of boxes()) if (!types.length || types.includes(box.dataset.type)) BOXES[box.dataset.type]?.(box, box.section);
+  for (const box of boxes()) if (!types.length || types.includes(box.dataset.type)) drawBox(box);
 }
 function showBanner() {
   const ringing = data.alerts.filter((a) => a.state === "ringing");
@@ -791,7 +800,7 @@ function showScreen(view) {
     box.classList.toggle("tinted", Boolean(color));
     if (color) box.style.setProperty("--tint", color); else box.style.removeProperty("--tint");
     box.section = section;
-    BOXES[section.type]?.(box, section);
+    drawBox(box);
     return box;
   });
   for (const [key, box] of old) {  // the boxes that are going
@@ -840,6 +849,7 @@ async function refresh() {
     const r = await (await fetch("/api/tv", { cache: "no-store" })).json();
     if (r.now) { data = { ...data, ...r }; skew = Date.now() / 1000 - r.now; }
     else data.weather = r.weather || data.weather;
+    loadBoxScripts(r.box_scripts);
     live.weather = data.weather;   // live.weather.wear dresses the face (wearing())
     if (r.state) { live.state = r.state; setDetail(r.state_detail || {}); }
     if (r.screen) {
@@ -947,7 +957,7 @@ fitCanvas();
 addEventListener("resize", fitCanvas);
 new ResizeObserver(() => fitCanvas()).observe(canvas);
 setInterval(() => redraw("clock", "timers"), 1000);
-setInterval(() => redraw("calendar", "conversation"), 60000);
+setInterval(() => redraw(...Object.keys(MODULE_BOXES), "conversation"), 60000);
 setInterval(refreshVitals, VITALS_S * 1000);
 setInterval(refresh, 15 * 60000);   // the weather, and anything missed
 setInterval(creep, 30000);

@@ -7,7 +7,8 @@
 Whose list: the person named ("add it to Sam's list"), else the speaker's if Pip is sure who it is
 and they've connected Google, else the household's (the first list of a connected account, admins'
 first, or Pip's own "Household" list). Sharing follows each person's setting on the Google page, like
-the calendar. core/dashapi.py asks screen_list() for the to-do boxes on the monitor.
+the calendar. A to-do box on the monitor shows a list (tv() → screen_list(), drawn by static/monitor.js);
+a Google account's page shows its lists (static/account.js).
 """
 import asyncio
 from datetime import date, datetime
@@ -80,6 +81,11 @@ class Todos(Module):
         """May Pip mention this to-do to whoever is asking?"""
         acc = accounts.get((lists.get(t["list_id"]) or {}).get("account_id", ""))
         return not acc or acc["sharing"] == "everyone" or acc["person_id"] == call.person_id
+
+    def tv(self, shown: list[dict]) -> dict:
+        """The to-do boxes on the monitor (static/monitor.js, D-111): only the lists on the screen."""
+        wanted = {s.get("list", "") for s in shown if s["type"] == "todos"}
+        return {"todos": {"lists": {w: self.screen_list(w) for w in wanted}}} if wanted else {}
 
     def screen_list(self, name: str = "") -> dict:
         """A to-do list for the monitor (D-111): its open to-dos, by name, or the household's. Only a

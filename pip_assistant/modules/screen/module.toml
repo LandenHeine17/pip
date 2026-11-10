@@ -12,9 +12,9 @@ needs = []
 [claude]
 instructions = """
 Screen (the monitor, 12 wide × 8 tall; Pip's face is a box in the top left): each message says what it \
-shows and where. Box kinds: clock, weather, timers, calendar, todos (a to-do list: "list": its name, \
-or none for the household's), notes ("title" and "lines": anything worth putting up; it doesn't update \
-itself), health (the Pi's), conversation (what's said; room talk too unless "room": false). Any box \
+shows and where. Box kinds: clock, weather, timers, notes ("title" and "lines": anything worth putting \
+up; it doesn't update itself), health (the Pi's), conversation (what's said; room talk too unless "room": \
+false), and the kinds other modules add ("Screen box" in their part). Any box \
 can have "color" (red, orange, yellow, green, teal, blue, purple, pink, white, gray, "#rrggbb", or none). \
 Place a box with x (0-11), y (0-7), w, h; or just w and h; or nothing (usually best: it's fitted in). \
 ACTION lines (Pip's code does it and says so):

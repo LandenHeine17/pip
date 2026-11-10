@@ -97,7 +97,7 @@ def test_pip_core_sends_the_tv_no_private_events_and_only_soon_heads_ups(tmp_pat
     sched.add("event", "Far away", time.time() + 3 * 3600)
     sched.add("event", "Very soon", time.time() + 600)
     snap = tv_snapshot(sched, reg)
-    assert [e["title"] for e in snap["events"]] == ["Dentist"]
+    assert [e["title"] for e in snap["boxes"]["calendar"]["events"]] == ["Dentist"]   # the calendar module's tv()
     assert {a["label"] for a in snap["alerts"]} == {"pasta", "Very soon"}
 
 
@@ -135,19 +135,19 @@ async def test_room_talk_reaches_the_tv_only_with_a_conversation_box_showing_it(
     room = Message("event", "conversation.line", data={"who": "room", "how": "room"}, private={"text": "did you see the game"})
     await bus.deliver(room)
     assert drain(q) == []
-    await bus.deliver(Message("event", "module.screen.changed", data={"boxes": ["clock", "conversation"], "room": True}))
+    await bus.deliver(Message("event", "module.screen.changed", data={"layout": True, "boxes": ["clock", "conversation"], "room": True}))
     await bus.deliver(room)
     got = drain(q)
     assert ("refresh", {}) in got and ("line", {"who": "room", "how": "room", "speaker": "", "text": "did you see the game"}) in got
-    await bus.deliver(Message("event", "module.screen.changed", data={"boxes": ["conversation"], "room": False}))
+    await bus.deliver(Message("event", "module.screen.changed", data={"layout": True, "boxes": ["conversation"], "room": False}))
     await bus.deliver(room)
     assert [k for k, _ in drain(q)] == ["refresh"]
-    await bus.deliver(Message("event", "module.screen.options", data={"boxes": [], "room": False}))
+    await bus.deliver(Message("event", "module.screen.options", data={"layout": True, "boxes": [], "room": False}))
     assert [k for k, _ in drain(q)] == ["options"]
 
 
 def test_pi_health_only_while_its_box_is_up():
-    snap = {"now": time.time(), "alerts": [], "events": [],
+    snap = {"now": time.time(), "alerts": [], "boxes": {},
             "screen": {"view": {"sections": [{"type": "clock"}]}}}
     state = State()
     client = TestClient(build_app(FakeBus({"core.tv": snap}), state, {}))
@@ -165,10 +165,10 @@ def test_pip_core_sends_the_screen_and_only_the_lists_on_it(tmp_path):
     reg = registry(tmp_path, schedule=sched, names=("google", "todos", "screen"))
     reg.get("todos").add("milk", "pip")
     snap = tv_snapshot(sched, reg)
-    assert snap["screen"]["name"] == "default" and snap["lists"] == {}
+    assert snap["screen"]["name"] == "default" and "todos" not in snap["boxes"]
     reg.modules["screen"].screen.show("morning")    # it has the household's to-do list
     snap = tv_snapshot(sched, reg)
-    assert snap["lists"][""]["items"] == ["milk"]
+    assert snap["boxes"]["todos"]["lists"][""]["items"] == ["milk"]   # the to-do module's tv()
 
 
 def test_every_situation_has_words_and_its_faces_match_and_it_reaches_the_tv():
