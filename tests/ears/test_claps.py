@@ -57,6 +57,7 @@ def test_other_sounds_are_not_two_claps(name, parts):
 F_FILES = __import__("pathlib").Path.home() / "pip-data" / "m0" / "recordings"
 
 
+@pytest.mark.pi_data
 @pytest.mark.skipif(not (F_FILES / "F001.wav").exists(), reason="the owner's Session F recordings are only on the Pi")
 def test_the_owners_session_f_recordings():
     """D-91 tuning: every double clap (F001–F007) heard; a single clap, tongue clicks, snaps, knocks, 3+ claps,

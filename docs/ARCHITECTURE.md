@@ -225,7 +225,7 @@ flowchart LR
 | `dashboard(action, args)`, `tasks()`, `find(ref)` | its page's requests, background jobs, its items' short ids | the month view; syncing every two minutes |
 | `api` | a small documented object other modules may use (`api.py`) | `events_on(day, call)`, `add_event(…)`, both keeping its privacy rule |
 
-`tools/check_map.py` (run before every commit) and `tests/test_plugins.py` (run by the builder too) fail if a program names a module.
+`tools/check_map.py` (run before every commit) and `tests/core/test_plugins.py` (run by the builder too) fail if a program names a module.
 
 What a module gets (its **context**), and nothing more: its settings (`[modules.<name>]` in `~/pip-data/settings.toml` overrides the defaults; `enabled = false` switches it off); **its own tables** in `pip.db`, named `<name>_…` (writing anything else is refused); **its own section of `secrets.toml`**; an internet client limited to the hosts in its permissions; **heads-ups for its own items** (`ctx.alerts`: add, cancel, not pip-core's whole schedule); **who's in the household** (`ctx.people`: id, name and role only, never voices); whether Pip is online; the kinds of box every module adds to the monitor (`ctx.boxes`, for the screen module); and the small `api` of each module it `needs`. Its requests from the dashboard and its events travel privately (never logged).
 
@@ -300,7 +300,7 @@ flowchart TD
 
 ## 11. Testing
 
-- **Every module has its own tests.** They're run by hand (`uv run pytest`, memory-capped; see CONTRIBUTING §4), and by pip-builder before any self-change is offered to you (the agent runs them in `tools/sandbox-test`; then the whole suite runs again in the strict sandbox). The pre-commit check runs only `tools/check_secrets.py` and `tools/check_map.py` (the project map, and no module named in Pip's programs). Test helpers live in `tests/` (`modhelp.py` loads real modules the way pip-core does; `fakes/google.py` is a pretend Google); pytest puts `tests/` on the import path, so a module's own tests can use them too. Nothing test-only ships inside `pip_assistant/`.
+- **Every module has its own tests.** They're run by hand (`uv run pytest`, memory-capped; see CONTRIBUTING §4), and by pip-builder before any self-change is offered to you (the agent runs them in `tools/sandbox-test`; then the whole suite runs again in the strict sandbox). The pre-commit check runs only `tools/check_secrets.py` and `tools/check_map.py` (the project map, and no module named in Pip's programs). Tests are sorted by the part they test (`tests/common`, `core`, `ears`, `thinker`, `web`, `builder`; a module's next to it). Shared test code lives in `tests/helpers.py` (fake programs, fake speech-to-text and voices, `registry()` loading real modules) and `tests/fakes/google.py` (a pretend Google); pytest puts `tests/` on the import path, so a module's own tests can use them too, and test files never import each other. Every test gets a throwaway data folder (the top-level `conftest.py`), so none can touch `~/pip-data`. Tests marked `pi_data` need the owner's recordings or models and skip elsewhere (`pytest -m 'not pi_data'`). Nothing test-only ships inside `pip_assistant/`.
 - **Replay tests:** conversations and audio clips are fed in without anyone speaking, for listening, interruptions and alarms. Tests that use your private recordings run only on the Pi and never go to GitHub.
 - The **acceptance criteria** (`AC-*` in REQUIREMENTS) become automated tests as each feature is built.
 

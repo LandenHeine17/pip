@@ -278,7 +278,7 @@ Targets marked † are starting values (confirmed in M0, D-25).
 | AC-UI-03 | Adding an item by voice appears on the TV within 1 s | PIP-NEW-060 |
 | AC-UI-04 | A voice layout edit that doesn't fit yields a proposed fix, not a bare failure, in ≥90% of the P-09 failure cases replayed | PIP-NEW-061 |
 | AC-UI-05 | Undo restores the previous layout exactly | PIP-NEW-061 |
-| AC-SEC-01 | ~~Every dashboard endpoint and event stream rejects unauthenticated access (automated sweep)~~ **Replaced (D-116):** every endpoint refuses unknown Host names, and every request that changes something refuses other websites (`tests/test_security.py`) | FEAT-072 |
+| AC-SEC-01 | ~~Every dashboard endpoint and event stream rejects unauthenticated access (automated sweep)~~ **Replaced (D-116):** every endpoint refuses unknown Host names, and every request that changes something refuses other websites (`tests/web/test_security.py`) | FEAT-072 |
 | AC-SEC-02 | The dashboard is unreachable from the public internet, and reachable over the private tunnel with HTTPS | PIP-NEW-055 |
 | AC-SEC-03 | No credential value appears in logs, events, prompts, git or the sandbox (secret-canary test) | PIP-NEW-058/059 |
 | AC-SEC-04 | Credential migration leaves Ziggletron's files byte-identical (checksums before and after) | PIP-NEW-083 |
@@ -291,13 +291,13 @@ Targets marked † are starting values (confirmed in M0, D-25).
 | AC-SK-04 | Self-inspection tools cannot read secrets, the data folder or paths outside the code tree (path traversal and symlink tests) | PIP-NEW-067 |
 | AC-SK-05 | A stalled background task is detected and restarted within 2× its heartbeat period | PIP-NEW-079 |
 | AC-SK-06 | Every feature and setting has a registry entry (the verification pipeline enforces it) | PIP-NEW-064 |
-| AC-SM-01 | A question about how something works never starts code generation (**Tested 2026-11-09** (`tests/test_changes_voice.py`): only a clear change request uses `request_change`; joining in never asks; and nothing is coded before approval 1) | PIP-NEW-069 |
-| AC-SM-02 | No code is generated before a proposal is approved (**Tested 2026-11-09** (`tests/test_builder.py`): planning has read-only tools; building starts only after approval 1) | PIP-NEW-071 |
-| AC-SM-03 | A sandbox test that tries to read the secrets file, the data folder, `~/.ssh` or a non-allow-listed host fails and is logged (**Tested 2026-11-09** on the Pi, `tests/test_sandbox.py`: inside `tools/sandbox-test` and the strict sandbox these reads and the internet fail; the agent sandbox sees only the workspace and the login file) | PIP-NEW-072 |
-| AC-SM-04 | Sandbox workspaces are gone after success, failure, timeout and reboot mid-change (**Tested 2026-11-09** (`tests/test_builder.py`): success, failure, stop and restart) | PIP-NEW-072 |
-| AC-SM-05 | Deployment cannot happen without ~~a signed-in admin~~ the owner's approval on the dashboard (D-116), including when every check passes (**Tested 2026-11-09** (`tests/test_builder.py`)) | PIP-NEW-074 |
-| AC-SM-06 | A deliberately broken deployment rolls back automatically within 3 minutes, and alarms still ring (**rollback tested with a fake health check, `tests/test_release.py`; the real test on the Pi is still to do**) | PIP-NEW-075 |
-| AC-SM-07 | Commit messages contain no text from the spoken request that isn't in the approved summary; the PII scan passes (**Tested 2026-11-09** (`tests/test_builder.py`): the message is made from the summary; the secret scan runs on every change) | PIP-NEW-076 |
+| AC-SM-01 | A question about how something works never starts code generation (**Tested 2026-11-09** (`tests/builder/test_changes_voice.py`): only a clear change request uses `request_change`; joining in never asks; and nothing is coded before approval 1) | PIP-NEW-069 |
+| AC-SM-02 | No code is generated before a proposal is approved (**Tested 2026-11-09** (`tests/builder/test_builder.py`): planning has read-only tools; building starts only after approval 1) | PIP-NEW-071 |
+| AC-SM-03 | A sandbox test that tries to read the secrets file, the data folder, `~/.ssh` or a non-allow-listed host fails and is logged (**Tested 2026-11-09** on the Pi, `tests/builder/test_sandbox.py`: inside `tools/sandbox-test` and the strict sandbox these reads and the internet fail; the agent sandbox sees only the workspace and the login file) | PIP-NEW-072 |
+| AC-SM-04 | Sandbox workspaces are gone after success, failure, timeout and reboot mid-change (**Tested 2026-11-09** (`tests/builder/test_builder.py`): success, failure, stop and restart) | PIP-NEW-072 |
+| AC-SM-05 | Deployment cannot happen without ~~a signed-in admin~~ the owner's approval on the dashboard (D-116), including when every check passes (**Tested 2026-11-09** (`tests/builder/test_builder.py`)) | PIP-NEW-074 |
+| AC-SM-06 | A deliberately broken deployment rolls back automatically within 3 minutes, and alarms still ring (**rollback tested with a fake health check, `tests/builder/test_release.py`; the real test on the Pi is still to do**) | PIP-NEW-075 |
+| AC-SM-07 | Commit messages contain no text from the spoken request that isn't in the approved summary; the PII scan passes (**Tested 2026-11-09** (`tests/builder/test_builder.py`): the message is made from the summary; the secret scan runs on every change) | PIP-NEW-076 |
 | AC-SM-08 | A detected recurring problem produces a suggestion only, never development | PIP-NEW-077 |
 | AC-REL-01 | 50 random power cuts during operation leave no corrupted state, and start-up succeeds each time | 12 §5 |
 | AC-REL-02 | 7-day soak: no memory growth beyond 10%, no unrecovered stalls | PIP-NEW-079 |

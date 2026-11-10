@@ -20,7 +20,7 @@ Commands (run with the system python3 from ~/pip: `python3 -m pip_assistant.rele
 
 Only the standard library is used: this file must work whatever state the versions it switches are in.
 Every outside action (git, uv, systemctl, the health check over HTTP, the clock) can be swapped out, so
-tests can fake them (tests/test_release.py).
+tests can fake them (tests/builder/test_release.py).
 
 Other programs (pip-builder) rely on this file as the one place that says what a release id is
 (release_id), what `install` and `rollback` exit with (the EXIT_ numbers) and how to read how an install
