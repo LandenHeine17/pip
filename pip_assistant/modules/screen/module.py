@@ -31,7 +31,7 @@ class ScreenModule(Module):
             self.screen = Screen()
         self.actions = {verb: Action(self.check, self.do) for verb in
                         ("show_screen", "save_screen", "delete_screen", "add_box", "remove_box", "move_box",
-                         "change_box", "undo_screen", "screen_fix", "screen_options")}
+                         "change_box", "arrange_screen", "undo_screen", "screen_fix", "screen_options")}
 
     # ---------------------------------------------------------------- keeping it
     def _keep(self) -> None:
@@ -63,6 +63,8 @@ class ScreenModule(Module):
             raise Invalid("which box")
         if verb in ("show_screen", "delete_screen", "save_screen") and not str(a.get("name") or "").strip():
             raise Invalid("which screen")
+        if verb == "arrange_screen" and not isinstance(a.get("boxes"), list):
+            raise Invalid("the boxes")
         return a
 
     def do(self, a: dict, call: Call) -> str:
@@ -99,6 +101,9 @@ class ScreenModule(Module):
                 changes = {k: v for k, v in a.items() if k not in ("do", "box")}
                 s.change_box(a["box"], changes)
                 said = f"Changed the {a['box']} box."
+            elif verb == "arrange_screen":   # several changes at once: one step, one undo
+                s.arrange(a["boxes"], a.get("face"))
+                said = "Done: " + describe(s.view) + "."
             elif verb == "undo_screen":
                 s.undo()
                 said = f"Put it back: the {s.view['label']} screen, {describe(s.view).split(';')[0]}."

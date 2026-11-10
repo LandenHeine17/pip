@@ -399,6 +399,25 @@ class Screen:
                 raise ScreenError(f"the {box_name(s)} box can't be given a {key}")
         return self._edit(self.view["face"], sections, i)
 
+    def arrange(self, sections, face=None) -> dict:
+        """Several changes at once (owner's feedback, 2026-11-10): the whole new layout of the screen that's showing,
+        boxes moved, resized, added and taken off together, as one change (one undo). A box Claude lists that's
+        already on the screen keeps what it shows (a note's lines, which list, its colour) unless it's changed;
+        a box left out comes off. Everything is checked first: if it doesn't fit, a fix is offered as usual."""
+        if not isinstance(sections, list):
+            raise ScreenError("a screen needs a list of boxes")
+        old, used, merged = self.view["sections"], set(), []
+        for s in sections:
+            s = {"type": s} if isinstance(s, str) else dict(s)
+            kind = kind_of(s.get("type"))
+            match = next((i for i, o in enumerate(old) if i not in used and o["type"] == kind and
+                          all(o.get(k) == s[k] for k in ("title", "list") if s.get(k))), None)
+            if match is not None:
+                used.add(match)
+                s = {**{k: v for k, v in old[match].items() if k not in PLACE}, **s}
+            merged.append(s)
+        return self._edit(face if face not in (None, "") else self.view["face"], merged)
+
     def undo(self) -> dict:
         if not self.history:
             raise ScreenError("there's nothing to undo")
