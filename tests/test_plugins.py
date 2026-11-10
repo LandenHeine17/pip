@@ -101,15 +101,15 @@ def test_pips_programs_never_name_a_module():
     assert check.modules_named(root) == []
 
 
-# ---------------------------------------------------------------- the room_heard hook (room speech offered to modules)
+# ---------------------------------------------------------------- the room_heard hook (everything heard, offered to modules)
 class Echo:
-    """A made-up module that answers any room speech, to prove the hook needs no module's name in pip-core."""
+    """A made-up module that answers anything with "echo" in it, to prove the hook needs no module's name in pip-core."""
     def __init__(self):
         self.seen = []
 
     def room_heard(self, text, call):
-        self.seen.append(text)
-        return "echo"
+        self.seen.append((text, call.kind))
+        return "echo" if "echo" in text else None
 
 
 async def _room(tmp_path, quiet_hours, heard):
@@ -122,19 +122,22 @@ async def _room(tmp_path, quiet_hours, heard):
     await asyncio.sleep(0.2)
     out = says(got)
     await finish(bus, tasks)
-    return out, echo
+    return out, echo, asks
 
 
 async def test_room_speech_is_offered_to_modules_and_their_answer_is_said(tmp_path):
-    out, echo = await _room(tmp_path, "", "did you see the game")
-    assert echo.seen == ["did you see the game"] and out == ["echo"]
+    out, echo, _ = await _room(tmp_path, "", "did you hear the echo")
+    assert echo.seen == [("did you hear the echo", "room")] and out == ["echo"]
 
 
-async def test_speech_to_pip_is_not_offered_to_modules(tmp_path):
-    out, echo = await _room(tmp_path, "", "pip what time is it")
-    assert echo.seen == [] and "echo" not in out
+async def test_speech_to_pip_is_offered_too_and_a_modules_answer_replaces_claude(tmp_path):
+    out, echo, asks = await _room(tmp_path, "", "pip, say echo")
+    assert echo.seen == [("pip, say echo", "direct")] and out == ["echo"] and not asks
+    out, echo, asks = await _room(tmp_path, "", "pip, what time is it")   # no module answers: Claude does
+    assert echo.seen == [("pip, what time is it", "direct")] and "echo" not in out
 
 
-async def test_modules_are_not_asked_in_quiet_hours(tmp_path):
-    out, echo = await _room(tmp_path, "00:00-23:59", "did you see the game")
-    assert echo.seen == [] and out == []
+async def test_modules_are_asked_at_any_hour(tmp_path):
+    """The owner, 2026-11-10: the six-seven chant may go off in quiet hours too."""
+    out, echo, _ = await _room(tmp_path, "00:00-23:59", "did you hear the echo")
+    assert out == ["echo"]

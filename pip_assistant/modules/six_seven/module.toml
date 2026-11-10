@@ -1,10 +1,10 @@
-# Chants "six seven, six seven, six fucking seven" when a six and a seven both come up in room speech.
-# It listens to every sentence not meant for Pip (the room_heard hook in core/modules.py), keeps nothing of
-# the words, and has no page, tables or box on the monitor. Pip's quiet hours (no sound 23:00-07:00) still apply.
+# Six seven (D-35, D-121): when someone says it, to Pip or in the room, Pip chants "six seven, six seven, six
+# fucking seven" and his face on the monitor freaks out, at any hour. It hears everything through the room_heard
+# hook in core/modules.py, keeps nothing of the words, and has no page, tables or box on the monitor.
 
 name = "six_seven"
 kind = "skill"
-summary = "Chants 'six seven' when someone in the room says a six and a seven."
+summary = "Chants six seven (and the face on the monitor freaks out) when someone says it."
 says_examples = []
 offline = true                      # needs no internet
 permissions = []

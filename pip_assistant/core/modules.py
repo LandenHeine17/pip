@@ -17,7 +17,8 @@ setup returns a Module. Each of its parts is optional:
     home()            a card on the dashboard's front page (the calendar's next two weeks)
     tv(shown)         what its boxes on the monitor show (the box kinds are in module.toml's [monitor.<kind>],
                       drawn by static/monitor.js); tv_layout() is only for the module that lays out the screen
-    room_heard(text, call)  room speech not meant for Pip: a module may answer with something for Pip to say
+    room_heard(text, call)  everything heard (call.kind: room / direct / mentioned): a module may answer with
+                      something for Pip to say instead (the six-seven chant), and ask the monitor's face to react
     room_may_see(a)   may this timer, alarm or heads-up show on the room's monitor? (the calendar hides the
                       heads-ups of events it mayn't mention to everyone)
     people_links(id)  links for a person on the dashboard's People card ("Connect Google")
@@ -152,9 +153,11 @@ class Module:
         return None
 
     def room_heard(self, text: str, call: Call) -> str | None:
-        """A sentence heard in the room that wasn't said to Pip (not called, not mentioned). Return something for
-        Pip to say, or None to stay quiet. Read it and forget it: don't store or log what people said. Pip only
-        asks when he is free to speak and it isn't quiet hours (core/conversation.py)."""
+        """A sentence heard: room talk (call.kind "room"), or said to Pip ("direct") or about him ("mentioned"),
+        except the rest of a turn he's waiting on. Return something for Pip to say (for speech to Pip, instead of
+        asking Claude), or None. Pip says it only if he's free to talk. To make the monitor's face react, publish
+        ctx.publish("reaction", {"reaction": <a face reaction in tv.html, e.g. "pleased">}). Read the words and
+        forget them: don't store or log what people said."""
         return None
 
     def room_may_see(self, alert: dict) -> bool | None:
