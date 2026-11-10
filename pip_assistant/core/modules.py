@@ -63,6 +63,44 @@ class Action:
     do: Callable                      # (plan, Call) → what Pip says
 
 
+class OfflineItems:
+    """What a module adds to Pip's own offline commands (core/commands.py, D-94); returned by Module.offline().
+
+    Its own phrases go in `rules`: each is (t, ask) → a reply, or None if it isn't that phrase. `t` is what was
+    said, cleaned up (lower case, no "Pip", no "please"); `ask` (core/commands.Asking) is who's asking, the time,
+    and Pip's shared helpers (ask a question back, what "that" means, matching names).
+    Its items with a time (calendar events) also join the shared "move it to 4", "push it back an hour" and
+    "cancel that" rules, next to timers and alarms: `items`, `get`, `when`, `move` and `cancel` say how."""
+    kind = ""           # what one item is called ("event"): Pip says "You don't have any events."
+    words = ""          # a regex of words that mean this kind ("event|appointment|calendar")
+    empty = ""          # what Pip says when they ask to change one and there are none ("Your calendar's empty.")
+    rules: list = []
+
+    def owns(self, t: str) -> bool:
+        """Is this phrase clearly about this module ("take X off the calendar")? Then the timers' cancel rule steps aside."""
+        return False
+
+    def items(self, call) -> list[dict]:
+        """Every item the person asking (`call`, None = the dashboard) may hear about. Each has "id" and "title"."""
+        return []
+
+    def get(self, item_id: str, call) -> dict | None:
+        """One item, for "that" / "it"; None if it's gone or `call` mayn't hear about it."""
+        return None
+
+    def when(self, row: dict) -> float:
+        """The item's time (a timestamp)."""
+        return 0.0
+
+    def move(self, row: dict, at: datetime | None = None, shift: float | None = None) -> str:
+        """Move it to `at`, or by `shift` seconds, and say what it is now."""
+        raise NotImplementedError
+
+    def cancel(self, row: dict) -> str:
+        """Remove it, and say so."""
+        raise NotImplementedError
+
+
 class Module:
     """What setup() returns. Override what the module needs."""
     actions: dict = {}
@@ -79,6 +117,10 @@ class Module:
 
     def tasks(self) -> list:
         return []
+
+    def offline(self) -> OfflineItems | None:
+        """What it adds to Pip's offline commands (see OfflineItems), or None."""
+        return None
 
 
 class HostNotAllowed(PermissionError):
@@ -183,6 +225,17 @@ class Registry:
             if kind := m.find(ref):
                 return kind
         return None
+
+    # ---------------------------------------------------------------- Pip's offline commands
+    def offline_items(self) -> list[OfflineItems]:
+        out = []
+        for name, m in self.modules.items():
+            try:
+                if (o := m.offline()) is not None:
+                    out.append(o)
+            except Exception:
+                log.exception("module %s offline commands failed", name)
+        return out
 
     # ---------------------------------------------------------------- what Claude reads
     def summary(self, call: Call) -> str:

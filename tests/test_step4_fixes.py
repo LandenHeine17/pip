@@ -36,8 +36,9 @@ def cmds(tmp_path):
     clock = Clock()
     s = Schedule(tmp_path / "pip.db", clock=clock)
     reg = registry(tmp_path, s, clock)                  # the calendar is a module now (D-96)
-    c = Commands(s, clock=clock, calendar=reg.get("calendar"))
+    c = Commands(s, clock=clock, items=reg.offline_items())
     c.reg = reg
+    c.cal = reg.module("calendar").store   # the calendar's events, for checking
     return c, s, clock
 
 

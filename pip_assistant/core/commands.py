@@ -2,7 +2,7 @@
 
 Online, everything people say goes to Claude in natural language, and Claude acts through ACTION
 lines (core/actions.py). These rules are the fallback when the internet is down (PIP-NEW-044,
-D-83): timers, alarms, reminders, the calendar, "what time is it", "stop". What they still do
+D-83): timers, alarms, reminders, "what time is it", "stop", and what modules add (the calendar). What they still do
 online: `while_ringing` (the obvious "stop", "okay", "snooze" or his name silence a ringing alarm
 instantly; anything else said to Pip while it rings goes to Claude) and the dashboard's box for typing
 a command. Replies are short (D-79). If a cancel matches nothing he says so; if it could mean
@@ -11,8 +11,9 @@ several, he asks which (FEAT-042).
 This file only *understands* the words (the phrase rules below, and the questions Pip asks back,
 "For how long?"). Making, changing and cancelling timers, alarms and reminders, wording the reply,
 and what "that" and "it" mean are core/alerts.py's job (`self.alerts`), which Claude's actions use
-too. The calendar phrasings (`_event_add`, `_event_remove`, `_event_query`) are still here, and
-only see the events the person asking may hear about (`_sees`).
+too. A module adds its own phrases, and its items with a time join the shared "move it" and "cancel
+that" rules, through Module.offline() (core/modules.OfflineItems; the calendar's are in
+modules/calendar/offline.py). Each module decides what the person asking may hear about.
 
     commands = Commands(schedule)
     reply = await commands.handle("set a pasta timer for ten minutes")   # "Pasta timer's on, 10 minutes."
@@ -97,12 +98,53 @@ def match_label(label: str, wanted: str) -> float:
     return difflib.SequenceMatcher(None, label, wanted).ratio()
 
 
+def join(items, word="and") -> str:
+    """'a', 'a and b', 'a, b and c'."""
+    items = list(items)
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + f" {word} " + items[-1]
+
+
+class Asking:
+    """What a module's offline phrase rules get (core/modules.OfflineItems.rules): who's asking, the time, and
+    Pip's shared phrase helpers. Nothing else of pip-core."""
+    REF, CHANGE_WORDS = REF, CHANGE_WORDS          # "that / it", and words that mean changing something
+    match = staticmethod(match_label)              # how well a name matches what was said (0 to 1; 0.75 is a match)
+    join = staticmethod(join)
+
+    def __init__(self, cmds: "Commands", kind: str):
+        self._cmds, self._kind = cmds, kind
+
+    @property
+    def call(self):
+        """Who's asking (core/modules.Call), or None for the dashboard's typed commands (they see everything)."""
+        return self._cmds.call
+
+    def now(self) -> datetime:
+        return self._cmds.now()
+
+    def ask(self, question: str, answer) -> str:
+        """Ask a question back ("What day is the dentist?"); the next thing said within 20 s goes to
+        `answer(t)`, which returns the reply (or None: it wasn't an answer)."""
+        self._cmds.awaiting = {"intent": "module", "answer": answer, "until": self._cmds.clock() + 20}
+        return question
+
+    def remember(self, item_id: str) -> None:
+        """This item is now what "that" and "it" mean."""
+        self._cmds.alerts.remember(self._kind, item_id)
+
+    def focus(self) -> dict | None:
+        """The item "that" means, if it's one of this module's."""
+        f = self._cmds.focus()
+        return f[1] if f and f[0] == self._kind else None
+
+
 class Commands:
-    def __init__(self, schedule: Schedule, clock=time.time, calendar=None, may_hear=None):
+    def __init__(self, schedule: Schedule, clock=time.time, items=()):
         # Making, changing and cancelling things, and what "that" means, is core/alerts.py's job.
-        self.alerts = Alerts(schedule, clock=clock, calendar=calendar, may_hear=may_hear)
+        # `items`: what modules add (core/modules.OfflineItems), e.g. the calendar's phrases and events.
+        self.items = {p.kind: p for p in items}
+        self.alerts = Alerts(schedule, clock=clock, items=self.items)
         self.s = schedule
-        self.cal = calendar   # the calendar module's events (modules/calendar/store.py), or None if it's off
         self.call = None   # who's asking (core/modules.Call) during handle(); None = the dashboard, sees everything
         self.clock = clock
         self.awaiting: dict | None = None   # Pip asked a question ("For how long?") and waits for the answer
@@ -115,16 +157,12 @@ class Commands:
         """The item talked about (or rung) most recently, if it still exists and whoever is asking may hear about it."""
         return self.alerts.focus(max_age, self.call)
 
-    def _sees(self, ev: dict) -> bool:
-        """May whoever is asking hear about (and change) this calendar event? The calendar module decides."""
-        return self.alerts.sees(ev, self.call)
-
-    def _events(self) -> list[dict]:
-        return [e for e in self.cal.all_events() if self._sees(e)] if self.cal else []
-
     @staticmethod
     def _kind_of(table: str, row: dict) -> str:
-        return "event" if table == "event" else row["kind"]
+        return row["kind"] if table == "alert" else table
+
+    def _when(self, table: str, row: dict) -> float:
+        return row["due"] if table == "alert" else self.items[table].when(row)
 
     # ---------------------------------------------------------------- entry points
     async def while_ringing(self, text: str, reason: str) -> str | None:
@@ -151,8 +189,8 @@ class Commands:
 
     async def handle(self, text: str, call=None) -> str | None:
         """A request for Pip. Returns what to say, "" for nothing, or None if it's not a command.
-        `call`: who's asking (core/modules.Call), so calendar events they mayn't hear about are left out;
-        None (the dashboard's typed commands) sees every event."""
+        `call`: who's asking (core/modules.Call), so a module's items they mayn't hear about (calendar events) are
+        left out; None (the dashboard's typed commands) sees everything."""
         self.call = call
         try:
             return await self._handle(text)
@@ -172,9 +210,9 @@ class Commands:
             return self.alerts.cancel_item(*f)  # just set something, then "cancel that"
         if STOP.match(t):
             return ""
+        modules = [lambda t, r=r, k=p.kind: r(t, Asking(self, k)) for p in self.items.values() for r in p.rules]
         for rule in (self._snooze, self._time, self._cancel, self._change, self._timer_query,
-                     self._timer, self._alarm, self._list_alerts, self._event_add, self._event_remove,
-                     self._event_query, self._reminder):
+                     self._timer, self._alarm, self._list_alerts, *modules, self._reminder):
             reply = rule(t)
             if hasattr(reply, "__await__"):
                 reply = await reply
@@ -198,10 +236,8 @@ class Commands:
             at = self._reminder_time(t)
             if at:
                 return self.alerts.make_reminder(at, a["slots"]["what"], a["slots"].get("repeat", ""))
-        if a["intent"] == "event_day" and (d := when.day(t, self.now())):
-            at = when.clock(t, self.now())
-            start = datetime.combine(d, at.time()) if at else datetime.combine(d, datetime.min.time())
-            return self._add_event(a["slots"]["title"], start, all_day=not at, rep=a["slots"].get("repeat", ""))
+        if a["intent"] == "module":   # a module asked (Asking.ask): its answer function decides
+            return a["answer"](t)
         if a["intent"] == "which_change":
             picks = [(tb, x) for tb, x in a["slots"]["options"] if match_label(self._title(tb, x), t) >= 0.75]
             if len(picks) == 1:
@@ -248,8 +284,8 @@ class Commands:
         if not re.search(r"\b(cancel|delete|remove|clear|kill|turn off|get rid of|stop|end|scrap|drop)\b", t):
             return None
         kind = self._kind_in(t)
-        if re.search(r"\bcalendar\b", t):
-            return None
+        if any(p.owns(t) for p in self.items.values()):
+            return None   # "cancel the dentist on the calendar": the module's own rule
         if REF.search(t) and (f := self.focus()) and (not kind or self._kind_of(*f) == kind):
             return self.alerts.cancel_item(*f)  # "cancel that" / "cancel that timer": the one we just talked about
         if not kind:
@@ -281,12 +317,9 @@ class Commands:
             self.s.cancel(p["id"])
         return self.alerts.cancelled_text(picks)
 
-    @staticmethod
-    def _join(items, word="and") -> str:
-        items = list(items)
-        return items[0] if len(items) == 1 else ", ".join(items[:-1]) + f" {word} " + items[-1]
+    _join = staticmethod(join)
 
-    # ---------------------------------------------------------------- changing anything (timers, alarms, reminders, events)
+    # ---------------------------------------------------------------- changing anything (timers, alarms, reminders, modules' items)
     def _change(self, t):
         """'Change that alarm to 7:30', 'add a minute to the pasta timer', 'move the dentist to Saturday',
         'push my reminder back an hour', 'actually 15 minutes'. Works the same for every kind of item."""
@@ -295,7 +328,7 @@ class Commands:
             return None
         if re.match(r"^(actually|i mean|i meant|no|wait|sorry)\b", t) and not self.focus(120):
             return None  # a correction only makes sense right after setting something
-        kind = self._kind_in(t) or ("event" if re.search(r"\b(calendar|event|appointment)\b", t) else None)
+        kind = self._kind_in(t) or next((p.kind for p in self.items.values() if re.search(rf"\b({p.words})\b", t)), None)
         target_text = re.split(r"\s\b(to|until|till)\b\s", t)[0] if re.search(r"\s\b(to|until|till)\b\s", t) else t
         found = self._target(target_text, kind)
         if found is None:
@@ -309,27 +342,26 @@ class Commands:
         return self._change_item(*found, t)
 
     def _title(self, table: str, row: dict) -> str:
-        if table == "event":
+        if table != "alert":
             return row["title"]
         return self.alerts.names([row])[0]
 
     def _target(self, t: str, kind: str | None):
         """What they want to change: (table, row), a list to choose from, a reply ("You don't have..."), or None."""
         alerts = [("alert", a) for a in self.s.active(("timer", "alarm", "reminder")) if not kind or a["kind"] == kind]
-        events = [("event", e) for e in self._events()] if kind in (None, "event") else []
-        everything = alerts + events
+        mods = [(p.kind, x) for p in self.items.values() if kind in (None, p.kind) for x in p.items(self.call)]
+        everything = alerts + mods
         if kind != "timer" and (at := when.clock(t, self.now())):  # "the 6 AM alarm", "the dentist at 2"
             by_time = [(tb, x) for tb, x in everything if
-                       abs(datetime.fromtimestamp(x["start"] if tb == "event" else x["due"]).time().hour * 60 +
-                           datetime.fromtimestamp(x["start"] if tb == "event" else x["due"]).minute -
-                           (at.hour * 60 + at.minute)) < 1]
+                       abs(datetime.fromtimestamp(self._when(tb, x)).time().hour * 60 +
+                           datetime.fromtimestamp(self._when(tb, x)).minute - (at.hour * 60 + at.minute)) < 1]
             if len(by_time) == 1:
                 return by_time[0]
+        skip = {"alarm", "reminder", "move", "change", "push", "back", "later", "earlier", "make", "actually", "reschedule",
+                "shift", "bump", "minute", "hour", "please", "can", "you", "our", "today", "tomorrow"}
+        skip |= {w for p in self.items.values() for w in p.words.split("|")}   # "event", "calendar", …
         wanted = " ".join(w for w in re.sub(r"[^\w' ]", " ", label_from(t)).split()
-                          if w not in ("alarm", "reminder", "event", "calendar", "appointment", "move", "change", "push",
-                                       "back", "later", "earlier", "make", "actually", "reschedule", "shift", "bump",
-                                       "minute", "hour", "please", "can", "you", "our", "today", "tomorrow")
-                          and not re.match(rf"^({'|'.join(when.WEEKDAYS)})$", w))
+                          if w not in skip and not re.match(rf"^({'|'.join(when.WEEKDAYS)})$", w))
         if wanted:
             scored = [(match_label(self._title(tb, x).lower(), wanted), (tb, x)) for tb, x in everything]
             picks = [p for sc, p in scored if sc >= 0.75]
@@ -343,7 +375,7 @@ class Commands:
         if len(everything) == 1 and (kind or REF.search(t)):
             return everything[0]
         if not everything:
-            return f"You don't have any {kind}s." if kind and kind != "event" else (None if not kind else "Your calendar's empty.")
+            return None if not kind else self.items[kind].empty if kind in self.items else f"You don't have any {kind}s."
         if kind and len(everything) > 1:
             return everything
         return None
@@ -352,7 +384,7 @@ class Commands:
         """Work out the new time from what they said, then change it."""
         n = when.numbers(t)
         k = self._kind_of(table, row)
-        old = datetime.fromtimestamp(row["start"] if table == "event" else row["due"])
+        old = datetime.fromtimestamp(self._when(table, row))
         value = re.split(r"\s\b(to|until|till)\b\s", t)[-1] if re.search(r"\s\b(to|until|till)\b\s", t) else t
         secs = when.duration(n)
         if secs and SHIFT.search(n):
@@ -502,102 +534,3 @@ class Commands:
         if not at:
             return self._ask("When should I remind you?", "reminder_time", what=what, repeat=rep)
         return self.alerts.make_reminder(at, what, rep)
-
-    # ---------------------------------------------------------------- calendar
-    def _event_add(self, t):
-        if not self.cal:
-            return None
-        m = re.search(r"\b(put|add|schedule|pencil( in)?|book|note)\b\s+(.+?)\s+\b(on|to|in|into)\b\s+(the |my |our )?(calendar|schedule)\b(.*)$", t) or \
-            re.search(r"\b(add|put|schedule|create)\b\s+(an? )?(event|appointment)\s+(called |for )?(.+)$", t)
-        if not m or CHANGE_WORDS.search(t):
-            return None
-        if m.re.pattern.startswith(r"\b(put"):
-            title, rest = m.group(3), m.group(7)
-        else:
-            title, rest = m.group(5), ""
-        combo = f"{title} {rest}"
-        # Pull the time and day out of the title ("dentist on tuesday at 3").
-        title = re.split(r"\s+\b(on|at|for|this|next|tomorrow|today|tonight|every)\b\s+", f" {title} ")[0].strip()
-        title = re.sub(r"^(a|an|the|my|our)\s+", "", title).strip()
-        if not title:
-            return None
-        rep = when.repeat(combo)
-        d = when.day(combo, self.now())
-        has_time = bool(re.search(r"\b(at|from|by)\s+\d|\d\s*(am|pm)|\bnoon\b|\bmidnight\b|\d:\d\d", when.numbers(combo)))
-        if rep.startswith("weekly:") and d is None:
-            d = when.day(when.WEEKDAYS[int(rep[7:])], self.now())
-        if has_time:
-            at = when.clock(combo, self.now())
-            if at is None:
-                return None
-            if d and at.date() != d:
-                at = datetime.combine(d, at.time())
-            all_day = False
-        elif d:
-            at, all_day = datetime.combine(d, datetime.min.time()), True
-        else:
-            return self._ask(f"What day is {title}?", "event_day", title=title, repeat=rep)
-        heads = None
-        if asked := list(re.finditer(r"\b(remind|heads up|warn|tell me)\b", combo)):
-            # Only what comes after "remind me" / "heads up" / … is the heads-up time ("…at 3, warn me 10
-            # minutes before"), never the event's own length.
-            heads = when.duration(combo[asked[-1].end():]) or 0.0
-        return self._add_event(title, at, all_day=all_day, rep=rep, heads=heads)
-
-    def _add_event(self, title: str, at: datetime, all_day: bool = False, rep: str = "", heads: float | None = None) -> str:
-        ev = self.cal.add_event(title, at, all_day=all_day, repeat=rep, heads_up_before=heads)
-        self.alerts.remember("event", ev["id"])
-        when_txt = when.say_day(at.date(), self.now()) + ("" if all_day else f" at {when.say_clock(at)}")
-        if rep:
-            when_txt = when.say_repeat(rep) + ("" if all_day else f" at {when.say_clock(at)}")
-        return f"Added {title}, {when_txt}."
-
-    def _event_remove(self, t):
-        if not self.cal:
-            return None
-        m = re.search(r"\b(remove|delete|cancel|take|clear)\b\s+(.+?)\s+\b(from|off|on)\b\s+(the |my |our )?(calendar|schedule)\b", t)
-        if not m:
-            return None
-        wanted = re.sub(r"^(the|my|our|a|an)\s+", "", m.group(2)).strip()
-        if REF.fullmatch(wanted) or wanted in ("that event", "that appointment", "it", "that one"):
-            f = self.focus()
-            if f and f[0] == "event":
-                return self.alerts.cancel_item(*f)
-            return "Which event? I'm not sure which one you mean."
-        wanted_day = when.day(wanted, self.now())
-        wanted = re.split(r"\s+\b(on|at|this|next|tomorrow|today)\b", f"{wanted} ")[0].strip()
-        evs = self._events()
-        scored = sorted(((match_label(e["title"].lower(), wanted), e) for e in evs), key=lambda x: -x[0])
-        picks = [e for sc, e in scored if sc >= 0.75]
-        if wanted_day:
-            picks = [e for e in picks if self.cal.occurs_on(e, wanted_day)] or picks
-        if not picks:
-            return f"I can't find {wanted} on the calendar."
-        if len(picks) > 1:
-            return f"There are {len(picks)} of those. Which day?"
-        return self.alerts.cancel_item("event", picks[0])
-
-    def _event_query(self, t):
-        if not self.cal:
-            return None
-        if not (re.search(r"\b(calendar|schedule|planned|plans)\b", t) and re.search(r"\b(what|anything|any|is there|do (i|we) have|what's)\b", t)) and \
-                not re.match(r"^(what'?s|what is) (on|happening|going on) (today|tonight|tomorrow|this week|on \w+day|\w+day)\W*$", t) and \
-                not re.match(r"^(what do|do) (i|we) have (on |going on )?(today|tonight|tomorrow|this week|on \w+day)\W*$", t):
-            return None
-        now = self.now()
-        if re.search(r"\bthis week|next few days|coming up|upcoming\b", t):
-            days = [now.date() + timedelta(days=i) for i in range(7)]
-        else:
-            days = [when.day(t, now) or now.date()]
-        found = [(d, at, ev) for d in days for at, ev in self.cal.events_on(d)
-                 if not ev["private"] and self._sees(ev)]
-        if not found:
-            label = "this week" if len(days) > 1 else when.say_day(days[0], now)
-            return f"Nothing on the calendar {label}."
-        items = []
-        for d, at, ev in found[:5]:
-            day_txt = "" if len(days) == 1 else f" {when.say_day(d, now)}"
-            items.append(f"{ev['title']}{day_txt}" + ("" if ev["all_day"] else f" at {when.say_clock(at)}"))
-        more = f", and {len(found) - 5} more" if len(found) > 5 else ""
-        lead = "This week" if len(days) > 1 else when.say_day(days[0], now).capitalize()
-        return f"{lead}: {self._join(items)}{more}."

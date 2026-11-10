@@ -3,8 +3,9 @@
 This is the code that really does it, for both ways of asking: Pip's own offline phrases
 (core/commands.py) and Claude's ACTION lines (core/actions.py). It knows nothing about wording what
 people say; it gets a length, a time or a row, changes the schedule (core/schedule.py), and returns
-the short reply (D-79). Pip only says something is set once it really is (PIP-NEW-039). Calendar
-events can be cancelled and moved here too (the calendar module's store does the work).
+the short reply (D-79). Pip only says something is set once it really is (PIP-NEW-039). A module's
+items with a time (calendar events) are cancelled and moved here too: the module does the work and the
+wording (core/modules.OfflineItems, e.g. modules/calendar/offline.py).
 
 It also remembers what "that" and "it" mean: whatever was made, changed or rung most recently
 (`remember` / `focus`), so "cancel that" right after setting a timer cancels that timer.
@@ -33,14 +34,14 @@ def at_phrase(at: datetime, now: datetime, soon: bool = True) -> str:
 
 
 class Alerts:
-    def __init__(self, schedule: Schedule, clock=time.time, calendar=None, may_hear=None):
+    def __init__(self, schedule: Schedule, clock=time.time, items: dict | None = None):
         self.s = schedule
-        self.cal = calendar   # the calendar module's events (modules/calendar/store.py), or None if it's off
-        # The calendar module's privacy rule (Calendar.may_hear): may the person asking hear about, or change,
-        # this event? "Only me" accounts' events are theirs alone, private ones nobody's (by voice).
-        self.may_hear = may_hear
+        # Modules' items with a time, by kind ({"event": the calendar's OfflineItems}). Each one decides who may
+        # hear about, or change, its items (the calendar: private events nobody by voice, "only me" accounts' events
+        # only their owner).
+        self.items = items or {}
         self.clock = clock
-        self._focus: tuple[str, str, float] | None = None  # ("alert"/"event", id, when): what "that" and "it" mean
+        self._focus: tuple[str, str, float] | None = None  # ("alert" or a module's kind, id, when): what "that" and "it" mean
 
     def now(self) -> datetime:
         return datetime.fromtimestamp(self.clock())
@@ -51,7 +52,7 @@ class Alerts:
 
     def focus(self, max_age: float = 15 * 60, call=None) -> tuple[str, dict] | None:
         """The item talked about (or rung) most recently, if it still exists. `call`: who's asking
-        (core/modules.Call), so a calendar event they mayn't hear about is never "that"; None sees everything."""
+        (core/modules.Call), so a module's item they mayn't hear about is never "that"; None sees everything."""
         cands = [f for f in (self._focus, ("alert", *self.s.last_rung) if self.s.last_rung else None) if f]
         for table, item_id, at in sorted(cands, key=lambda f: -f[2]):
             if self.clock() - at > max_age:
@@ -60,14 +61,9 @@ class Alerts:
                 row = self.s.get(item_id)
                 if row and row["state"] in ("waiting", "ringing"):
                     return "alert", row
-            elif self.cal and (ev := self.cal.event(item_id)) and self.sees(ev, call):
-                return "event", ev
+            elif (p := self.items.get(table)) and (row := p.get(item_id, call)):
+                return table, row
         return None
-
-    def sees(self, ev: dict, call) -> bool:
-        """May `call` (who's asking; None = the dashboard) hear about (and change) this calendar event?
-        The calendar module decides."""
-        return call is None or self.may_hear is None or self.may_hear(ev, call)
 
     # ---------------------------------------------------------------- making
     def make_timer(self, secs: float, label: str) -> str:
@@ -94,9 +90,8 @@ class Alerts:
 
     # ---------------------------------------------------------------- cancelling
     def cancel_item(self, table: str, row: dict) -> str:
-        if table == "event":
-            self.cal.remove_event(row["id"])
-            return f"Took {row['title']} off the calendar."
+        if table != "alert":
+            return self.items[table].cancel(row)
         self.s.cancel(row["id"])
         return self.cancelled_text([row])
 
@@ -123,18 +118,14 @@ class Alerts:
             return f"Cancelled your {when.say_clock(datetime.fromtimestamp(r['due']))} alarm."
         return "Reminder's cancelled."
 
-    # ---------------------------------------------------------------- changing (timers, alarms, reminders, events)
+    # ---------------------------------------------------------------- changing (timers, alarms, reminders, modules' items)
     def apply_change(self, table: str, row: dict, at: datetime | None = None, shift: float | None = None,
                      length: float | None = None) -> str:
         """Change one item, read it back, and say what it is now. Used by voice rules and Claude's actions alike."""
         now_ts = self.clock()
         self.remember(table, row["id"])
-        if table == "event":
-            start = at or datetime.fromtimestamp(row["start"] + (shift or 0))
-            all_day = bool(row["all_day"]) and at is not None and at.time() == datetime.min.time()
-            ev = self.cal.update_event(row["id"], start, all_day=all_day if at else None)
-            when_txt = when.say_day(start.date(), self.now()) + ("" if ev["all_day"] else f" at {when.say_clock(start)}")
-            return f"Moved {ev['title']} to {when_txt}."
+        if table != "alert":
+            return self.items[table].move(row, at=at, shift=shift)
         if row["kind"] == "timer":
             if length:
                 due, length_ = now_ts + max(1.0, length), max(1.0, length)

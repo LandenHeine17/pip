@@ -23,6 +23,7 @@ from datetime import date, datetime, timedelta
 from pip_assistant.common import when
 from pip_assistant.core.modules import Action, Call, Invalid, Module
 
+from .offline import CalendarOffline
 from .store import CalendarStore
 from .sync import CalendarSync
 
@@ -67,6 +68,10 @@ class Calendar(Module):
                         "add:calendar": Action(self.check_new_calendar, self.do_new_calendar),
                         "change:calendar": Action(self.check_edit_calendar, self.do_edit_calendar),
                         "cancel:calendar": Action(self.check_delete_calendar, self.do_delete_calendar)}
+        self._offline = CalendarOffline(self.store, self.may_hear)   # offline.py: Pip's own calendar phrases
+
+    def offline(self) -> CalendarOffline:
+        return self._offline
 
     def google_hooks(self) -> None:
         hooks = getattr(self.google, "on_connect", None)
