@@ -4,7 +4,10 @@ import pytest
 from pip_assistant.common.modules import ROOT, read
 from pip_assistant.core.modules import Call, Invalid, Registry
 from pip_assistant.modules.screen.layout import COLS, ROWS
-from pip_assistant.modules.screen.screen import MAX_SAVED, READY, Screen, ScreenError
+from pip_assistant.modules.screen.screen import MAX_SAVED, READY, Screen, ScreenError, add_kinds
+
+# The calendar's and to-do lists' kinds of box (their module.toml [monitor.<kind>]), as when they're loaded with the screen
+add_kinds({kind: b for name in ("calendar", "todos") for kind, b in read(ROOT / name).boxes.items()})
 
 
 @pytest.fixture

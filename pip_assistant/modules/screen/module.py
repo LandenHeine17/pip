@@ -3,15 +3,16 @@
 The logic is in screen.py (and the grid in layout.py), both ported from Ziggletron. This file plugs
 them into Pip: Claude's actions, the line Claude reads about the screen, the Screen page on the
 dashboard, and keeping it all in pip.db. Each change publishes module.screen.changed (or .options for
-"what can go on the screen?"), which pip-web passes on to the monitor; the monitor then fetches what it
-shows (core/dashapi.py tv_snapshot, which calls for_tv()).
+"what can go on the screen?") with "layout": true, which pip-web passes on to the monitor; the monitor then
+fetches what it shows (core/dashapi.py tv_snapshot: the layout from tv_layout() here, and each box's data
+from the module that adds that kind of box). Other modules' kinds of box arrive in ctx.boxes (add_kinds).
 """
 import asyncio
 import json
 
 from pip_assistant.core.modules import Action, Call, Invalid, Module
 
-from .screen import KINDS, READY, Screen, ScreenError, box_name, describe, face_word, kind_of
+from .screen import KINDS, READY, Screen, ScreenError, add_kinds, box_name, describe, face_word, kind_of
 
 SCHEMA = "CREATE TABLE IF NOT EXISTS screen_state (id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT NOT NULL)"
 
@@ -19,6 +20,7 @@ SCHEMA = "CREATE TABLE IF NOT EXISTS screen_state (id INTEGER PRIMARY KEY CHECK 
 class ScreenModule(Module):
     def __init__(self, ctx):
         self.ctx = ctx
+        add_kinds(ctx.boxes)   # the calendar's, a to-do list's, … (each module's module.toml [monitor.<kind>])
         self.db = ctx.db()
         self.db.execute(SCHEMA)
         self.db.commit()
@@ -40,7 +42,7 @@ class ScreenModule(Module):
     def _changed(self, kind: str = "changed") -> None:
         """Save, and tell pip-web: the monitor reloads what it shows. Only box kinds travel (no names or notes)."""
         self._keep()
-        data = {"boxes": [s["type"] for s in self.screen.view["sections"]], "room": self.screen.room_talk()}
+        data = {"layout": True, "boxes": [s["type"] for s in self.screen.view["sections"]], "room": self.screen.room_talk()}
         try:
             asyncio.get_running_loop().create_task(self.ctx.publish(kind, data))
         except RuntimeError:   # no loop running (tests)
@@ -119,7 +121,7 @@ class ScreenModule(Module):
         return said
 
     # ---------------------------------------------------------------- the monitor and the dashboard
-    def for_tv(self) -> dict:
+    def tv_layout(self) -> dict:
         return self.screen.for_tv()
 
     async def dashboard(self, action: str, args: dict) -> dict:

@@ -12,24 +12,24 @@ Every change is checked first. When something doesn't fit, nothing changes: Pip 
 import copy
 import re
 
-from .layout import COLS, FACES, PLACE, ROWS, arrange, clean_face, clean_place
+from .layout import COLS, FACES, LABELS, PLACE, ROWS, SIZES, arrange, clean_face, clean_place
 
-KINDS = {  # each kind of box, by the name people would use (the monitor lists them), and what it can be told
+# Each kind of box, by the name people would use (the monitor lists them), and what it can be told. These are
+# the screen's own; other modules add theirs (the calendar, a to-do list) in their module.toml's
+# [monitor.<kind>] (add_kinds below), and draw them in their static/monitor.js.
+KINDS = {
     "clock": ("Clock", ()),
     "weather": ("Weather", ()),
     "timers": ("Timers & alarms", ()),
-    "calendar": ("Calendar", ()),
-    "todos": ("To-do list", ("list",)),
     "notes": ("Notes", ("title", "lines")),
     "health": ("Pi health", ()),
     "conversation": ("Conversation", ("room",)),
 }
-ONCE_ONLY = {"clock", "weather", "timers", "calendar", "health", "conversation"}  # the same thing twice is never useful
-ALIASES = {  # other words for a kind of box, so "put the shopping list up" finds the to-dos
+OWN_KINDS = frozenset(KINDS)
+ONCE_ONLY = {"clock", "weather", "timers", "health", "conversation"}  # the same thing twice is never useful
+ALIASES = {  # other words for a kind of box, so "put the forecast up" finds the weather
     **{label.lower(): kind for kind, (label, _) in KINDS.items()},
-    "time": "clock", "forecast": "weather", "timer": "timers", "alarms": "timers", "events": "calendar",
-    "upcoming": "calendar", "coming up": "calendar", "schedule": "calendar", "to-dos": "todos", "todo": "todos",
-    "to-do": "todos", "tasks": "todos", "list": "todos", "shopping list": "todos", "shopping": "todos",
+    "time": "clock", "forecast": "weather", "timer": "timers", "alarms": "timers",
     "note": "notes", "text": "notes", "pi": "health", "vitals": "health", "stats": "health", "diagnostics": "health",
     "chat": "conversation", "talk": "conversation", "captions": "conversation",
 }
@@ -64,7 +64,7 @@ BUILT_IN = {  # the ready-made screens (fitted once, below)
     "default": _built_in("Default", "large", {"type": "clock", "x": 7, "y": 0, "w": 5, "h": 2},
                          {"type": "weather", "x": 7, "y": 2, "w": 5, "h": 2}, {"type": "timers", "x": 7, "y": 4, "w": 5, "h": 2},
                          {"type": "calendar", "x": 7, "y": 6, "w": 5, "h": 2}),
-    "morning": _built_in("Morning", "small", "clock", "weather", "calendar", "todos"),
+    "morning": _built_in("Morning", "small", "clock", "weather", "calendar", "todos"),   # (a module's box is left out while it's off)
     "focus": _built_in("Focus", "small", {"type": "clock", "x": 4, "y": 0, "w": 8, "h": 4}, {"type": "timers", "x": 4, "y": 4, "w": 8, "h": 4}),
     "night": _built_in("Night", "small", {"type": "clock", "x": 4, "y": 0, "w": 8, "h": 3}, dim=True),
 }
@@ -139,7 +139,7 @@ def clean_sections(sections) -> list[dict]:
 def box_name(section: dict) -> str:
     if section["type"] == "notes" and section.get("title"):
         return section["title"]
-    if section["type"] == "todos" and section.get("list"):
+    if section.get("list"):
         return f"{section['list']} list"
     return KINDS[section["type"]][0]
 
@@ -231,7 +231,28 @@ def places(view: dict) -> str:
 
 
 # ---------------------------------------------------------------- the screen and its changes
-READY = {n: make(v["label"], v["face"], v["sections"], v.get("dim", False)) for n, v in BUILT_IN.items()}
+def _ready() -> dict:
+    """The ready-made screens, fitted, with only the kinds of box there are now."""
+    return {n: make(v["label"], v["face"], [b for b in v["sections"] if b["type"] in KINDS], v.get("dim", False))
+            for n, v in BUILT_IN.items()}
+
+
+READY = _ready()
+
+
+def add_kinds(boxes: dict) -> None:
+    """The kinds of box other modules add (their module.toml's [monitor.<kind>], gathered by core/modules.py)."""
+    for kind, b in boxes.items():
+        if kind in OWN_KINDS:
+            continue   # a module can't change the screen's own boxes
+        KINDS[kind] = (b["label"], tuple(b["takes"]))
+        (ONCE_ONLY.add if b["once"] else ONCE_ONLY.discard)(kind)
+        ALIASES[b["label"].lower()] = kind
+        for word in b["aliases"]:
+            ALIASES.setdefault(word, kind)
+        SIZES[kind], LABELS[kind] = tuple(b["size"]), b["name"]
+    READY.clear()
+    READY.update(_ready())
 
 
 class Screen:

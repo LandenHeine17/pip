@@ -63,6 +63,7 @@ class NeedsPermission(RuntimeError):
 
 
 class GoogleAccounts:
+    NeedsReconnect, NeedsPermission = NeedsReconnect, NeedsPermission   # what request() may raise, for other modules
     """What other modules use (their ctx.module("google"))."""
 
     def __init__(self, ctx):
@@ -282,6 +283,13 @@ class Google(Module):
         self.ctx = ctx
         self.api = GoogleAccounts(ctx)
         self.actions = {}
+
+    def people_links(self, person_id: str) -> list[dict]:
+        """On the dashboard's People card: that person's Google settings, or a button to connect their account."""
+        accs = self.api.accounts(person_id)
+        if accs:
+            return [{"label": "Google settings", "href": f"/m/google/account.html?id={accs[-1]['id']}"}]
+        return [{"label": "Connect Google", "href": f"/m/google/?person={person_id}"}]
 
     async def dashboard(self, action: str, args: dict) -> dict:
         g = self.api

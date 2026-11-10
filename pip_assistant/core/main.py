@@ -13,7 +13,7 @@ from ..common.messages import Message
 from .bus import Bus
 from .conversation import Conversation
 from .dashapi import (alert_action, alerts_snapshot, memory_action, memory_snapshot, mic_action, people_action,
-                      tv_snapshot)
+                      people_snapshot, tv_snapshot)
 from .memory import Memory
 from .mic import MicSwitch
 from .prefs import Prefs
@@ -68,8 +68,7 @@ def build(cfg: dict) -> Core:
     bus.core_handlers["core.alert_action"] = lambda m: alert_action(schedule, conv, m)
     bus.core_handlers["module.request"] = modules.request          # a module's dashboard page (/api/m/<name>)
     bus.core_handlers["core.modules"] = lambda m: {"modules": modules.pages()}
-    bus.core_handlers["core.people"] = lambda m: ({"count": len(people.all())},
-                                                   {**people.snapshot(), "enrolling": conv.enrol_status()})
+    bus.core_handlers["core.people"] = lambda m: ({"count": len(people.all())}, people_snapshot(people, modules, conv))
     bus.core_handlers["core.people_action"] = lambda m: people_action(people, memory, conv, m)
     bus.core_handlers["core.memory"] = lambda m: (memory.counts(), memory_snapshot(memory, people))
     bus.core_handlers["core.memory_action"] = lambda m: memory_action(memory, people, m)

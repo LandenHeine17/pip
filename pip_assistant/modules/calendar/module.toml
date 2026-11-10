@@ -53,8 +53,16 @@ page and in what you're told), "ignored": true (Pip forgets it completely; only 
 - delete: first ask out loud "Delete the Gym calendar and everything on it?"; only after a clear yes, send \
 {"do": "cancel", "kind": "calendar", "calendar": "Gym", "confirmed": true}. Main calendars can't be deleted; \
 one shared with them is only taken off their list.
+Screen box: calendar (today's and tomorrow's events).
 """
+
+[monitor.calendar]                  # a kind of box on the monitor (modules/screen), drawn by static/monitor.js
+label = "Calendar"
+size = [4, 3]
+once = true
+aliases = ["events", "upcoming", "coming up", "schedule"]
 
 [dashboard]
 page = "index.html"
 label = "Calendar"
+account_panel = "account.js"        # its part of a Google account's settings page

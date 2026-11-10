@@ -10,9 +10,8 @@ COLS, ROWS = 12, 8
 MIN_FACE = (3, 2)  # w, h: always at least this much of the top left is the face
 MIN_BOX = (2, 2)
 FACES = {"large": (7, 8), "medium": (5, 5), "small": (4, 4), "none": MIN_FACE, "tiny": MIN_FACE}
-SIZES = {  # how big each kind of box would like to be, when it isn't told
-    "clock": (4, 2), "weather": (4, 3), "timers": (4, 2), "calendar": (4, 3), "todos": (4, 3),
-    "notes": (4, 3), "health": (4, 3), "conversation": (5, 4),
+SIZES = {  # how big each kind of box would like to be, when it isn't told (modules add theirs: screen.add_kinds)
+    "clock": (4, 2), "weather": (4, 3), "timers": (4, 2), "notes": (4, 3), "health": (4, 3), "conversation": (5, 4),
 }
 PLACE = ("x", "y", "w", "h")
 ALIGN = ("top", "middle", "bottom")  # where the face sits in its box: the box itself stays in the corner
@@ -221,7 +220,7 @@ def _fill(grid, box: dict, name: str):
             grid[row][col] = name
 
 
-LABELS = {"timers": "timers", "todos": "to-do list", "health": "Pi health"}
+LABELS = {"timers": "timers", "health": "Pi health"}   # a box's name when it isn't its kind (modules add theirs)
 
 
 def _name(section: dict) -> str:

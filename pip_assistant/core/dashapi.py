@@ -1,7 +1,7 @@
 """Pip-core's answers to the dashboard's requests (`core.*`, sent by pip-web); main.py connects each to its name.
 
-    alerts_snapshot   the timers card (core.alerts), with the calendar's next two weeks
-    tv_snapshot       what the face on the monitor shows (core.tv)
+    alerts_snapshot   the timers card (core.alerts), with the cards modules add (the calendar's next two weeks)
+    tv_snapshot       what the face on the monitor shows (core.tv): timers, and each module's boxes
     alert_action      the timers card's buttons and forms, and commands typed on the dashboard (core.alert_action)
     people_action     people and voices (core.people_action)
     memory_snapshot   the Memory Center's list (core.memory)
@@ -9,6 +9,8 @@
     mic_action        the Listening switch (core.mic)
 
 Anything personal (names, memories, labels, what was typed) travels in `private`, so it's never logged.
+Modules' parts come from their hooks (core/modules.py: home, tv, room_may_see, people_links); nothing here
+names a module.
 """
 from ..common.messages import Message
 from .conversation import Conversation
@@ -19,43 +21,36 @@ from .schedule import Schedule
 
 
 def alerts_snapshot(schedule: Schedule, modules: Registry) -> dict:
-    """The dashboard's timers card, plus the next two weeks from the calendar module (if it's on).
-    Calendar heads-ups are listed only for the next 24 hours; the rest are just counted (D-109)."""
-    cal = modules.modules.get("calendar")
+    """The dashboard's timers card, plus the cards modules add to the front page (the calendar's next two weeks).
+    Heads-ups (kind "event") are listed only for the next 24 hours; the rest are just counted (D-109)."""
     snap = schedule.snapshot()
     soon = snap["now"] + 86400
     later = [a for a in snap["alerts"] if a["kind"] == "event" and a["state"] != "ringing" and a["due"] > soon]
     snap["alerts"] = [a for a in snap["alerts"] if a not in later]
-    return {**snap, "later_heads_ups": len(later), "events": cal.upcoming(14) if cal else []}
+    return {**snap, "later_heads_ups": len(later), "cards": modules.home_cards()}
 
 
 def tv_snapshot(schedule: Schedule, modules: Registry) -> dict:
-    """Only what the TV page shows (D-110): timers, alarms and reminders (heads-ups due within the hour),
-    what's ringing, and today's and tomorrow's events from calendars in the two-week list, never private
-    ones nor any from an account that shares only with its owner (nor their heads-ups); the screen's
-    layout and the to-do lists on it (D-111). Sent privately (labels and titles are personal), never logged."""
+    """Only what the TV page shows (D-110): timers, alarms and reminders (heads-ups due within the hour) and
+    what's ringing, each only if the room may see it (a heads-up for an event Pip mayn't mention to everyone
+    stays off: the calendar decides); the screen's layout and what each module's boxes show (D-111; the
+    calendar: today's and tomorrow's shared events; a to-do box: its list). Sent privately (labels and titles
+    are personal), never logged."""
     snap = schedule.snapshot()
     now = snap["now"]
-    cal = modules.modules.get("calendar")
-
-    def for_room(a) -> bool:   # a heads-up's event must be one Pip may mention to anyone (as on Claude's side)
-        if a["kind"] != "event" or not a.get("event_id"):
-            return True
-        return cal is not None and cal.for_the_room(cal.store.event(a["event_id"]))
     alerts = [{"kind": a["kind"], "label": a["label"], "due": a["due"], "length": a.get("length"), "state": a["state"],
                "repeat": a["repeat"]}
               for a in snap["alerts"] if (a["kind"] != "event" or a["state"] == "ringing" or a["due"] - now < 3600)
-              and for_room(a)]
-    events = [{"title": e["title"], "at": e["at"], "all_day": e["all_day"], "color": e["color"]}
-              for e in (cal.upcoming(2) if cal else []) if e["shared"]]
-    out = {"now": now, "alerts": alerts, "events": events[:12]}
-    # What's on the screen (D-111), and the to-do lists it shows (only those, and only shared ones).
-    screen, todos = modules.modules.get("screen"), modules.modules.get("todos")
-    if screen:
-        out["screen"] = screen.for_tv()
-        wanted = {s.get("list", "") for s in out["screen"]["view"]["sections"] if s["type"] == "todos"}
-        out["lists"] = {w: todos.screen_list(w) for w in wanted} if todos else {}
-    return out
+              and modules.room_may_see(a)]
+    return {"now": now, "alerts": alerts, **modules.tv()}
+
+
+def people_snapshot(people: People, modules: Registry, conv: Conversation) -> dict:
+    """The People card: everyone, voice learning in progress, and the links modules add for each person
+    ("Connect Google"). Sent privately."""
+    snap = people.snapshot()
+    links = {p["id"]: ls for p in snap.get("people", []) if (ls := modules.people_links(p["id"]))}
+    return {**snap, "enrolling": conv.enrol_status(), "links": links}
 
 
 def memory_snapshot(memory: Memory, people: People) -> dict:
@@ -147,7 +142,8 @@ def memory_action(memory: Memory, people: People, m: Message):
 
 
 async def alert_action(schedule: Schedule, conv: Conversation, m: Message) -> dict:
-    """Buttons and forms on the dashboard: shut off, snooze, cancel, new timer, remove an event (FEAT-039)."""
+    """Buttons and forms on the dashboard: shut off, snooze, cancel, new timer (FEAT-039). (A module's card
+    on the front page, like the calendar's, removes its items through its own dashboard requests.)"""
     from ..common import when
     act = m.data.get("action")
     if act == "stop":
@@ -156,12 +152,6 @@ async def alert_action(schedule: Schedule, conv: Conversation, m: Message) -> di
         return {"snoozed": await schedule.snooze(float(m.data.get("minutes") or 0) or None, how="dashboard")}
     if act == "cancel":
         schedule.cancel(str(m.data["id"]))
-        return {"ok": True}
-    if act == "remove_event":
-        cal = conv.modules.get("calendar") if conv.modules else None
-        if cal is None:
-            return {"error": "The calendar module is off"}
-        cal.remove_event(str(m.data["id"]))
         return {"ok": True}
     if act == "timer":
         secs = float(m.data.get("minutes", 0)) * 60

@@ -292,11 +292,8 @@ class CalendarSync:
             acc = self.account(frm)
             r = await self._req(acc, "POST", f"/calendars/{quote(frm['google_id'], safe='')}/events/"
                                 f"{quote(ev['google_id'], safe='')}/move", manage=True, params={"destination": to["google_id"]})
-            if r.status_code == 200:
+            if r.status_code == 200:   # (a missing permission: request() raised NeedsPermission already)
                 return self.store.save_synced(ev["id"], calendar_id=to["id"], **from_google(r.json(), to["reminder"]))
-            if r.status_code == 403 and "ACCESS_TOKEN_SCOPE_INSUFFICIENT" in r.text:
-                from pip_assistant.modules.google.module import NeedsPermission
-                raise NeedsPermission(acc["id"])
             # e.g. one day of a repeating event (Google can't move those): copy it over instead
         return self.store.copy_to(ev, to["id"])
 

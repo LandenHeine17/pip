@@ -2,8 +2,10 @@
 
     store.py   the events on the Pi (also used by Pip's offline commands) and their heads-ups
     sync.py    two-way sync with each connected person's Google calendars
+    offline.py Pip's own calendar phrases, for when he's offline (core/commands.py runs them)
     module.py  this file: Claude's event actions, what Claude is told, the dashboard page's requests,
-               and the sync loop
+               the dashboard's two-week card and the monitor's calendar box (home, tv), and the sync loop
+    static/    the calendar page; monitor.js (the monitor's box); account.js (its part of a Google account's page)
 
 Whose calendar? An event Pip adds goes on the calendar named ("Work", or a person: "put it on Sam's
 calendar"), else the speaker's main one if Pip is sure who it is and they've connected Google, else
@@ -352,8 +354,7 @@ class Calendar(Module):
         return "Done." if moved["private"] else said
 
     def _google_trouble(self, e: Exception) -> str:
-        from pip_assistant.modules.google.module import NeedsPermission
-        if isinstance(e, NeedsPermission):
+        if self.google is not None and isinstance(e, self.google.NeedsPermission):
             return ("I need one more Google permission for that: reconnect Google on the Google page (press Connect Google again) and tick Select all. "
                     "Nothing was changed.")
         log.info("calendar change failed: %s", type(e).__name__)
@@ -526,6 +527,25 @@ class Calendar(Module):
                 for o in self.occurrences(today, today + timedelta(days=days - 1)) if o["calendar_id"] in listed
                 and (o["all_day"] or o["repeat"] or o["at"] == o["start"]
                      or datetime.fromtimestamp(o["at"]).date() == today)]
+
+    # ---------------------------------------------------------------- the dashboard's front page and the monitor
+    def home(self) -> dict:
+        """The "next two weeks" card on the dashboard's front page; its ✕ removes an event (dashboard "delete")."""
+        return {"title": "Calendar · next two weeks", "link": "/m/calendar/", "empty": "Nothing on the calendar.",
+                "items": self.upcoming(14), "remove": "delete"}
+
+    def tv(self, shown: list[dict]) -> dict:
+        """The calendar box on the monitor (static/monitor.js, D-110): today's and tomorrow's events from calendars
+        in the two-week list, never private ones nor any from an account that shares only with its owner."""
+        events = [{"title": e["title"], "at": e["at"], "all_day": e["all_day"], "color": e["color"]}
+                  for e in self.upcoming(2) if e["shared"]]
+        return {"calendar": {"events": events[:12]}}
+
+    def room_may_see(self, alert: dict) -> bool | None:
+        """An event's heads-up shows on the room's monitor only if Pip may mention that event to anyone."""
+        if alert.get("kind") != "event" or not alert.get("event_id"):
+            return None
+        return self.for_the_room(self.store.event(alert["event_id"]))
 
     def calendars_view(self, ignored: bool = False) -> list[dict]:
         accounts, names = self._accounts(), self._people()

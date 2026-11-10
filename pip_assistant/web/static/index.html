@@ -30,7 +30,7 @@
   <div id="ringing"></div>
   <div class="cols2">
     <div><div class="label">Timers, alarms &amp; reminders</div><div class="items" id="alerts"></div></div>
-    <div><div class="label" style="display:flex;justify-content:space-between">Calendar · next two weeks <a href="/m/calendar/" id="calLink" hidden>Open calendar ›</a></div><div class="items" id="events"></div></div>
+    <div id="cards" style="display:contents"></div>  <!-- cards modules add (core/modules.py home()): the calendar's next two weeks -->
   </div>
   <form id="newtimer"><input id="tmin" type="number" min="0.1" step="0.1" placeholder="Minutes" style="width:7em" required>
     <input id="tlabel" placeholder="Label (optional)" maxlength="40" style="flex:1;min-width:8em"><button class="primary">Start timer</button></form>
@@ -220,7 +220,7 @@ function live(){
   es.addEventListener("alerts", () => loadSched());
   es.onerror = () => { $("conn").textContent = "Reconnecting…"; };
 }
-let sched = {alerts:[], events:[], ringing:[], missed:[], now:0, snooze_minutes:5}, skew = 0, menuOpen = false;
+let sched = {alerts:[], cards:[], ringing:[], missed:[], now:0, snooze_minutes:5}, skew = 0, menuOpen = false;
 const KIND = {timer:"Timer", alarm:"Alarm", reminder:"Reminder", event:"Heads-up"};
 const REP = r => !r ? "" : r.startsWith("weekly:") ? "every "+["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"][+r.slice(7)] : {daily:"every day",weekdays:"weekdays",weekends:"weekends",weekly:"every week"}[r]||r;
 function clock(ts){ return new Date(ts*1000).toLocaleString([], {weekday:"short", hour:"numeric", minute:"2-digit"}); }
@@ -250,10 +250,16 @@ function renderSched(){
       <div class="sub">${a.kind==="timer" ? "of "+left(a.length||0) : clock(a.due)}${a.repeat?" · "+REP(a.repeat):""}${a.state==="ringing"?" · ringing":""}</div>
       ${pct!=null?`<div class="bar"><i style="width:${pct}%"></i></div>`:""}</div>
       <span style="display:flex;align-items:center;gap:6px">${a.kind==="timer" ? `<span class="big">${left(a.due-now)}</span>` : ""}<button class="ghost" title="Cancel" onclick="act({action:'cancel',id:${js(a.id)}})">✕</button></span></div>`;
-  }).concat(missed).concat(sched.later_heads_ups ? [`<div class="sub" style="padding:4px 2px">+ ${sched.later_heads_ups} more calendar heads-up${sched.later_heads_ups>1?"s":""} after tomorrow · <a href="/m/calendar/">calendar</a></div>`] : []).join("") || `<div class="empty">Nothing set.</div>`;
-  $("events").innerHTML = sched.events.map(e => `<div class="item" style="border-left:4px solid ${e.color||"transparent"}"><div><b>${esc(e.title)}</b>${e.private?` <span class="pill" style="background:var(--line)">private</span>`:""}<div class="sub">${e.all_day ? new Date(e.at*1000).toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"})+" · all day" : clock(e.at)}${e.repeat?" · "+REP(e.repeat):""}</div></div>
-      <button class="ghost" title="Remove" onclick="if(confirm('Remove this event${e.repeat?" (all repeats)":""}?')) act({action:'remove_event',id:${js(e.id)}})">✕</button></div>`).join("")
-    || `<div class="empty">Nothing on the calendar.</div>`;
+  }).concat(missed).concat(sched.later_heads_ups ? [`<div class="sub" style="padding:4px 2px">+ ${sched.later_heads_ups} more heads-up${sched.later_heads_ups>1?"s":""} after tomorrow</div>`] : []).join("") || `<div class="empty">Nothing set.</div>`;
+  // Each card a module adds (its home(), core/modules.py): a list of dated items, each with ✕ if it can remove them.
+  $("cards").innerHTML = (sched.cards||[]).map(c => `<div><div class="label" style="display:flex;justify-content:space-between">${esc(c.title)}${c.link?` <a href="${esc(c.link)}">Open ›</a>`:""}</div>
+    <div class="items">${(c.items||[]).map(e => `<div class="item" style="border-left:4px solid ${esc(e.color||"transparent")}"><div><b>${esc(e.title)}</b>${e.private?` <span class="pill" style="background:var(--line)">private</span>`:""}<div class="sub">${e.all_day ? new Date(e.at*1000).toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"})+" · all day" : clock(e.at)}${e.repeat?" · "+REP(e.repeat):""}</div></div>
+      ${c.remove ? `<button class="ghost" title="Remove" onclick="removeItem(${js(c.module)},${js(c.remove)},${js(e.id)},${e.repeat?1:0})">✕</button>` : ""}</div>`).join("")
+      || `<div class="empty">${esc(c.empty||"Nothing here.")}</div>`}</div></div>`).join("");
+}
+async function removeItem(module, action, id, repeats){
+  if(!confirm(repeats ? "Remove this (all repeats)?" : "Remove this?")) return;
+  try{ await pip.act(pip.post(action, {id}, module)); }finally{ loadSched(); }
 }
 async function loadSched(){ try{ const r = await (await fetch("/api/alerts",{cache:"no-store"})).json(); if(r.now){ sched = r; skew = Date.now()/1000 - r.now; $("ringing").dataset.key = ""; renderSched(); } }catch(e){} }
 async function act(body){ try{ const r = await (await fetch("/api/alerts/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})).json(); if(r.error) alert(r.error); return r; }catch(e){ alert("Couldn't reach Pip"); } finally { loadSched(); } }
@@ -313,19 +319,15 @@ function renderPeople(){
       <span style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">
       ${ppl.voice_model ? `<button onclick="pAct({action:'enrol_start',id:${js(p.id)}})">${p.voice_samples?"Re-learn voice":"Learn my voice"}</button>` : ""}
       ${ppl.voice_model && ppl.m0_recordings && p.role==="admin" && !p.voice_samples ? `<button title="Uses 8 recordings you already made in the M0 tests: nothing to read" onclick="pAct({action:'voice_from_m0',id:${js(p.id)}})">Use my M0 recordings</button>` : ""}
-      ${!mods.some(m => m.name === "google") ? "" : googleAcc[p.id]
-        ? `<a class="ghost" style="padding:6px 10px;font-size:.88rem" href="/m/google/account.html?id=${googleAcc[p.id]}">Google settings</a>`
-        : `<a class="ghost" style="padding:6px 10px;font-size:.88rem" href="/m/google/?person=${p.id}">Connect Google</a>`}
+      ${((ppl.links||{})[p.id]||[]).map(l => `<a class="ghost" style="padding:6px 10px;font-size:.88rem" href="${esc(l.href)}">${esc(l.label)}</a>`).join("")}
       ${p.voice_samples ? `<button class="ghost" title="Forget voice" onclick="if(confirm(${js(`Forget ${p.name}’s voice?`)})) pAct({action:'forget_voice',id:${js(p.id)}})">Forget voice</button>` : ""}
       <button class="ghost" title="Remove person" onclick="if(confirm(${js(`Remove ${p.name}, their voice and memories about them?`)})) pAct({action:'remove',id:${js(p.id)}})">✕</button></span></div>`).join("")
     + ppl.guests.map(g => `<div class="item"><div><b>${esc(g.name)}</b> <span class="pill" style="background:var(--soft)">this visit</span><div class="sub">forgotten after 2 hours of quiet</div></div><button class="ghost" onclick="pAct({action:'guest_join',id:${js(g.id)}})">Add to household</button></div>`).join("")
     || `<div class="empty">Nobody added yet. Add yourself first (as Admin).</div>`;
   $("peoplesum").textContent = ppl.voice_model ? `${ppl.people.length} ${ppl.people.length===1?"person":"people"}` : "voice model not installed";
 }
-let googleAcc = {};   // person id → their connected Google account (for the "Google settings" link, D-109)
+// ppl.links: each person's links that modules add (core/modules.py people_links), like "Google settings" (D-109)
 async function loadPeople(){ try{ const r = await (await fetch("/api/people",{cache:"no-store"})).json();
-  try{ const g = await (await fetch("/api/m/google?action=status",{cache:"no-store"})).json();
-    googleAcc = Object.fromEntries((g.accounts||[]).map(a => [a.person_id, a.id])); }catch(e){ googleAcc = {}; }
   if(r.people){ ppl = r; renderPeople(); } }catch(e){} }
 async function pAct(body){ try{ const r = await (await fetch("/api/people/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})).json(); if(r.error) alert(r.error); return r; }catch(e){ alert("Couldn't reach Pip"); } finally { loadPeople(); loadMemory(); } }
 $("personadd").onsubmit = async ev => { ev.preventDefault(); const r = await pAct({action:"add", name:$("pname").value, role:$("prole").value}); if (r && r.ok) $("pname").value = ""; };
@@ -334,7 +336,7 @@ setInterval(() => { if (ppl.enrolling) loadPeople(); }, 1500);
 let mods = [];
 async function loadModules(){ try{ mods = await (await fetch("/api/modules",{cache:"no-store"})).json();
   $("modlinks").innerHTML = mods.map(m => `<a href="${m.page}"><button>${esc(m.label)}</button></a>`).join("");
-  $("calLink").hidden = !mods.some(m => m.name === "calendar"); renderPeople(); }catch(e){} }
+  renderPeople(); }catch(e){} }
 setInterval(loadChanges, 30000);
 loadModules(); loadChanges(); loadSched(); loadConv(); loadTrace(); loadHealth(); loadMemory(); loadPeople(); loadMic(); if(!location.search.includes("nolive")) live();
 </script>

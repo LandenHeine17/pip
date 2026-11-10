@@ -26,8 +26,17 @@ person's list; otherwise the speaker's, or the household's)}
 - {"do": "complete_task", "id": "#t1a2b3"} when they've done it ("I bought the milk")
 - {"do": "change_task", "id": "#t1a2b3", "title": "...", "due": "..."} · {"do": "delete_task", "id": "#t1a2b3"}
 For "what's on my list", answer from what you're given.
+Screen box: todos (a to-do list: "list": its name, or none for the household's).
 """
+
+[monitor.todos]                     # a kind of box on the monitor (modules/screen), drawn by static/monitor.js
+label = "To-do list"
+size = [4, 3]
+takes = ["list"]
+aliases = ["to-dos", "todo", "to-do", "tasks", "list", "shopping list", "shopping"]
+explain = "to-do list"
 
 [dashboard]
 page = "index.html"
 label = "To-dos"
+account_panel = "account.js"        # its part of a Google account's settings page
