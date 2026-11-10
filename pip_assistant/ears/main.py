@@ -154,10 +154,11 @@ class Ears:
     async def talked_over(self, db: float) -> None:
         """Someone is talking over Pip: he stops, and what they say is for him. If they were already part-way
         through a sentence when he started (an alarm went off mid-sentence), that recording carries on whole;
-        starting a new one would throw away what they'd said so far (owner's feedback, 2026-11-10)."""
+        starting a new one would throw away what they'd said so far (owner's feedback, 2026-11-10). Unless it's
+        already over half its longest, from long room talk: then a fresh one, so the end isn't cut off."""
         await self.stop_speaking()
         await self.bus.emit("speech.interrupted", {"level_dbfs": db})
-        if self.seg.capturing:
+        if self.seg.capturing and self.seg.capture.get("n", 0) < self.seg.max_frames // 2:
             if self.seg.capture["reason"] == "room":
                 self.seg.capture["reason"] = "barge_in"   # room talk that carried on over him: it's for him now
         else:

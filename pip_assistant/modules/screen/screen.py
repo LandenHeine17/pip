@@ -408,6 +408,8 @@ class Screen:
             raise ScreenError("a screen needs a list of boxes")
         old, used, merged = self.view["sections"], set(), []
         for s in sections:
+            if not isinstance(s, (str, dict)):
+                raise ScreenError("each box is a kind of box, like {\"type\": \"clock\"}")
             s = {"type": s} if isinstance(s, str) else dict(s)
             kind = kind_of(s.get("type"))
             match = next((i for i, o in enumerate(old) if i not in used and o["type"] == kind and
