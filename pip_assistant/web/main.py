@@ -253,8 +253,9 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         q = request.query_params
         try:
             body = {"files": source.index()} if q.get("index") else source.read(q.get("path", ""), q.get("symbol", ""))
-        except source.NotAllowed as e:
-            return JSONResponse({"error": str(e)}, status_code=404)
+        except ValueError as e:   # NotAllowed, or a path no file can have (a null byte)
+            return JSONResponse({"error": str(e) if isinstance(e, source.NotAllowed) else "not one of Pip's own files"},
+                                status_code=404)
         return JSONResponse(body, headers={"Cache-Control": "no-store"})
 
     async def prompts_page(request):

@@ -74,4 +74,5 @@ def test_the_page_and_the_route():
     r = client.get("/api/source", params={"path": "pip_assistant/core/states.py", "symbol": "situation"})
     assert r.status_code == 200 and "def situation" in r.json()["code"]
     assert client.get("/api/source", params={"path": "../pip-data/pip.db"}).status_code == 404
+    assert client.get("/api/source", params={"path": "pip_assistant/core/states.py\x00"}).status_code == 404
     assert len(client.get("/api/source", params={"index": "1"}).json()["files"]) > 50

@@ -480,10 +480,15 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             if answered:                       # "stop", "snooze", his name: the alarm is dealt with
                 await self.say(reply, "alarm answered")
                 return
-            if reply is not None and HALLUCINATION.match(clean(text)):
-                return                         # what speech-to-text "hears" in the ringtone
-            # Anything else was room talk over the alarm (it keeps ringing): still heard, into the transcript and
-            # the feed, like any room talk (owner's feedback, 2026-11-10: it vanished)
+            if reply is not None:
+                # Room talk over the alarm (it keeps ringing): only recorded, into the transcript and the feed (owner's
+                # feedback, 2026-11-10: it vanished). Never answered: nothing said over an alarm reaches Claude,
+                # even in the follow-up window. What speech-to-text "hears" in the ringtone is dropped.
+                if text.strip(" .?!,") and not HALLUCINATION.match(clean(text)):
+                    text = self.fix_names(text)
+                    self.hear(text, speaker)
+                    await self.feed(text, "room", speaker, offline=offline)
+                return
         if not text.strip(" .?!,"):
             await self._finish_pending()
             return

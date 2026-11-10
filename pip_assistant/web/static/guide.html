@@ -534,6 +534,7 @@ let DONE = new Set();
 try { DONE = new Set(JSON.parse(localStorage.getItem("pip-guide-done") || "[]")); } catch (e) { /* private window: no ticks */ }
 const saveDone = () => { try { localStorage.setItem("pip-guide-done", JSON.stringify([...DONE])); } catch (e) {} };
 const steps = {};   // chapter id → tour step shown
+let showing = "";   // the chapter on screen now
 let FILES = [];
 
 function sidebar(current) {
@@ -542,6 +543,7 @@ function sidebar(current) {
 }
 async function show(id, step) {
   const c = CHAPTERS.find(x => x.id === id) || CHAPTERS[0];
+  showing = c.id;
   sidebar(c.id);
   const i = CHAPTERS.indexOf(c), prev = CHAPTERS[i - 1], next = CHAPTERS[i + 1];
   if (step != null) steps[c.id] = step;
@@ -566,7 +568,8 @@ async function drawTour(c) {
   $("tnext").onclick = () => { steps[c.id] = n + 1; drawTour(c); $("tour").scrollIntoView({block: "start", behavior: "smooth"}); };
   $("tour").querySelectorAll("[data-step]").forEach(d => d.onclick = () => { steps[c.id] = +d.dataset.step; drawTour(c); });
   const r = await source(s.ref);
-  if (steps[c.id] === n || (steps[c.id] == null && n === 0)) $("tourcode").innerHTML = codeBox(r);
+  // Still this chapter and this step? (the reader may have moved on while the code loaded)
+  if (showing === c.id && (steps[c.id] ?? 0) === n && $("tourcode")) $("tourcode").innerHTML = codeBox(r);
 }
 async function drawFiles() {
   if (!FILES.length) {

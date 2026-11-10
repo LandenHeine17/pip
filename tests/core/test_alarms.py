@@ -215,3 +215,20 @@ async def test_a_snoozed_timer_counts_down_the_snooze(tmp_path):
     s.ringing = [alarm["id"]]
     await s.snooze(5)
     assert s.get(alarm["id"])["length"] == 1800
+
+
+async def test_room_talk_over_an_alarm_is_recorded_but_never_answered(tmp_path):
+    """Review (2026-11-10): even in the follow-up window, talk over a ringing alarm only goes into the transcript."""
+    clock = Clock()
+    stt = FakeSTT("can you tell me the weather")
+    bus, sched, conv, ears, got, tasks = await setup_bus(tmp_path, clock, stt)
+    sched.add("alarm", "alarm", clock() + 5)
+    clock.t += 6
+    await asyncio.sleep(0.3)
+    conv.expect_until = __import__("time").monotonic() + 30          # as if Pip had just spoken: the follow-up window
+    d, p = utt("room")
+    await ears.emit("heard.utterance", d, private=p)
+    await asyncio.sleep(0.3)
+    assert sched.ringing and not [x for x in got if x[0] == "thinker.ask"]
+    assert "can you tell me the weather" in "\n".join(conv.transcript.render())
+    await finish(bus, tasks)

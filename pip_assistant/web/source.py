@@ -105,10 +105,10 @@ def index(root: Path = ROOT) -> list[dict]:
     for f in sorted((root / "pip_assistant").rglob("*.py")):
         if "__pycache__" in f.parts or f.name.startswith("test_"):
             continue
+        text = f.read_text(errors="replace")
         try:
-            doc = ast.get_docstring(ast.parse(f.read_text())) or ""
+            doc = ast.get_docstring(ast.parse(text)) or ""
         except SyntaxError:
             doc = ""
-        out.append({"path": str(f.relative_to(root)), "about": doc.strip().split("\n")[0][:200],
-                    "lines": f.read_text().count("\n")})
+        out.append({"path": str(f.relative_to(root)), "about": doc.strip().split("\n")[0][:200], "lines": text.count("\n")})
     return out

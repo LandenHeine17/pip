@@ -177,3 +177,10 @@ def test_several_changes_at_once(env):
     assert len(s.history) == before + 1                                # one change: one undo
     say(reg, "undo_screen")
     assert "weather" in [x["type"] for x in s.view["sections"]]
+
+
+def test_a_bad_box_in_an_arrangement_changes_nothing(env):
+    reg, mod, _ = env
+    before = mod.screen.view
+    said = say(reg, "arrange_screen", boxes=[{"type": "clock"}, 7])
+    assert "each box" in said.lower() and mod.screen.view == before
