@@ -126,9 +126,7 @@ class Ears:
                 self.loud_frames = self.loud_frames + 1 if db > self.cfg["barge_in_dbfs"] else 0
                 if self.loud_frames >= 3:  # ~240 ms of speech
                     self.loud_frames = 0
-                    await self.stop_speaking()
-                    await self.bus.emit("speech.interrupted", {"level_dbfs": db})
-                    self.seg.start("barge_in", lookback=0.4)
+                    await self.talked_over(db)
             elif not self.seg.capturing and self.seg.is_speech(db) and not self.speaking:
                 if time.monotonic() < self.follow_until:
                     self.follow_until = 0.0
@@ -151,6 +149,18 @@ class Ears:
                     c["reason"], c["word"], c["after"] = "wake", word, c["had_speech"]
                 else:
                     self.seg.start("wake", word=word, lookback="phrase")
+
+    async def talked_over(self, db: float) -> None:
+        """Someone is talking over Pip: he stops, and what they say is for him. If they were already part-way
+        through a sentence when he started (an alarm went off mid-sentence), that recording carries on whole;
+        starting a new one would throw away what they'd said so far (owner's feedback, 2026-11-10)."""
+        await self.stop_speaking()
+        await self.bus.emit("speech.interrupted", {"level_dbfs": db})
+        if self.seg.capturing:
+            if self.seg.capture["reason"] == "room":
+                self.seg.capture["reason"] = "barge_in"   # room talk that carried on over him: it's for him now
+        else:
+            self.seg.start("barge_in", lookback=0.4)
 
     async def _send_utterance(self, utt) -> None:
         data = {"reason": utt.reason, "seconds": utt.seconds, "had_speech": utt.had_speech, "word": utt.word}
