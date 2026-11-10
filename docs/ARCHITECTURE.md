@@ -218,6 +218,7 @@ flowchart LR
 | `offline()` | its own phrases for when Pip is offline, and items the shared "move it", "cancel that" rules can change (`OfflineItems`) | "put the dentist on the calendar Friday at 3" (`offline.py`) |
 | `home()` | a card on the dashboard's front page | the next two weeks |
 | `tv(shown)` + `[monitor.<kind>]` + `static/monitor.js` | a kind of box on the monitor: the screen module learns it at startup, the module sends its data and draws it | today's and tomorrow's shared events |
+| `room_heard(text, call)` | answers room speech not meant for Pip with something for him to say (offered only when he is free to talk and not in quiet hours; the module keeps nothing of the words) | the six-seven chant |
 | `room_may_see(alert)` | whether a heads-up may show on the room's monitor | not for an event Pip mayn't mention to everyone |
 | `people_links(id)` | links on the dashboard's People card | (Google: "Connect Google", "Google settings") |
 | `account_panel` (module.toml) | its part of a Google account's settings page | its calendars, the household calendar |

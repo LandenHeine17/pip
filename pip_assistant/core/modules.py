@@ -17,6 +17,7 @@ setup returns a Module. Each of its parts is optional:
     home()            a card on the dashboard's front page (the calendar's next two weeks)
     tv(shown)         what its boxes on the monitor show (the box kinds are in module.toml's [monitor.<kind>],
                       drawn by static/monitor.js); tv_layout() is only for the module that lays out the screen
+    room_heard(text, call)  room speech not meant for Pip: a module may answer with something for Pip to say
     room_may_see(a)   may this timer, alarm or heads-up show on the room's monitor? (the calendar hides the
                       heads-ups of events it mayn't mention to everyone)
     people_links(id)  links for a person on the dashboard's People card ("Connect Google")
@@ -148,6 +149,12 @@ class Module:
 
     def tv_layout(self) -> dict | None:
         """Only for the module that lays out the screen (modules/screen): its layout, or None."""
+        return None
+
+    def room_heard(self, text: str, call: Call) -> str | None:
+        """A sentence heard in the room that wasn't said to Pip (not called, not mentioned). Return something for
+        Pip to say, or None to stay quiet. Read it and forget it: don't store or log what people said. Pip only
+        asks when he is free to speak and it isn't quiet hours (core/conversation.py)."""
         return None
 
     def room_may_see(self, alert: dict) -> bool | None:
@@ -357,6 +364,16 @@ class Registry:
         if alert.get("event_id"):
             return bool(said) and all(said)
         return all(said)
+
+    def room_heard(self, text: str, call: Call) -> str | None:
+        """Offer a sentence of room speech to every module; the first to answer gives what Pip says (or None)."""
+        for name, m in self.modules.items():
+            try:
+                if reply := m.room_heard(text, call):
+                    return reply
+            except Exception:
+                log.exception("module %s room_heard failed", name)   # never log the words themselves
+        return None
 
     def people_links(self, person_id: str) -> list[dict]:
         return [link for _, links in self._each("people_links", lambda m: m.people_links(person_id), []) for link in links or []]
