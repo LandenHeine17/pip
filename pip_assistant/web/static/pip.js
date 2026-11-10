@@ -12,7 +12,7 @@ async function postJSON(url, body){
   return r.json(); }
 
 // Talk to this page's module in pip-core: pip.get("range", {from, to}) · pip.post("add", {...})
-// (or another module, last argument: pip.get("all_calendars", {}, "calendar"))
+// (or another module, last argument: pip.get("status", {}, "<its name>"))
 const pip = {
   module: location.pathname.split("/")[2],
   async get(action, args = {}, module = pip.module) {

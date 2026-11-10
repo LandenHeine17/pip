@@ -268,8 +268,8 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         try:
             r = await bus.request("core", "core.tv", timeout=3)
             out.update(r.private or {})
-            if screen := out.get("screen"):
-                sections = screen["view"]["sections"]
+            if layout := out.get("layout"):   # the screen's layout (D-111)
+                sections = layout["view"]["sections"]
                 state.screen([x["type"] for x in sections],
                              any(x["type"] == "conversation" and x.get("room", True) for x in sections))
         except Exception:

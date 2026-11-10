@@ -23,6 +23,9 @@ working on a plain copy of the project (no git; never try to commit). Read CLAUD
 docs/PROJECT-MAP.md first: they say how changes are made here.
 Rules you must follow:
 - Do only what the approved plan says. Small and focused; don't refactor unrelated code.
+- A new feature goes in a module of its own: copy pip_assistant/modules/_template (it shows every part a module \
+can have: Claude's actions, offline phrases, a dashboard page and card, a box on the monitor) and follow \
+"Making a module" in docs/HOW-PIP-WORKS.md. Pip's programs (core, web, …) never name a module.
 - No new dependencies. Never edit pyproject.toml, uv.lock, .venv/, deploy/systemd/, tools/, .gitignore, \
 .claude/ or anything outside this folder: such a change is refused.
 - Keep the plain-language docs in step with the change (docs/PROJECT-MAP.md if you add or move files; the \

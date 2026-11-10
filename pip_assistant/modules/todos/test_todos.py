@@ -6,7 +6,7 @@ import pytest
 from pip_assistant.common.modules import ROOT, read
 from pip_assistant.core.modules import Call, Invalid, Registry
 from pip_assistant.core.people import Match, People
-from pip_assistant.modules.google.testing import FakeGoogle, connect
+from fakes.google import FakeGoogle, connect
 
 NOW = datetime(2026, 11, 7, 9, 0)
 

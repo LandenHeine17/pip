@@ -153,10 +153,13 @@ Every new feature is a **module**: a folder with a short description file and a 
 
 ```
 pip_assistant/modules/calendar/
-├── module.toml      ← description: name, kind, what it does, permissions, settings, what Claude is told, its page
+├── module.toml      ← description: name, kind, what it does, permissions, settings, what Claude is told, its page,
+│                      the kinds of box it adds to the monitor
 ├── module.py        ← setup(ctx): the code, in small parts (below)
-├── store.py, sync.py← more code if it needs it
-├── static/          ← its dashboard page (served at /m/calendar/)
+├── store.py, sync.py← more code if it needs it (the calendar also has visibility.py, actions.py, dashboard.py,
+│                      offline.py, and api.py: what other modules may use)
+├── static/          ← its dashboard page (served at /m/calendar/); monitor.js draws its box on the monitor;
+│                      account.js is its part of a Google account's page
 └── test_calendar.py ← its tests (run with all the others)
 ```
 
@@ -177,9 +180,16 @@ explain = "How often Pip checks Google for calendar changes."
 [claude]                            # added to what Claude is told
 instructions = "Calendar events: … ACTION {\"do\": \"add\", \"kind\": \"event\", …}"
 
+[monitor.calendar]                  # a kind of box it adds to the monitor ("put the calendar up")
+label = "Calendar"
+size = [4, 3]
+once = true
+aliases = ["events", "coming up", "schedule"]
+
 [dashboard]                         # a button on the main dashboard
 page = "index.html"
 label = "Calendar"
+account_panel = "account.js"        # its part of a Google account's settings page
 ```
 
 How it plugs in:
@@ -194,13 +204,33 @@ flowchart LR
     CORE --> S["its part of what Claude reads<br/>(short; shorter for join-in checks)"]
     CORE --> LK["look-ups Claude asks for<br/>(ACTION look → asked again)"]
     CORE --> J["background jobs (e.g. sync)"]
+    CORE --> OFF["offline(): its own phrases<br/>when Pip is offline"]
+    CORE --> HOME["home(): a card on the<br/>dashboard's front page"]
+    CORE --> TV["tv(): what its boxes on the<br/>monitor show (static/monitor.js draws them)"]
 ```
 
-What a module gets (its **context**), and nothing more: its settings (`[modules.<name>]` in `~/pip-data/settings.toml` overrides the defaults; `enabled = false` switches it off); **its own tables** in `pip.db`, named `<name>_…` (writing anything else is refused); **its own section of `secrets.toml`**; an internet client limited to the hosts in its permissions; the timers schedule (for heads-ups), the people list, whether Pip is online, and the modules it `needs`. Its requests from the dashboard and its events travel privately (never logged).
+**Pip's programs never name a module** (structure review phase 4, 2026-11-10). pip-core, pip-web, the dashboard and the monitor ask *every* module through the hooks in `core/modules.py`, so a module can be added, changed or switched off without touching them:
+
+| Hook | What it adds | The calendar's, for example |
+|---|---|---|
+| `actions` | ACTION verbs Claude may use (checked first, then done) | add, change, cancel an event; look further ahead |
+| `summary(call)` | its part of what Claude reads with each request | today, tomorrow, the calendars' names |
+| `offline()` | its own phrases for when Pip is offline, and items the shared "move it", "cancel that" rules can change (`OfflineItems`) | "put the dentist on the calendar Friday at 3" (`offline.py`) |
+| `home()` | a card on the dashboard's front page | the next two weeks |
+| `tv(shown)` + `[monitor.<kind>]` + `static/monitor.js` | a kind of box on the monitor: the screen module learns it at startup, the module sends its data and draws it | today's and tomorrow's shared events |
+| `room_may_see(alert)` | whether a heads-up may show on the room's monitor | not for an event Pip mayn't mention to everyone |
+| `people_links(id)` | links on the dashboard's People card | (Google: "Connect Google", "Google settings") |
+| `account_panel` (module.toml) | its part of a Google account's settings page | its calendars, the household calendar |
+| `dashboard(action, args)`, `tasks()`, `find(ref)` | its page's requests, background jobs, its items' short ids | the month view; syncing every two minutes |
+| `api` | a small documented object other modules may use (`api.py`) | `events_on(day, call)`, `add_event(…)`, both keeping its privacy rule |
+
+`tools/check_map.py` (run before every commit) and `tests/test_plugins.py` (run by the builder too) fail if a program names a module.
+
+What a module gets (its **context**), and nothing more: its settings (`[modules.<name>]` in `~/pip-data/settings.toml` overrides the defaults; `enabled = false` switches it off); **its own tables** in `pip.db`, named `<name>_…` (writing anything else is refused); **its own section of `secrets.toml`**; an internet client limited to the hosts in its permissions; **heads-ups for its own items** (`ctx.alerts`: add, cancel, not pip-core's whole schedule); **who's in the household** (`ctx.people`: id, name and role only, never voices); whether Pip is online; the kinds of box every module adds to the monitor (`ctx.boxes`, for the screen module); and the small `api` of each module it `needs`. Its requests from the dashboard and its events travel privately (never logged).
 
 **Keep what Claude reads short** (D-102): it goes with every request, including join-in checks every ~40 s. A module's summary is told whether it's for a join-in check (`call.kind == "join"`) and should send even less then. Anything bigger is a **look-up**: the module declares an action `look:<kind>`, Claude replies `ACTION {"do": "look", "kind": …}`, Pip fetches it and asks Claude again with the result (once). An action that has to wait for the internet (e.g. making a Google calendar) may be `async`. A module that adds columns to its own tables later uses `ALTER TABLE` on its own tables (allowed); test it against an old database too.
 
-A **template** module with a worked example is in `pip_assistant/modules/_template/`. Adding a simple skill means copying it and filling in the marked parts.
+A **template** module with a worked example of every part (dice: Claude's action, an offline phrase, a dashboard page and card, a box on the monitor, tests) is in `pip_assistant/modules/_template/`. Adding a feature means copying it and keeping what you need; the step-by-step recipe is in [HOW-PIP-WORKS.md](HOW-PIP-WORKS.md) ("Making a module"). Pip's self-changes are told to do the same.
 
 ### 7.3 Swapping a provider
 
@@ -269,7 +299,7 @@ flowchart TD
 
 ## 11. Testing
 
-- **Every module has its own tests.** They're run by hand (`uv run pytest`, memory-capped; see CONTRIBUTING §4), and by pip-builder before any self-change is offered to you (the agent runs them in `tools/sandbox-test`; then the whole suite runs again in the strict sandbox). The pre-commit check runs only `tools/check_secrets.py` and `tools/check_map.py`.
+- **Every module has its own tests.** They're run by hand (`uv run pytest`, memory-capped; see CONTRIBUTING §4), and by pip-builder before any self-change is offered to you (the agent runs them in `tools/sandbox-test`; then the whole suite runs again in the strict sandbox). The pre-commit check runs only `tools/check_secrets.py` and `tools/check_map.py` (the project map, and no module named in Pip's programs). Test helpers live in `tests/` (`modhelp.py` loads real modules the way pip-core does; `fakes/google.py` is a pretend Google); pytest puts `tests/` on the import path, so a module's own tests can use them too. Nothing test-only ships inside `pip_assistant/`.
 - **Replay tests:** conversations and audio clips are fed in without anyone speaking, for listening, interruptions and alarms. Tests that use your private recordings run only on the Pi and never go to GitHub.
 - The **acceptance criteria** (`AC-*` in REQUIREMENTS) become automated tests as each feature is built.
 

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Dice</title>
+<link rel="stylesheet" href="/pip.css">
+</head>
+<body>
+<main>
+<header>
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+    <div><h1>Dice</h1><div class="sub">Say "Pip, roll a die". (The template module's page: copy it for yours.)</div></div></div>
+</header>
+<section>
+  <form id="roll" style="margin-top:0"><input name="sides" type="number" min="2" max="1000" placeholder="Sides" style="width:7em">
+    <button class="primary">Roll</button></form>
+  <div class="items" id="rolls"></div>
+</section>
+</main>
+<script src="/pip.js"></script>
+<script>
+// pip.get / pip.post reach this module's dashboard() in module.py; pip.live calls load() when it says it changed.
+async function load(){
+  const r = await pip.act(pip.get("rolls"));
+  if (r) $("rolls").innerHTML = r.rolls.map(x => `<div class="item"><b>${esc(x.result)}</b> <span class="sub">d${esc(x.sides)} · ${new Date(x.at*1000).toLocaleTimeString()}</span></div>`).join("")
+    || `<div class="empty">No rolls yet.</div>`;
+}
+$("roll").onsubmit = async ev => { ev.preventDefault(); if (await pip.act(pip.post("roll", {sides: +ev.target.sides.value || undefined}))) load(); };
+pip.live(load);
+load();
+</script>
+</body>
+</html>

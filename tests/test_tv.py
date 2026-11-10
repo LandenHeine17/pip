@@ -148,11 +148,11 @@ async def test_room_talk_reaches_the_tv_only_with_a_conversation_box_showing_it(
 
 def test_pi_health_only_while_its_box_is_up():
     snap = {"now": time.time(), "alerts": [], "boxes": {},
-            "screen": {"view": {"sections": [{"type": "clock"}]}}}
+            "layout": {"view": {"sections": [{"type": "clock"}]}}}
     state = State()
     client = TestClient(build_app(FakeBus({"core.tv": snap}), state, {}))
     assert "vitals" not in client.get("/api/tv").json() and client.get("/api/tv/vitals").json() == {}
-    snap["screen"]["view"]["sections"].append({"type": "health"})
+    snap["layout"]["view"]["sections"].append({"type": "health"})
     assert "memory" in client.get("/api/tv").json()["vitals"]
     assert "cpu" in client.get("/api/tv/vitals").json()
 
@@ -165,7 +165,7 @@ def test_pip_core_sends_the_screen_and_only_the_lists_on_it(tmp_path):
     reg = registry(tmp_path, schedule=sched, names=("google", "todos", "screen"))
     reg.module("todos").store.add("milk", "pip")
     snap = tv_snapshot(sched, reg)
-    assert snap["screen"]["name"] == "default" and "todos" not in snap["boxes"]
+    assert snap["layout"]["name"] == "default" and "todos" not in snap["boxes"]
     reg.modules["screen"].screen.show("morning")    # it has the household's to-do list
     snap = tv_snapshot(sched, reg)
     assert snap["boxes"]["todos"]["lists"][""]["items"] == ["milk"]   # the to-do module's tv()
