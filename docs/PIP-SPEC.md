@@ -319,7 +319,7 @@ Each time Pip asks Claude something (an answer, a mention, or whether to join in
 
 ## 5. Building it
 
-- **Milestones:** M0 measure (done) → architecture design (approved, D-78) → **M1a** groundwork + Ziggletron's features (done) → **M1b** safe self-changes (built 2026-11-09) → **M2** (next) smarter conversation and self-knowledge → **M3** devices, lists, calendar, music → **M4** self-improvement suggestions (D-08, D-29).
+- **Milestones:** M0 measure (done) → architecture design (approved, D-78) → **M1a** groundwork + Ziggletron's features (done) → **M1b** safe self-changes (built 2026-11-09, installed 2026-11-10) → now: polishing (the owner's feedback) → **M2** smarter conversation and memory → **M3** smart home → **M4** Pip suggesting improvements → **M2** (next) smarter conversation and self-knowledge → **M3** devices, lists, calendar, music → **M4** self-improvement suggestions (D-08, D-29).
 - **Made to be understood and extended** (D-70, D-71): plain-language docs and diagrams for every part; module templates so a new feature (a command, a widget, a device type) is fill-in-the-blanks; swappable speech, voice and AI services; a fresh clone of the repo works without anyone's personal data (PIP-NEW-091–097).
 - **May be open-sourced later:** nothing personal ever goes to GitHub, enforced by a commit check.
 - **How it's built:** [ARCHITECTURE.md](ARCHITECTURE.md) (approved, D-78).

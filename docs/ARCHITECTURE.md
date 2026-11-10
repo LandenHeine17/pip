@@ -363,7 +363,7 @@ Built in small steps. Each step ends with something you can try.
 
 ### M1b: safe self-changes
 
-**Built 2026-11-09 (D-118)**; installed when the owner runs `sh deploy/install.sh` (the first run creates the first version and moves the services to `~/pip-app/current`).
+**Built 2026-11-09 (D-118), installed 2026-11-10**: Pip runs from `~/pip-app/current`. The first real self-change (the six-seven module, D-121) was built by Pip on 2026-11-10.
 
 | Part | What you'll be able to do |
 |---|---|
@@ -372,6 +372,11 @@ Built in small steps. Each step ends with something you can try.
 | Usage meter (PIP-NEW-089) | "Claude today: N requests (≈$X)" on the dashboard; joining in and self-changes pause when Claude's usage limit is reached |
 
 **Switch-over from Ziggletron: done.** Ziggletron is off (D-82), the monitor is Pip's (D-110), and his memories and personality were brought over (D-117). Ziggletron stays installed as the owner's fallback; only the owner touches it.
+
+### After M1 (2026-11-10)
+
+- **Structure review, phases 1–5 (done):** offline calendar privacy, one quiet-moment rule, big files split, **modules fully plug-in** (D-120, §7), tests sorted by part (§11).
+- **Polish from the owner's feedback (now):** a sentence under way when an alarm rings is heard whole, snoozed timers, several screen changes at once, the **Claude** page (what Pip sends and its tokens), clap measurements to tune false switch-offs, and the owner's own work on conversation speed and cut-offs. The **Guide** page (`/guide`) walks through the code.
 
 **Next: M2**, smarter conversation and self-knowledge ([PIP-SPEC §5](PIP-SPEC.md#5-building-it)): among others the offline Qwen fallback (D-75) and explaining himself from his docs, code and the decision trace (PIP-NEW-064–067).
 
