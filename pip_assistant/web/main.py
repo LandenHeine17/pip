@@ -35,6 +35,7 @@ from ..common.modules import enabled as enabled_modules
 from ..common.program import make_bus, start
 from ..common import vitals
 from ..common.weather import Weather
+from . import source
 from .security import SameSite, module_get_allowed
 
 TRACE_KEEP = 300
@@ -242,6 +243,20 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         html = resources.files("pip_assistant.web").joinpath("static/changes.html").read_text()
         return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
+    async def guide_page(request):
+        """The Guide (/guide): how Pip's code does everything, with live code, diagrams and step-by-step tours."""
+        html = resources.files("pip_assistant.web").joinpath("static/guide.html").read_text()
+        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
+    async def source_api(request):
+        """The Guide's code panels: a file, one function in it, or the index of every file (web/source.py). Read-only."""
+        q = request.query_params
+        try:
+            body = {"files": source.index()} if q.get("index") else source.read(q.get("path", ""), q.get("symbol", ""))
+        except source.NotAllowed as e:
+            return JSONResponse({"error": str(e)}, status_code=404)
+        return JSONResponse(body, headers={"Cache-Control": "no-store"})
+
     async def prompts_page(request):
         """What Pip sends to Claude (owner's feedback, 2026-11-10): the fixed text, and each request's size and tokens."""
         html = resources.files("pip_assistant.web").joinpath("static/prompts.html").read_text()
@@ -311,6 +326,7 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
                              Route("/api/migrate", passed_to_core("core.migrate", 60), methods=["GET", "POST"]),
                              Route("/changes", changes_page),
                              Route("/prompts", prompts_page),
+                             Route("/guide", guide_page), Route("/api/source", source_api),
                              Route("/api/prompts", passed_to_core("thinker.prompt", 10, target="thinker")),
                              Route("/api/changes", passed_to_core("builder.page", 30, target="builder", get="list"),
                                    methods=["GET", "POST"])])
