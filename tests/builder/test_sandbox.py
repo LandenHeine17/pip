@@ -14,10 +14,10 @@ import sys
 from pathlib import Path
 
 import pytest
+from helpers import REPO
 
 from pip_assistant.builder import agent, sandbox
 
-REPO = Path(__file__).resolve().parents[1]
 WRAPPER = REPO / "tools" / "sandbox-test"
 HOME = Path.home()
 

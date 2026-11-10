@@ -3,13 +3,14 @@ the request goes to pip-builder in the private part; voice never approves anythi
 import asyncio
 
 import pytest
+from helpers import finish, says
+from helpers import room_setup as setup
 
 from pip_assistant.common.client import BusClient
 from pip_assistant.core import actions
 from pip_assistant.core.conversation import SAYINGS
 from pip_assistant.core.people import Match
 from pip_assistant.thinker.main import RULES
-from test_step6 import finish, says, setup
 
 ASK = 'ACTION {"do": "request_change", "summary": "keep track of whose turn it is for the dishes"}'
 LANDEN = Match("p1", "Landen", "sure", 0.9)

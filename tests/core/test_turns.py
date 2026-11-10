@@ -5,13 +5,15 @@ import time
 
 import numpy as np
 import pytest
+from helpers import OneVoice as FakeEmbedder
+from helpers import finish, room, says
+from helpers import room_setup as setup
 
 from pip_assistant.core import actions
 from pip_assistant.core.commands import timer_name
 from pip_assistant.core.memory import Memory
 from pip_assistant.core.people import Match, People
 from pip_assistant.core.prefs import Prefs
-from test_step6 import FakeEmbedder, finish, room, says, setup
 
 
 # ---------------------------------------------------------------- D-105: quiet means quiet
@@ -239,6 +241,7 @@ def test_every_memory_is_saved_straight_away(tmp_path):
 # ---------------------------------------------------------------- D-108: the conversation feed and the state colours
 async def test_the_feed_shows_everything_heard_and_what_happened(tmp_path):
     import json
+
     from pip_assistant.common.client import BusClient
     prefs = Prefs(tmp_path / "pip.db")
     bus, conv, ears, got, asks, tasks = await setup(tmp_path, "did you see the game", social={"join_in": False},

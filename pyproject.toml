@@ -47,5 +47,7 @@ override-dependencies = ["tflite-runtime; sys_platform == 'never'"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests", "pip_assistant/modules"]
-pythonpath = ["tests"]   # test helpers (modhelp.py, fakes/) for the module tests too
-markers = ["real_turn_waits: use Pip's real end-of-turn waits (D-106) instead of the shortened test ones"]
+pythonpath = ["tests"]   # test helpers (helpers.py, fakes/) for the module tests too
+addopts = "--import-mode=importlib"   # test files in different folders may share a name; they never import each other
+markers = ["real_turn_waits: use Pip's real end-of-turn waits (D-106) instead of the shortened test ones",
+           "pi_data: needs the owner's recordings or downloaded models in ~/pip-data; skipped where they aren't (pytest -m 'not pi_data')"]

@@ -3,7 +3,6 @@ release install, on a throwaway git repo. The real sandboxes are tested in test_
 import asyncio
 import json
 import subprocess
-from pathlib import Path
 
 import pytest
 
