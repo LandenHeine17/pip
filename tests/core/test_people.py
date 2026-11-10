@@ -209,6 +209,7 @@ async def test_dashboard_people_and_memory_actions(tmp_path):
 MODEL = os.path.expanduser("~/pip-data/models/speaker/nemo_en_titanet_small.onnx")
 
 
+@pytest.mark.pi_data
 @pytest.mark.skipif(not os.path.exists(MODEL) or not os.path.exists(os.path.expanduser("~/pip-data/m0/recordings/manifest.json")),
                     reason="needs the voice model and the owner's M0 recordings")
 async def test_real_model_recognises_the_owner(tmp_path):

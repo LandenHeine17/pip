@@ -6,7 +6,7 @@
    common) never name a module in their code, so a module can be added, changed or switched off without touching
    them. Pip asks every module through the hooks in core/modules.py instead. Checked: Python string values (not
    docstrings or comments), and the dashboard's and monitor's pages outside comments: a module's name in
-   quotes, or its address /m/<name>. tests/test_plugins.py runs this check too, so the builder's sandbox
+   quotes, or its address /m/<name>. tests/core/test_plugins.py runs this check too, so the builder's sandbox
    (which has no git) catches it.
 """
 import ast

@@ -188,15 +188,15 @@ Two cautions before you start:
   2. In `situation()`, return it from the right place in the order. If it needs new information, add a field in `Conversation.__init__` under "What the face shows", set it where it happens, and call `self.refresh_state()` after.
   3. If it's a wait with a deadline, add that field to the `nxt` list in `refresh_state()`, so the state is checked again when it runs out.
   4. Optionally, give it a face in `FACES` as `"state:detail"`.
-  5. Add a line to `tests/test_states.py`.
+  5. Add a line to `tests/core/test_states.py`.
 
 ### Trying it
 
 - **Run the tests**, with a memory cap, from the `pip` folder:
   ```
-  systemd-run --user --same-dir -p MemoryMax=2000M --wait --pipe --collect uv run pytest -q tests/test_states.py tests/test_tv.py
+  systemd-run --user --same-dir -p MemoryMax=2000M --wait --pipe --collect uv run pytest -q tests/core/test_states.py tests/web/test_tv.py
   ```
-  `tests/test_tv.py` checks that every face in `FACES` is a real situation and that every situation has words.
+  `tests/web/test_tv.py` checks that every face in `FACES` is a real situation and that every situation has words.
 - **See it live:**
   - Pip's services run from `~/pip-app/current`, a separate copy (§7), **not** from this folder. Restarting a service (`systemctl --user restart pip-core`) no longer picks up your edits in `~/pip`.
   - To try a change: **commit it, then run `sh deploy/install.sh`**. It installs the last commit as a new version, restarts Pip at a quiet moment and checks he's healthy; if he isn't, he goes back to the version before by itself. pip-web reads `tv.html` and the dashboard once, when it starts; the monitor reloads itself when pip-web comes back.
@@ -206,7 +206,7 @@ Two cautions before you start:
 
 ### Making a module
 
-Every new feature is a module: a folder in `pip_assistant/modules/`. Pip finds it at startup; nothing else in Pip changes (`tools/check_map.py` and `tests/test_plugins.py` fail if pip-core or pip-web ever name one). ARCHITECTURE §7 explains the design; this is the recipe.
+Every new feature is a module: a folder in `pip_assistant/modules/`. Pip finds it at startup; nothing else in Pip changes (`tools/check_map.py` and `tests/core/test_plugins.py` fail if pip-core or pip-web ever name one). ARCHITECTURE §7 explains the design; this is the recipe.
 
 1. **Copy the template:** `cp -r pip_assistant/modules/_template pip_assistant/modules/shopping` (a lowercase name). Folders starting with `_` are never loaded, so the template stays an example.
 2. **`module.toml`:** set `name` to the folder's name, a one-line `summary`, `says_examples`, whether it works `offline`, any internet hosts it may reach (`permissions`), and the modules it `needs`. Each setting has a `default` and an `explain` line (they appear on the Settings page). `[claude] instructions` tells Claude its ACTION lines: keep it short.
@@ -220,7 +220,7 @@ Every new feature is a module: a folder in `pip_assistant/modules/`. Pip finds i
    - `room_heard(text, call)`: hears everything (room talk, and what's said to or about Pip: `call.kind`) and may return something for him to say; for speech to Pip that replaces asking Claude (`modules/six_seven/` is just this). `modules_answer` in `core/conversation.py` offers it at any hour; Pip says the answer only when he's free to talk. To make the monitor's face react, `ctx.publish("reaction", {"reaction": "pleased"})`. Read the words, keep nothing.
    - `tasks()`: background jobs (syncing, checking a website).
    - Its data goes in its own tables (`ctx.db()`, named `<name>_…`); its secrets in its own section of `secrets.toml` (`ctx.secrets`).
-4. **Tests:** `test_<name>.py` in the folder, like the template's. `tests/modhelp.py` loads real modules the way pip-core does; `tests/fakes/` has a pretend Google.
+4. **Tests:** `test_<name>.py` in the folder, like the template's. `tests/helpers.py` has `registry()`, which loads real modules the way pip-core does, and the other shared fakes; `tests/fakes/` has a pretend Google.
 5. **Try it:** run its tests (`uv run pytest pip_assistant/modules/shopping`, memory-capped), add it to `docs/PROJECT-MAP.md` if it's a new kind of thing, commit, then `sh deploy/install.sh`. To switch it off without deleting it: `enabled = false` under `[modules.shopping]` in `~/pip-data/settings.toml`.
 
 Or ask Pip ("Pip, I'd like a shopping list"): his self-changes are told to follow this recipe (§6).
@@ -229,7 +229,7 @@ Or ask Pip ("Pip, I'd like a shopping list"): his self-changes are told to follo
 
 - **Settings** start in `pip_assistant/defaults.toml`; your changes are in `~/pip-data/settings.toml`; `common/settings.py` loads both when a program starts (`load()`).
 - The Settings page (`web/static/settings.html`) asks pip-core (`core/settingsapi.py`) through `/api/settings`. `SCHEMA` in `core/settings_schema.py` says, for every setting: its group, label, explanation, allowed values, and **which programs read it**. Saving checks every change (`validate`), writes only what differs from the defaults (`save`), then restarts just those programs at a quiet moment (`quiet()` in `core/states.py`).
-- **To add a setting:** add it to `defaults.toml` with a comment, read it where it's used, and add a `SCHEMA` entry. `tests/test_settings.py` fails if the two don't match.
+- **To add a setting:** add it to `defaults.toml` with a comment, read it where it's used, and add a `SCHEMA` entry. `tests/core/test_settings.py` fails if the two don't match.
 - **The personality** (who he is, how he talks) is `common/personality.py`: `~/pip-data/personality.md` if you've edited it, else the built-in text, with `{name}` and `{location}` filled in. pip-thinker reads it fresh whenever the file changes, then adds `RULES` (the fixed part: actions, memory, privacy) from `thinker/main.py`.
 
 ## 6. How Pip changes himself
@@ -291,7 +291,7 @@ One change at a time (`kick`). After a restart, anything that was planning, buil
 | Can change | The workspace (`tools/sandbox-test` and `.venv` are read-only) | The workspace | The workspace |
 | Limits | 2 GB, 2 CPUs, 10 min to plan / 30 to build | Inside the agent's | 2 GB, 15 min |
 
-`tests/test_sandbox.py` checks the real sandboxes on the Pi: inside them the secrets file, the Claude login, `~/.ssh`, `~/pip` and the internet are all out of reach.
+`tests/builder/test_sandbox.py` checks the real sandboxes on the Pi: inside them the secrets file, the Claude login, `~/.ssh`, `~/pip` and the internet are all out of reach.
 
 ### Where to look
 
@@ -325,7 +325,7 @@ Pip runs from a separate live copy, never from `~/pip`. Every update, yours or a
 4. `check_health`: up to 2 minutes for every expected program to be `ok` **on this version** (each heartbeat carries `release`, read from `RELEASE` by `common/program.py`), and for `/` and `/api/tv` to answer; then 30 s in which nothing may restart.
 5. Healthy: recorded as live; `prune` keeps the newest 3 plus the current and previous. Not healthy: `_recover` switches back to the version before and checks again. On the very first install, it puts back the old service files that ran Pip from `~/pip`.
 
-Exit codes: **0** live, **1** rolled back (healthy again), **2** stopped before anything changed, **3** needs the owner (look at `journalctl --user -u 'pip-*' -n 100`). By hand, from `~/pip`: `python3 -m pip_assistant.release list`, `status` (`status --json` for programs: pip-builder reads it this way), or `rollback`. The exit codes are named in `release.py` (`EXIT_LIVE`…). The tests (`tests/test_release.py`) fake git, uv, systemd and the health check.
+Exit codes: **0** live, **1** rolled back (healthy again), **2** stopped before anything changed, **3** needs the owner (look at `journalctl --user -u 'pip-*' -n 100`). By hand, from `~/pip`: `python3 -m pip_assistant.release list`, `status` (`status --json` for programs: pip-builder reads it this way), or `rollback`. The exit codes are named in `release.py` (`EXIT_LIVE`…). The tests (`tests/builder/test_release.py`) fake git, uv, systemd and the health check.
 
 ## 8. Where to read next
 
@@ -337,7 +337,7 @@ Exit codes: **0** live, **1** rolled back (healthy again), **2** stopped before 
 | knowing who's talking | `core/people.py`, `core/peoplecmds.py` |
 | timers, alarms, reminders | `core/schedule.py` (saving and ringing), `core/alerts.py` (making and changing them), `common/when.py`, `core/commands.py` (offline phrasings; modules add theirs, e.g. `modules/calendar/offline.py`) |
 | what Claude is told, and the ACTION lines | `common/personality.py` (his personality, editable on the Settings page), `thinker/main.py` (`RULES`: the fixed part), `core/actions.py` |
-| how a module plugs in | "Making a module" in §4, `modules/_template/`, `core/modules.py` (every hook), `tests/test_plugins.py` |
+| how a module plugs in | "Making a module" in §4, `modules/_template/`, `core/modules.py` (every hook), `tests/core/test_plugins.py` |
 | the boxes on the monitor | `modules/screen/` (the layout), `BOXES` in `tv.html` (the screen's own boxes) and each module's `static/monitor.js` (its boxes) |
 | the wake word, claps, cutting up speech | `ears/wake.py`, `ears/clap.py`, `ears/segmenter.py` |
 | self-changes | `builder/pipeline.py` (`Builder`), `builder/checks.py`, `builder/sandbox.py`, `tools/sandbox-test` |

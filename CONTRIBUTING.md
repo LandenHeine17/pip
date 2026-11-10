@@ -35,7 +35,7 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
 
 ## 4. After the change
 
-1. **Check it works.** Run it, or its test. Report results honestly, including failures. Run the automated tests under a memory cap, from the repo folder: `systemd-run --user --same-dir -p MemoryMax=4500M --wait --pipe --collect uv run pytest`. Without `--same-dir` (or `--working-directory`), uv starts in your home folder and fails.
+1. **Check it works.** Run it, or its test. **Tests go in the folder of the part they test** (`tests/core/test_alarms.py` for alarms; a module's next to the module); shared fakes and harnesses are in `tests/helpers.py`, and test files never import each other. Report results honestly, including failures. Run the automated tests under a memory cap, from the repo folder: `systemd-run --user --same-dir -p MemoryMax=4500M --wait --pipe --collect uv run pytest`. Without `--same-dir` (or `--working-directory`), uv starts in your home folder and fails.
 2. **Measurement tests (recordings, sound, speed, wake words): only run one that settles a specific decision**, and say which one. Write the result to `~/pip-data/m0/results/<id>.json` (fields: `id, ran_at, passed, summary, details`). Update `~/pip-data/m0/status.json`: to-do list, progress and findings in plain language.
 3. **Update the map** if you added, moved or removed files or folders.
 4. **Commit and push.** The pre-commit check must pass (`tools/install_hooks.sh` installs it). End commit messages with the attribution line your tool requires.

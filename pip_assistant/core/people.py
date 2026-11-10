@@ -311,16 +311,20 @@ def sounds_like(heard: str, name: str) -> bool:
     return ratio >= 0.8 or (ratio >= 0.6 and _soundex(a) == _soundex(b) and (a[-1] == b[-1] or len(a) == len(b)))
 
 
+CLEAR_A = {f"A{n:03d}" for n in range(1, 26)}     # the owner's M0 recordings, close to the mic
+DISTANT_B = {f"B{n:03d}" for n in range(1, 26)}   # … and from across the room
+
+
 def m0_owner_clips(limit_only: bool = False) -> list[bytes]:
     """The owner's own M0 recordings, usable to learn their voice (D-72): 5 close + 3 across the room."""
     import wave
     rec = paths.data_dir() / "m0" / "recordings"
-    phrases = Path(__file__).resolve().parents[2] / "m0" / "phrases.json"
-    if not (rec / "manifest.json").exists() or not phrases.exists():
+    if not (rec / "manifest.json").exists():
         return []
-    cat = {p["id"]: (p["session"], p["category"]) for p in json.loads(phrases.read_text())["phrases"]}
     have = sorted(json.loads((rec / "manifest.json").read_text()))
-    keys = [k for k in have if cat.get(k) == ("A", "clear")][:5] + [k for k in have if cat.get(k) == ("B", "distant")][:3]
+    # In M0's phrase list (m0/phrases.json, for the measurement tools), session A's clear phrases are A001–A025
+    # and session B's distant ones B001–B025.
+    keys = [k for k in have if k in CLEAR_A][:5] + [k for k in have if k in DISTANT_B][:3]
     if limit_only:
         return keys
     out = []

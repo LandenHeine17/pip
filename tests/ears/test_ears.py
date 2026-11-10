@@ -25,6 +25,7 @@ def speech_16k(voice, text):
     return np.concatenate([np.zeros(8000, np.int16), a, np.zeros(16000, np.int16)])
 
 
+@pytest.mark.pi_data
 @needs_voice
 @pytest.mark.parametrize("text,expected", [("Pippletron, what time is it?", "pippletron"),
                                            ("Hey Pip, what time is it?", "hey_pip"),
