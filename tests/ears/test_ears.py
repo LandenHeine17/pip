@@ -67,3 +67,37 @@ async def test_speaker_stop_cuts_off(tmp_path):
     await asyncio.sleep(0.3)
     await sp.stop()
     assert await asyncio.wait_for(task, 2) is False
+
+
+async def test_talking_over_pip_keeps_a_sentence_already_under_way():
+    """Owner's feedback (2026-11-10): a timer went off mid-sentence, he talked over its announcement, and only the
+    words after it were heard. Now the recording that was already going carries on whole."""
+    import numpy as np
+    from pip_assistant.ears import main as ears_main
+    from pip_assistant.ears.segmenter import Segmenter
+
+    class Bus:
+        emitted = []
+
+        async def emit(self, kind, data):
+            Bus.emitted.append(kind)
+    e = ears_main.Ears.__new__(ears_main.Ears)
+    e.bus, e.seg = Bus(), Segmenter()
+
+    async def stop_speaking():
+        pass
+    e.stop_speaking = stop_speaking
+    loud = (np.ones(1280) * 3000).astype(np.int16)
+    e.seg.start("follow_up", lookback=0.4)
+    for _ in range(40):                                  # 3 s of the sentence before the alarm
+        e.seg.feed(loud, -20.0)
+    before = len(e.seg.capture["frames"])
+    await e.talked_over(-20.0)
+    assert e.seg.capture["reason"] == "follow_up" and len(e.seg.capture["frames"]) == before
+    assert Bus.emitted == ["speech.interrupted"]
+    e.seg.capture["reason"] = "room"                     # room talk carrying on over him becomes for him
+    await e.talked_over(-20.0)
+    assert e.seg.capture["reason"] == "barge_in" and len(e.seg.capture["frames"]) == before
+    e.seg.capture = None                                 # nothing under way: a new recording, as before
+    await e.talked_over(-20.0)
+    assert e.seg.capture["reason"] == "barge_in"

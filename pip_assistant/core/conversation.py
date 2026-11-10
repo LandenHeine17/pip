@@ -70,6 +70,7 @@ from .joining import Joining, in_quiet_hours
 from .micctl import MicControl
 from .modules import Call
 from .names import NOT_PIP, PIP_NAMES, calls_pip, names_pip
+from .commands import HALLUCINATION, clean
 from . import states
 from .states import DETAILS, situation
 from .transcript import Transcript
@@ -475,9 +476,14 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             reply = await self.commands.while_ringing(text, "room")
             await self.bus.publish(Message("event", "room.heard", data={"seconds": msg.data.get("seconds"),
                                                                          "during_alarm": True, "answered": reply is not None and not self.ringing}))
-            if reply is not None:
+            answered = reply is not None and (reply or not self.ringing)
+            if answered:                       # "stop", "snooze", his name: the alarm is dealt with
                 await self.say(reply, "alarm answered")
                 return
+            if reply is not None and HALLUCINATION.match(clean(text)):
+                return                         # what speech-to-text "hears" in the ringtone
+            # Anything else was room talk over the alarm (it keeps ringing): still heard, into the transcript and
+            # the feed, like any room talk (owner's feedback, 2026-11-10: it vanished)
         if not text.strip(" .?!,"):
             await self._finish_pending()
             return

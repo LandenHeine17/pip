@@ -49,6 +49,7 @@ async def test_chatter_does_not_stop_the_alarm_but_snooze_does(tmp_path):
     await ears.emit("heard.utterance", d, private=p)
     await asyncio.sleep(0.2)
     assert sched.ringing                                      # TV/chatter: keeps ringing (FEAT-037)
+    assert "did you see the game last night" in "\n".join(conv.transcript.render())   # but it's still heard (2026-11-10)
     stt.text = "snooze ten minutes"
     await ears.emit("heard.utterance", d, private=p)
     await asyncio.sleep(0.2)
