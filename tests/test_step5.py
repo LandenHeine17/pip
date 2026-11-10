@@ -76,11 +76,9 @@ def test_memory_saves_merges_duplicates_and_refuses_secrets(mem):
     assert len(mem.items()) == 1
 
 
-def test_sensitive_memories_wait_for_approval_and_nothing_is_silently_lost(mem):
-    row, outcome = mem.add("Sam is allergic to peanuts", "personal", sensitive=True)
-    assert outcome == "pending" and "peanuts" not in mem.for_claude()
-    mem.approve(row["id"])
-    assert "Sam is allergic to peanuts" in mem.for_claude()
+def test_sensitive_memories_are_saved_straight_away_and_nothing_is_silently_lost(mem):
+    row, outcome = mem.add("Sam is allergic to peanuts", "personal", sensitive=True)   # D-119: no inbox
+    assert outcome == "saved" and "Sam is allergic to peanuts" in mem.for_claude()
     mem.update(row["id"], status="archived")
     assert "peanuts" not in mem.for_claude() and mem.items("archived")    # archived: kept, not used
     pend, _ = mem.add("Jordan's birthday is 3 May", "personal", pending_because="about someone else")
@@ -122,25 +120,26 @@ def test_remember_forget_and_correct(ctx, mem):
     assert said == "Forgot: Alex likes oat milk in his coffee." and mem.items() == []
 
 
-@pytest.mark.parametrize("action,why", [
-    ('{"do": "remember", "text": "Sam hates mushrooms", "category": "preference", "about": ["Sam"]}', "about someone else"),
-    # (Alex's own sensitive facts are saved straight away since the owner changed D-88; someone else's wait)
-    ('{"do": "remember", "text": "Sam has a doctor appointment Friday", "category": "personal", "about": ["Sam"], "sensitive": true}', "sensitive"),
+@pytest.mark.parametrize("action", [
+    '{"do": "remember", "text": "Sam hates mushrooms", "category": "preference", "about": ["Sam"]}',
+    '{"do": "remember", "text": "Sam has a doctor appointment Friday", "category": "personal", "about": ["Sam"], "sensitive": true}',
 ])
-def test_some_memories_go_to_the_inbox(ctx, mem, action, why):
+def test_memories_about_someone_else_are_saved_straight_away(ctx, mem, action):
+    """D-119 (owner, 2026-11-10): every memory is saved straight away, none waits in the inbox."""
     cmds, c, *_ = ctx
     said, _ = actions.apply(cmds, "ACTION " + action, c)
-    assert said.startswith("I'll remember that once it's approved")
+    assert said.startswith("Saved: Sam")
     [row] = mem.items()
-    assert row["status"] == "pending" and row["why_pending"] == why
+    assert row["status"] == "active" and row["why_pending"] == ""
 
 
-def test_private_from_an_unknown_voice_waits(ctx, mem):
+def test_private_from_an_unknown_voice_stays_private_for_nobody(ctx, mem):
     cmds, c, *_ = ctx
     c["speaker"] = Match()
-    actions.apply(cmds, 'ACTION {"do": "remember", "text": "The spare key is under the plant", "category": "household", "private": true}', c)
+    said, _ = actions.apply(cmds, 'ACTION {"do": "remember", "text": "The spare key is under the plant", "category": "household", "private": true}', c)
     [row] = mem.items()
-    assert row["status"] == "pending" and row["visibility"] == "household"
+    assert row["status"] == "active" and row["visibility"] == "private" and row["owner"] == ""   # never household by mistake
+    assert said.startswith("Saved privately:") and "spare key" not in mem.for_claude()
 
 
 def test_bad_memory_actions_change_nothing(ctx, mem):
@@ -201,8 +200,8 @@ async def test_people_commands(people, mem):
     assert await pc.handle("Pip, can you learn my voice?", Match(), voice("alex")) == "Sure! Who am I learning? Say your name."
     assert (await pc.handle("Alex.", Match(), voice("tv"))).startswith("Hi Alex! You don't sound like you")   # learned already, not him
     assert await pc.handle("Pip, remember the plants need water on Sundays", me, voice("alex"), offline=True) == \
-        "I'm offline, so I put that in the memory inbox to check later."
-    assert mem.items()[0]["status"] == "pending"
+        "Saved: the plants need water on Sundays."
+    assert mem.items()[0]["status"] == "active"
 
 
 # ------------------------------------------------------------------ the whole path, with fake programs
@@ -411,7 +410,7 @@ async def test_real_model_recognises_the_owner(tmp_path):
     assert (await people.identify(a.tobytes())).level == "unknown"     # a different voice
 
 
-def test_household_facts_need_no_approval_but_unknown_voices_personal_facts_do(ctx, mem):
+def test_household_facts_and_unknown_voices_personal_facts_are_saved(ctx, mem):
     cmds, c, *_ = ctx
     said, _ = actions.apply(cmds, 'ACTION {"do": "remember", "text": "The bins go out Tuesday night", '
                                   '"category": "household", "about": ["Alex", "Sam"]}', c)
@@ -419,15 +418,15 @@ def test_household_facts_need_no_approval_but_unknown_voices_personal_facts_do(c
     c["speaker"] = Match()
     said, _ = actions.apply(cmds, 'ACTION {"do": "remember", "text": "Someone likes jazz", "category": "preference"}', c)
     [jazz] = [m for m in mem.items() if "jazz" in m["text"]]
-    assert said.startswith("I'll remember that once") and jazz["why_pending"] == "I didn't recognise the voice"
+    assert said == "Saved: Someone likes jazz." and jazz["status"] == "active"
 
 
 # ------------------------------------------------------------------ fixes from the review (2026-11-09)
 def test_a_private_memory_waiting_in_the_inbox_is_only_for_its_owner(ctx, mem):
+    """Memories still waiting from before D-119 (or from the Ziggletron import) keep their privacy."""
     cmds, c, alex, sam = ctx
-    actions.apply(cmds, 'ACTION {"do": "remember", "text": "Alex is planning a surprise party for Sam on Saturday", '
-                        '"category": "personal", "about": ["Alex", "Sam"], "private": true}', c)
-    [row] = mem.items()
+    row, _ = mem.add("Alex is planning a surprise party for Sam on Saturday", "personal", [alex["id"], sam["id"]],
+                     owner=alex["id"], private=True, pending_because="about someone else")
     assert row["status"] == "pending" and row["visibility"] == "private"
     assert "surprise" not in mem.for_claude(sam["id"], "sure", speaker_name="Sam")       # Sam isn't shown it (D-88)
     s = {**c, "speaker": Match(sam["id"], "Sam", "sure", 0.7)}
@@ -459,11 +458,10 @@ def test_a_step_that_fails_while_being_done_is_not_counted(ctx, mem, monkeypatch
     assert n == 1 and said.endswith("I didn't catch what to remember.")
 
 
-def test_a_memory_about_someone_pip_does_not_know_waits(ctx, mem):
+def test_a_memory_about_someone_pip_does_not_know_is_saved(ctx, mem):
     cmds, c, *_ = ctx
     actions.apply(cmds, 'ACTION {"do":"remember","text":"Jordan hates mushrooms","category":"preference","about":["Jordan"]}', c)
     actions.apply(cmds, 'ACTION {"do":"remember","text":"Alex is dating Jordan","category":"personal",'
                         '"about":["Alex","Jordan"],"sensitive":true}', c)
-    assert {r["text"]: (r["status"], r["why_pending"]) for r in mem.items()} == {
-        "Jordan hates mushrooms": ("pending", "about someone else"),
-        "Alex is dating Jordan": ("pending", "sensitive")}
+    assert {r["text"]: r["status"] for r in mem.items()} == {
+        "Jordan hates mushrooms": "active", "Alex is dating Jordan": "active"}

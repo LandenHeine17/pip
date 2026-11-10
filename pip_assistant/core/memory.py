@@ -116,9 +116,9 @@ class Memory:
             private: bool = False, sensitive: bool = False, pending_because: str = "", source: str = "",
             confirmed: bool = True, own: bool = False) -> tuple[dict, str]:
         """Save one memory. Returns (row, outcome) with outcome 'saved', 'pending', 'duplicate' (already
-        remembered) or 'waiting' (already in the inbox). own: the person it's about said it themselves (Pip
-        sure it's them), so even a sensitive fact is saved straight away (D-88).
-        Raises Refused for credentials and empty text."""
+        remembered) or 'waiting' (already in the inbox). By voice everything is saved straight away (D-119);
+        only `pending_because` (the one-off Ziggletron import) puts a memory in the inbox. A private memory with
+        no owner stays private (used for nobody until it gets one). Raises Refused for credentials and empty text."""
         text = re.sub(r"\s+", " ", (text or "")).strip()[:300]
         if len(text) < 3:
             raise Refused("nothing to remember")
@@ -127,15 +127,13 @@ class Memory:
         if (dup := self.duplicate_of(text)) is not None:
             return dup, "waiting" if dup["status"] == "pending" else "duplicate"
         category = category if category in CATEGORIES else "household"
-        if sensitive and not pending_because and not own:
-            pending_because = "sensitive"
         status = "pending" if pending_because else "active"
         now = self.clock()
         mid = new_id()
         self.db.execute("INSERT INTO memories (id, text, category, about, owner, visibility, status, confirmed, sensitive, "
                         "source, why_pending, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (mid, text, category, json.dumps(about or []), owner,
-                         "private" if private and owner else "household", status, int(confirmed), int(sensitive),
+                         "private" if private else "household", status, int(confirmed), int(sensitive),
                          source[:80], pending_because, now, now))
         self.db.commit()
         row = self.get(mid)
