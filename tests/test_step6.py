@@ -394,7 +394,7 @@ async def test_claude_looks_the_calendar_up_then_answers(tmp_path):
     sched = Schedule(tmp_path / "pip.db")
     reg = registry(tmp_path, schedule=sched)
     day = (datetime.now() + timedelta(days=9)).replace(hour=15, minute=0, second=0, microsecond=0)
-    reg.get("calendar").add_event("dentist", day)
+    reg.module("calendar").store.add_event("dentist", day)
     look = 'ACTION {"do": "look", "kind": "calendar", "from": "%s"}' % day.date().isoformat()
     bus, conv, ears, got, asks, tasks = await setup(
         tmp_path, "Pip, what have I got that day?", social={"join_in": False}, schedule=sched, modules=reg,
