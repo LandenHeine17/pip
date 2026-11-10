@@ -310,7 +310,11 @@ class Schedule:
         if self._ring_task:
             self._ring_task.cancel()
         for i in ids:
-            self.update(i, state="waiting", due=self.clock() + minutes * 60)
+            row = self.get(i)
+            # A snoozed timer counts down the snooze now, so its bar on the dashboard is out of that (owner's
+            # feedback, 2026-11-10: a 5-minute timer snoozed for 15 looked full until 5 were left)
+            more = {"length": minutes * 60} if row and row["kind"] == "timer" else {}
+            self.update(i, state="waiting", due=self.clock() + minutes * 60, **more)
         await self._stop_sound()
         self._notify()
         if ids:
