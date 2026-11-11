@@ -11,6 +11,7 @@ Last reviewed: 2026-11-09 (M1a done; M1b built: self-changes, versioned installs
 | `README.md` | Front page: what's where | Yes, keep short |
 | `CLAUDE.md` | Read-first rules for Claude Code (loaded automatically) | Yes, carefully: keep it short; detail goes in `CONTRIBUTING.md` |
 | `CONTRIBUTING.md` | How to make a change, for people and AI agents | Yes |
+| `LICENSE` | MIT licence (D-70): anyone may use and change Pip's code | Only with the owner's OK |
 | `docs/PROJECT-MAP.md` | This file | Yes, whenever the layout changes |
 | `docs/HOW-PIP-WORKS.md` | **How Pip works, for someone reading the code**: the programs, a request's path through them, the face state machine, how Pip changes himself, how an update goes live and rolls back. Start here before reading code | Yes: keep in step with the code |
 | `docs/PIP-SPEC.md` | **What Pip does**, in plain language, plus M0 findings. The living spec | Yes: keep it short and current |
@@ -66,7 +67,7 @@ Last reviewed: 2026-11-09 (M1a done; M1b built: self-changes, versioned installs
 | `~/pip-data/m0/tasks/*.json` | Progress of long-running jobs (shown under "Running now") | Long jobs should write one |
 | `~/pip-data/m0/models/`, `wake-train/`, `tts/`, `llm/` | Downloaded models, training data and outputs | Large; not in git |
 | `~/pip-app/` | **The live copy Pip runs from** (D-118): `releases/<id>/` (one version each, a git worktree of `~/pip` with its own `.venv`; newest 3 kept), `current` (link to the running one), `release-state.json` (current, previous, history), `release.log` (every install's progress), `units-before-releases/` (the service files from before versioned installs) | **Never edit by hand.** Commit, then `sh deploy/install.sh` |
-| `~/pip-dashboard/` | The M0 dashboard (Python stdlib server + pages), Tailscale only (`http://100.118.171.118:8780`) | Runs as `pip-dashboard.service` (systemd user unit) |
+| `~/pip-dashboard/` | The M0 dashboard (Python stdlib server + pages), Tailscale only (`http://<pi-tailscale-ip>:8780`) | Runs as `pip-dashboard.service` (systemd user unit) |
 | `~/ziggletron`, `~/ziggletron-v2` | The old assistant and an unrelated folder | **Not part of this project. Don't modify.** Ziggletron is switched off (D-82) and Pip has taken over; it stays installed as the owner's fallback, and only the owner starts him |
 
 ## Running services (systemd user units)

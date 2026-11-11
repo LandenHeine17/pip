@@ -38,9 +38,12 @@ SHOULD_WORK = ["write inside workspace", "read inside workspace"]
 
 
 def dashboard_latency():
+    # The M0 dashboard listens only on the Pi's Tailscale address; ask Tailscale for it
+    # rather than writing it into the (public) repo.
     t0 = time.perf_counter()
     try:
-        urllib.request.urlopen("http://100.118.171.118:8780/api/status", timeout=5).read()
+        ip = subprocess.run(["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=5).stdout.split()[0]
+        urllib.request.urlopen(f"http://{ip}:8780/api/status", timeout=5).read()
         return round(time.perf_counter() - t0, 3)
     except Exception:
         return None

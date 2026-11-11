@@ -205,7 +205,7 @@ Two cautions before you start:
   - To try a change: **commit it, then run `sh deploy/install.sh`**. It installs the last commit as a new version, restarts Pip at a quiet moment and checks he's healthy; if he isn't, he goes back to the version before by itself. pip-web reads `tv.html` and the dashboard once, when it starts; the monitor reloads itself when pip-web comes back.
   - Never edit `~/pip-app` by hand.
   - Restarting doesn't make a sound, but testing by talking to Pip does: not between 23:00 and 07:00.
-- **Watch it:** tick the state bars option on the dashboard, and open `http://100.118.171.118:8790/tv` in a browser to see the face next to the feed.
+- **Watch it:** tick the state bars option on the dashboard, and open `http://<pi-tailscale-ip>:8790/tv` in a browser to see the face next to the feed.
 
 ### Making a module
 

@@ -15,7 +15,7 @@ from pip_assistant.web.security import (
     same_site,
 )
 
-PIP = "100.118.171.118:8790"
+PIP = "100.64.0.1:8790"   # any Tailscale-range address will do
 
 
 async def page(request):
@@ -57,7 +57,7 @@ def test_null_origin_refused():
 
 
 def test_other_port_is_another_site():
-    r = client().post("/api/x", json={}, headers={"Origin": "http://100.118.171.118:8780"})
+    r = client().post("/api/x", json={}, headers={"Origin": "http://100.64.0.1:8780"})
     assert r.status_code == 403
 
 
@@ -88,13 +88,13 @@ def test_kiosk_get_needs_nothing_extra():
 
 def test_tailscale_name_over_https():
     me = socket.gethostname().lower()
-    host = f"{me}.tail3ae254.ts.net"
+    host = f"{me}.tail0000.ts.net"
     c = client()
     assert c.get("/", headers={"Host": host}).status_code == 200
     # tailscale serve keeps the Host header; the page's address has no port (https → 443)
     r = c.post("/api/x", json={}, headers={"Host": host, "Origin": f"https://{host}"})
     assert r.status_code == 200
-    assert c.get("/", headers={"Host": "someoneelse.tail3ae254.ts.net"}).status_code in (403, 421)
+    assert c.get("/", headers={"Host": "someoneelse.tail0000.ts.net"}).status_code in (403, 421)
 
 
 def test_configured_extra_host():
