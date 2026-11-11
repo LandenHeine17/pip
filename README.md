@@ -15,3 +15,5 @@ A playful household voice assistant for a Raspberry Pi 5, the successor to Ziggl
 | [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | Lookup tables: requirements, Ziggletron features, acceptance criteria |
 | [CONTRIBUTING.md](CONTRIBUTING.md) · [docs/PROJECT-MAP.md](docs/PROJECT-MAP.md) | How to change things, and where everything is |
 | [docs/archive/](docs/archive/) | The detailed reference: what Ziggletron did, and the full Pip 2.0 behaviour rules (linked from each requirement). Frozen; where it conflicts with DECISIONS, the decision wins |
+
+Licence: MIT (see [LICENSE](LICENSE)).

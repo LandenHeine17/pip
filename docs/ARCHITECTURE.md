@@ -257,7 +257,7 @@ The voice engine is a setting: `voice_engine` under `[ears]` in `defaults.toml` 
 
 ## 9. Security
 
-- **Dashboard: no logins or accounts** (D-116). It's reached only on the owner's Tailscale devices: https at `https://ziggletronshome.tail3ae254.ts.net` (from `tailscale serve`, set up by `deploy/install-https.sh`, the same way Ziggletron's was), or plain http on the Pi's Tailscale address; the monitor uses `http://127.0.0.1:8790/tv` on the Pi itself.
+- **Dashboard: no logins or accounts** (D-116). It's reached only on the owner's Tailscale devices: https at `https://<pi-name>.<tailnet>.ts.net` (from `tailscale serve`, set up by `deploy/install-https.sh`, the same way Ziggletron's was), or plain http on the Pi's Tailscale address; the monitor uses `http://127.0.0.1:8790/tv` on the Pi itself.
 - **Same-site check** (`web/security.py`, FEAT-072, kept from Ziggletron). Without a login, this is what stops a website open on the owner's phone from changing Pip:
   - Pip answers only to its own names (its IP addresses, localhost, the machine's name and its Tailscale name). Another website can't borrow Pip's address under its own name.
   - Anything that changes something must be sent as JSON, and from Pip's own pages (the browser says which page sent it). Browsers won't let another site do that.

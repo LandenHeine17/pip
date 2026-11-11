@@ -3,7 +3,7 @@ name = "pip-assistant"
 version = "0.1.0"
 description = "Pip: a playful household voice assistant for the Raspberry Pi"
 requires-python = ">=3.11"
-license = { text = "Not yet chosen (D-70: MIT recommended before publishing)" }
+license = { text = "MIT" }
 dependencies = [
   "starlette>=0.37",
   "uvicorn>=0.29",
