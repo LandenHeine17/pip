@@ -125,14 +125,15 @@ class ClaudeCLI:
         on_result(cost_usd, is_error, error_text) is called once the CLI reports how the request went (the
         usage meter, common/usage.py); error_text is the CLI's own message ("usage limit reached…"), never
         anything that was said."""
-        if self.warm and self.warm.returncode is None and self.warm_prompt == system_prompt:
+        warm = bool(self.warm and self.warm.returncode is None and self.warm_prompt == system_prompt)
+        if warm:
             proc, self.warm = self.warm, None
         else:
-            proc = await self._spawn(system_prompt)
+            proc = await self._spawn(system_prompt)   # a cold start: about a second slower
         asyncio.create_task(self.prepare(system_prompt))  # warm up the next one now
         self.current[answer_id] = proc
         t0 = time.perf_counter()
-        info = {"first_sentence_s": None, "searched": False}
+        info = {"first_sentence_s": None, "searched": False, "warm": warm}
         split, full = SentenceSplitter(), []
         mode, head, pieces = None, "", []  # mode: "speak", "action" (for pip-core, never spoken) or "pass" (quiet)
 

@@ -57,7 +57,8 @@ async def test_he_waits_for_the_end_of_the_turn_and_joins_the_pieces(tmp_path):
     await asyncio.sleep(0.6)
     assert not asks                                                     # still holding while they talk
     conv.stt.text = "A guy was walking a goose on a leash. What do you think of that?"
-    await ears.emit("heard.utterance", {"reason": "follow_up", "had_speech": True, "seconds": 3.0}, private=room()[1])
+    await ears.emit("heard.utterance", {"reason": "follow_up", "had_speech": True, "seconds": 3.0, "quiet_s": 0.0},
+                    private=room()[1])
     await asyncio.sleep(0.15)
     assert not asks
     await asyncio.sleep(0.9)                                            # two sentences: the long wait
@@ -72,13 +73,48 @@ def test_how_long_he_waits(tmp_path):
     from pip_assistant.core.health import Health
     from pip_assistant.core.trace import Trace
     c = Conversation(Bus(tmp_path / "s", Trace(tmp_path / "pip.db"), Health([], restart=False)), {"conversation": {}})
-    assert c.turn_wait("what time is it?") == 0.6
-    assert c.turn_wait("set a timer for ten minutes") == 0.6                       # short request
-    assert c.turn_wait("I think we should probably get the pizza from the other place tonight") == 1.2
-    assert c.turn_wait("We went to the lake. It was freezing.") == 1.5
+    assert c.turn_wait("what time is it?") == 1.0
+    assert c.turn_wait("set a timer for ten minutes") == 1.0                       # short request
+    assert c.turn_wait("I think we should probably get the pizza from the other place tonight") == 1.6
+    assert c.turn_wait("We went to the lake. It was freezing.") == 2.0
     assert c.turn_wait("what's the weather like in the") == 3.0                    # sounds unfinished
+    assert c.turn_wait("Pip, remind me to") == 3.0
+    assert c.turn_wait("set a timer for") == 3.0
+    assert c.turn_wait("what's that for?") == 1.0                                  # a question mark wins
     c.last_cut = time.monotonic()
-    assert c.turn_wait("what time is it?") == 1.6                                  # just talked over: takes the hint
+    assert c.turn_wait("what time is it?") == 1.5                                  # just talked over: takes the hint
+
+
+@pytest.mark.real_turn_waits
+async def test_the_wait_counts_from_when_they_stopped_talking(tmp_path):
+    """D-122: the pause ears already waited (quiet_s) and speech-to-text count towards the wait, so a short
+    question 0.9 s after they stopped is answered 0.1 s later, not 1.0 s later."""
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, "Pip, what time is it?", social={"join_in": False})
+    data, private = room()
+    await ears.emit("heard.utterance", {**data, "quiet_s": 0.9}, private=private)
+    await asyncio.sleep(0.45)
+    assert len(asks) == 1                                                       # well inside the 1.0 s budget
+    [d] = [r["data"] for r in conv.bus.trace.recent() if r["type"] == "turn.decision"]
+    assert d["decision"] == "answered" and d["why"] == "short" and 0.9 <= d["since_speech_s"] < 1.5
+    await finish(bus, tasks)
+
+
+@pytest.mark.real_turn_waits
+async def test_the_after_interrupt_wait_is_for_the_next_turn_only(tmp_path):
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, "Pip, what time is it?", social={"join_in": False})
+    await ears.emit("speech.interrupted", {"level_dbfs": -20})
+    await asyncio.sleep(0.05)
+    assert conv.turn_wait("what time is it?") == 1.5
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(1.7)
+    assert len(asks) == 1 and conv.turn_wait("what time is it?") == 1.0         # used up by that turn
+    await finish(bus, tasks)
+
+
+def test_backchannels_are_only_listening():
+    from pip_assistant.core.turns import is_backchannel
+    assert all(is_backchannel(t) for t in ("Yeah.", "mhm", "Uh-huh.", "okay", "haha", "Oh, okay."))
+    assert not any(is_backchannel(t) for t in ("Yeah, but what about tomorrow?", "No, fifteen.", "stop", "wait"))
 
 
 # ---------------------------------------------------------------- timer names

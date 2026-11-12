@@ -76,13 +76,14 @@ own_commands = "offline"           # Pip's fixed-phrasing commands: "offline" = 
                                    # understands any wording); "always" = try them first, as before step 6.
 follow_up_seconds = 8.0            # After Pip answers, talk again within this time without saying his name.
 wait_after_name_seconds = 5.0      # Said only his name? Pip listens quietly this long for the rest (no "Yes?" talking over you).
-unfinished_wait_seconds = 2.0      # Stopped mid-sentence ("what's the...")? Pip waits this long for the rest before answering.
-# Knowing when you're done talking (D-106). After you pause (0.7 s, [listen]), Pip waits this much longer before he
-# chimes and answers; if you start talking again, he keeps waiting and takes it all as one.
-turn_wait_short_seconds = 0.6      # …after a question or a short request.
-turn_wait_statement_seconds = 1.2  # …after something longer that ends like a statement.
-turn_wait_long_seconds = 1.5       # …after two or more sentences (you might be telling a story).
-turn_wait_after_interrupt_seconds = 1.0   # Added for a minute after someone talked over him: he takes the hint.
+# Knowing when you're done talking (D-106, D-122). Each wait is counted from when you stop talking: the 0.7 s pause
+# ([listen]) and speech-to-text count towards it, so Pip holds only for what's left. If you start talking again he
+# keeps waiting and takes it all as one; then he chimes and answers.
+unfinished_wait_seconds = 3.0      # …after a half-finished sentence ("what's the...", "remind me to").
+turn_wait_short_seconds = 1.0      # …after a question or a short request.
+turn_wait_statement_seconds = 1.6  # …after something longer that ends like a statement.
+turn_wait_long_seconds = 2.0       # …after two or more sentences (you might be telling a story).
+turn_wait_after_interrupt_seconds = 0.5   # Added to the next turn after someone talked over him: he takes the hint.
 max_sentences = 2                  # Pip stops after this many sentences unless you asked for detail or a story (D-79).
 
 [alarms]

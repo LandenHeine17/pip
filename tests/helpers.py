@@ -193,7 +193,9 @@ async def room_setup(tmp_path, stt_text="", replies=None, social=None, people=No
 
 
 def room(text_pcm=b"x" * 32000):
-    return {"reason": "room", "had_speech": True, "seconds": 1.0}, {"audio_b64": base64.b64encode(text_pcm).decode()}
+    # quiet_s 0: as if they'd only just stopped talking, so the turn waits (D-122) are the whole budget
+    return {"reason": "room", "had_speech": True, "seconds": 1.0, "quiet_s": 0.0}, \
+        {"audio_b64": base64.b64encode(text_pcm).decode()}
 
 
 def says(got):

@@ -22,6 +22,7 @@ class Utterance:
     audio: np.ndarray      # int16 at 16 kHz
     had_speech: bool
     word: str = ""
+    quiet_s: float = 0.0   # how long it waited in silence after the last speech (end of speech → sent)
 
     @property
     def seconds(self) -> float:
@@ -96,10 +97,11 @@ class Segmenter:
             return None
         self.capture = None
         frames = c["frames"]
+        quiet_s = round(c["quiet"] * FRAME_S, 2) if c["had_speech"] else 0.0
         if c["had_speech"] and c["quiet"]:
             frames = frames[:len(frames) - max(0, c["quiet"] - 3)]  # drop trailing silence, keep ~0.24 s
         return Utterance(c["reason"], np.concatenate(frames) if frames else np.zeros(0, np.int16),
-                         c["had_speech"], c["word"])
+                         c["had_speech"], c["word"], quiet_s)
 
     def cancel(self) -> None:
         self.capture = None
