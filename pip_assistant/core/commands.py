@@ -58,6 +58,30 @@ LABEL_JUNK = {"set", "start", "make", "put", "create", "give", "me", "us", "a", 
               "many", "do", "have", "running", "going", "timers", "any", "has", "got", "be", "will", "until", "till"}
 
 
+# Clearly worded commands Pip does himself even when online, without asking Claude (D-123, own_commands = "sure").
+# The whole sentence must be one of these shapes (after clean() and when.numbers()); anything more ("…after dinner",
+# "…and remind me…", "in Tokyo") goes to Claude, so no flexibility is lost. Pip's own commands only (D-120).
+_LEN = (r"\d+(?:\.\d+)? (?:and a half )?(?:seconds?|secs?|minutes?|mins?|hours?|hrs?)"
+        r"(?: and a half| and \d+ (?:seconds?|minutes?))?")
+_LABEL = r"(?:[a-z]+ )?"
+SURE = [
+    STOP,
+    re.compile(r"^snooze( it| that| the alarm| the timer)?( for \d+ minutes?)?$"),
+    re.compile(r"^(what('?s| is) the time|what time is it|what time's it)( now| right now)?$"),
+    re.compile(rf"^(set|start|make|put on) (a |an |the |my )?{_LABEL}timer (for|of) {_LEN}$"),
+    re.compile(rf"^(set |start )?(a |an )?{_LEN} {_LABEL}timer$"),
+    re.compile(rf"^(set |start )?(a |an )?{_LABEL}timer (for|of) {_LEN}$"),
+    re.compile(r"^(cancel|stop|delete|remove|turn off) (the |my )?([a-z]+ )?timer$"),
+    re.compile(r"^how (long|much time)( is| is there|'s)? left( on (the |my )?([a-z]+ )?timer)?$"),
+]
+
+
+def sure(text: str) -> bool:
+    """Is this one of the clearly worded commands Pip does himself (SURE)? (D-123)"""
+    t = when.numbers(clean(text)).strip(" .?!")
+    return bool(t) and any(p.match(t) for p in SURE)
+
+
 def clean(text: str) -> str:
     t = NAME.sub(" ", text)
     t = POLITE.sub(" ", t)

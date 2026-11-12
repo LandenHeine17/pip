@@ -29,12 +29,15 @@ def speakable(text: str) -> str:
 
 
 class SentenceSplitter:
-    """Feed text pieces; get back complete sentences. Stops at a trailing 'Sources:' block."""
+    """Feed text pieces; get back complete sentences. Stops at a trailing 'Sources:' block.
+    A long stretch with no sentence end is cut at its last comma: after `first_after` characters for the first
+    piece (so his voice starts sooner, D-122), `long_after` for the rest."""
 
-    def __init__(self, long_after: int = 160):
+    def __init__(self, long_after: int = 160, first_after: int = 60):
         self.buf = ""
-        self.long_after = long_after
+        self.long_after, self.first_after = long_after, first_after
         self.stopped = False
+        self.cut = 0   # pieces given out so far
 
     def feed(self, piece: str) -> list[str]:
         if self.stopped:
@@ -48,12 +51,15 @@ class SentenceSplitter:
         while True:
             m = SENTENCE_END.search(self.buf)
             if not m:
-                if len(self.buf) > self.long_after and "," in self.buf[40:]:
+                limit = self.first_after if self.cut + len(out) == 0 else self.long_after
+                if len(self.buf) > limit and "," in self.buf[40:]:
                     cut = self.buf.rindex(",") + 1
                     out.append(self.buf[:cut]); self.buf = self.buf[cut:]
                 break
             out.append(self.buf[:m.end()]); self.buf = self.buf[m.end():]
-        return [s for s in (speakable(x) for x in out) if s]
+        out = [s for s in (speakable(x) for x in out) if s]
+        self.cut += len(out)
+        return out
 
     def flush(self) -> list[str]:
         rest, self.buf = speakable(self.buf), ""

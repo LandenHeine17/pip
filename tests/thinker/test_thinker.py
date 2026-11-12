@@ -23,6 +23,18 @@ def test_sentence_splitter_streams_and_cleans():
     assert out == ["It's cool today, about 53 degrees.", "Grab a jacket!", "See AccuWeather for more."]
 
 
+def test_a_long_first_clause_is_spoken_at_its_comma():
+    """D-122: the first piece may be cut at a comma after 60 characters, so his voice starts sooner; later ones
+    only after 160. Only where there's a comma past the first 40 characters."""
+    sp = SentenceSplitter()
+    first = sp.feed("Well, the bus that goes downtown from the stop by the library, ")
+    assert first == ["Well, the bus that goes downtown from the stop by the library,"]
+    assert sp.feed("comes every twenty minutes on weekdays, and every half hour on weekends") == []
+    assert sp.feed(". Sundays too.") == ["comes every twenty minutes on weekdays, and every half hour on weekends."]
+    assert sp.flush() == ["Sundays too."]
+    assert SentenceSplitter().feed("No commas at all in this one that is longer than sixty letters so far") == []
+
+
 def test_speakable_removes_links_and_markdown():
     assert speakable("# Hi *there* https://example.com now") == "Hi there now"
 

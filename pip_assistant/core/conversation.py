@@ -71,7 +71,8 @@ from .joining import Joining, in_quiet_hours
 from .micctl import MicControl
 from .modules import Call
 from .names import NOT_PIP, PIP_NAMES, calls_pip, names_pip
-from .commands import HALLUCINATION, clean
+from .commands import HALLUCINATION, STOP, clean
+from .commands import sure as sure_command
 from . import states
 from .states import DETAILS, situation
 from .transcript import Transcript
@@ -116,7 +117,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.mic = mic               # the listening switches (core/mic.py); None = always on
         self.prefs = prefs           # dashboard preferences (core/prefs.py): chime on/off, clap microphone
         self.net = None              # the online check (core/net.py), set by main
-        self.own_commands = (cfg or {}).get("conversation", {}).get("own_commands", "offline")  # D-94
+        self.own_commands = (cfg or {}).get("conversation", {}).get("own_commands", "sure")  # D-94, D-123
         self.transcript = Transcript()
         self.joining = Joining(self, cfg)
         self.answer_kind = "direct"  # what the current answer is: direct / mentioned / join
@@ -563,6 +564,20 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             # No Claude without the internet: Pip's own fixed-phrasing commands do the basics (D-83, D-94)
             if await self.people_command(text, offline) or await self.local_command(text, self.speaker):
                 await self.decided("fast_command", "offline" if offline else "always", **since)
+                return
+        elif self.own_commands == "sure" and sure_command(text):
+            # Clearly worded (D-123): done at once, ~2 s sooner than asking Claude, with no thinking tone.
+            # If the command can't do it after all, Claude still gets it.
+            if STOP.match(clean(text)):
+                # "Stop", "never mind": quiet at once (CB-019), and no more listening for him (D-105)
+                self.answer_id = None
+                await self.command("thinker", "thinker.cancel")
+                await self.go_quiet()
+                await self.note("passed", about="direct")     # the feed: he stayed quiet, as when Claude passes
+                await self.decided("fast_command", "stop", **since)
+                return
+            if await self.local_command(text, self.speaker):
+                await self.decided("fast_command", "sure", **since)
                 return
         if offline:
             # Offline and not one of the basics: he stays quiet (no repeated "I'm offline" line, owner D-115).
