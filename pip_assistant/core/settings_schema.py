@@ -76,6 +76,8 @@ SCHEMA = {
                                "map", ["ears"], min=0.05, max=0.99),
     "ears.barge_in": _s(L, "Stop when talked over", "Stop talking straight away when someone talks over Pip.",
                         "bool", ["ears"]),
+    "ears.barge_in_voice_check": _s(L, "Only a voice cuts him off", "Talked over only counts if it has a human voice "
+                                    "in it, so a knock, a clap or the door doesn't stop him (D-122).", "bool", ["ears"]),
     "listen.transcript_wake": _s(L, "Hear the whole room", "Transcribe everything said in the room, like Ziggletron "
                                  "(D-92). Off: Pip only reacts to the wake word.", "bool", ["ears"]),
     "conversation.follow_up_seconds": _s(L, "Follow-up window", "After Pip answers, you can talk again within this "

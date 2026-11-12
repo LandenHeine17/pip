@@ -72,7 +72,7 @@ class Hearing:
         """Noise (a click, a cough, a hiss) never reaches speech-to-text, which would hear "Thank you." (D-85)."""
         if not self.voice_check or reason == "wake":
             return True  # right after the wake word, someone was certainly talking
-        from .voicecheck import voice_seconds
+        from ..common.voicecheck import voice_seconds
         try:
             secs = await voice_seconds(pcm)
         except Exception as e:  # never lose speech because the check failed

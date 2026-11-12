@@ -105,7 +105,7 @@ async def main() -> None:
     alarms = asyncio.create_task(core.schedule.run())
     online = asyncio.create_task(core.net.run())
     core.modules.start()
-    from .voicecheck import voice_seconds_sync  # load the voice detector now, not on the first thing heard
+    from ..common.voicecheck import voice_seconds_sync  # load the voice detector now, not on the first thing heard
     loop.run_in_executor(None, voice_seconds_sync, bytes(3200))
     await stop.wait()
     keeper.cancel()

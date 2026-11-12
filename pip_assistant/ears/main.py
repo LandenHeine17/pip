@@ -1,8 +1,9 @@
 """pip-ears: listens all the time, hears the wake words, captures what's said, speaks, and stops
 instantly when talked over.
 
-Events it sends:   heard.wake {word, score} · heard.started {reason} · heard.utterance {reason, seconds, had_speech, word} (+ private audio)
-                   speech.started · speech.interrupted · speech.finished {interrupted, spoken}
+Events it sends:   heard.wake {word, score} · heard.started {reason} · heard.utterance {reason, seconds, had_speech, word,
+                   quiet_s} (+ private audio) · speech.started · speech.interrupted {level_dbfs, said} · speech.finished
+                   {interrupted, spoken} · speech.overlap_ignored {level_dbfs} (loud over him, but no voice: he carries on)
                    speech.level {level 0–1} (~10 a second while he talks, for the face's mouth; not traced)
                    ears.status {state}  (listening / speaking / muted_or_quiet / mic_off)
                    mic.clapped   (two claps: pip-core decides what that switches, D-91) · mic.clapped_trial (heard, but
@@ -28,8 +29,11 @@ import base64
 import logging
 import time
 
+import numpy as np
+
 from ..common.messages import Message
 from ..common.program import make_bus, serve, start
+from ..common.voicecheck import voice_seconds_sync
 from .audio import Microphone, Speaker, chime, level_dbfs, mic_tone, microphones, ringtone, thinking_tone
 from .clap import ClapDetector
 from .segmenter import Segmenter
@@ -65,6 +69,8 @@ class Ears:
         self.speaking = False
         self.voiced = False          # his voice has played in the current run of sounds (speech.started sent)
         self.loud_frames = 0
+        self.overlap_noted = False   # a sound over him without a voice was already traced (heard_over)
+        self.said_n = 0              # sentences played to the end in the current run of speech
         self.follow_until = 0.0
         self.silent_since = None
         self.state = "listening"
@@ -123,11 +129,7 @@ class Ears:
             if self.mic_mode != "on":
                 continue  # switched off by claps: only the clap microphone is listened to
             if self.speaking and self.cfg["barge_in"]:
-                # The speakerphone removes Pip's own voice, so sound now is someone talking over him.
-                self.loud_frames = self.loud_frames + 1 if db > self.cfg["barge_in_dbfs"] else 0
-                if self.loud_frames >= 3:  # ~240 ms of speech
-                    self.loud_frames = 0
-                    await self.talked_over(db)
+                await self.heard_over(frame, db)
             elif not self.seg.capturing and self.seg.is_speech(db) and not self.speaking:
                 if time.monotonic() < self.follow_until:
                     self.follow_until = 0.0
@@ -151,13 +153,37 @@ class Ears:
                 else:
                     self.seg.start("wake", word=word, lookback="phrase")
 
+    async def heard_over(self, frame, db: float) -> None:
+        """Pip is talking: is someone talking over him? The speakerphone removes his own voice, so ~240 ms of
+        loud sound is a candidate. Since D-122 it must also have a human voice in it (the same Silero check
+        pip-core uses before speech-to-text, ~2 ms): a knock, a clap or the door doesn't cut him off (the owner's
+        spec, 2026-11-12: about 1 in 7 talk-overs was followed by nothing or noise)."""
+        self.loud_frames = self.loud_frames + 1 if db > self.cfg["barge_in_dbfs"] else 0
+        if self.loud_frames < 3:
+            return
+        self.loud_frames = 0
+        if self.cfg.get("barge_in_voice_check", True) and not await self.voice_in(frame):
+            if not self.overlap_noted:      # once per thing he says, for the trace (tools/latency.py)
+                self.overlap_noted = True
+                await self.bus.emit("speech.overlap_ignored", {"level_dbfs": round(db, 1)})
+            return
+        await self.talked_over(db)
+
+    async def voice_in(self, frame) -> bool:
+        """Is there a voice in the last ~0.5 s (the frames just heard and this one)?"""
+        frames = [f for f, _ in list(self.seg.history)[-6:]] + [frame]
+        pcm = np.concatenate(frames).astype(np.int16).tobytes()
+        secs = await asyncio.get_running_loop().run_in_executor(None, voice_seconds_sync, pcm)
+        return secs >= 0.1
+
     async def talked_over(self, db: float) -> None:
         """Someone is talking over Pip: he stops, and what they say is for him. If they were already part-way
         through a sentence when he started (an alarm went off mid-sentence), that recording carries on whole;
         starting a new one would throw away what they'd said so far (owner's feedback, 2026-11-10). Unless it's
         already over half its longest, from long room talk: then a fresh one, so the end isn't cut off."""
+        said = self.said_n   # whole sentences he'd finished: pip-core can carry on from the next (CB-020)
         await self.stop_speaking()
-        await self.bus.emit("speech.interrupted", {"level_dbfs": db})
+        await self.bus.emit("speech.interrupted", {"level_dbfs": db, "said": said})
         if self.seg.capturing and self.seg.capture.get("n", 0) < self.seg.max_frames // 2:
             if self.seg.capture["reason"] == "room":
                 self.seg.capture["reason"] = "barge_in"   # room talk that carried on over him: it's for him now
@@ -196,10 +222,12 @@ class Ears:
                 continue
             self.speaking = True
             if kind == "speech" and not self.voiced:   # his voice starts (even right after a chime or tone)
-                self.voiced = True
+                self.voiced, self.overlap_noted, self.said_n = True, False, 0
                 await self.bus.emit("speech.started", {})
             finished = await self.speaker.play(audio, self.voice.rate,
                                                on_level=self._mouth if kind == "speech" else None)
+            if finished and kind == "speech":
+                self.said_n += 1
             if not finished or self.queue.empty():
                 # spoken: whether his voice played in this run, or only sounds (a chime, a tone)
                 spoken, self.speaking, self.voiced = self.voiced, False, False
@@ -313,6 +341,8 @@ async def main() -> None:
     bus.on("ears.ring", ears.on_ring)
     bus.on("ears.ring_stop", ears.on_ring_stop)
     bus.status.update(activity="listening", wake_words=cfg["ears"]["wake_words"])
+    if cfg["ears"].get("barge_in_voice_check", True):
+        voice_seconds_sync(b"\0\0" * 1600)   # load the voice detector now, not the first time he's talked over
     log.info("listening for %s", ", ".join(cfg["ears"]["wake_words"]))
     await serve(bus, ears.listen, ears.speak_loop)
 
