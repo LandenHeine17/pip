@@ -125,7 +125,7 @@ class VoiceLearning:
     async def _voice_seconds(self, pcm: bytes) -> float:
         if not self.voice_check:
             return len(pcm) / 32000
-        from .voicecheck import voice_seconds
+        from ..common.voicecheck import voice_seconds
         try:
             return await voice_seconds(pcm)
         except Exception:

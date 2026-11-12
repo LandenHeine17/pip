@@ -20,6 +20,7 @@ wake_words = ["pippletron", "hey_pip"]  # Wake-word models to listen for (D-74).
 wake_thresholds = { pippletron = 0.8, hey_pip = 0.5 }
 barge_in = true                         # Stop talking straight away when someone talks over Pip.
 barge_in_dbfs = -45.0                   # How loud speech over Pip must be to count (−96 silent … 0 max).
+barge_in_voice_check = true             # …and it must have a voice in it: a knock or a clap doesn't cut him off (D-122).
 voice_engine = "piper"                  # Voice engine (swappable, PIP-NEW-097).
 voice = "en_US-lessac-medium"           # Voice model in ~/pip-data/models/voices (D-73).
 speech_rate = 1.0                       # 1.0 = normal; 1.2 = a bit faster; 0.8 = slower.

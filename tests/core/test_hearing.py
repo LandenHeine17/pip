@@ -1,4 +1,4 @@
-"""Hearing (core/hearing.py, voicecheck.py, stt.py): noise without a voice is dropped (D-85), speech-to-text is told the
+"""Hearing (core/hearing.py, common/voicecheck.py, core/stt.py): noise without a voice is dropped (D-85), speech-to-text is told the
 household's names and fixed after (D-93), and Groq's daily limit moves to the second model (D-115)."""
 import asyncio
 from datetime import datetime
@@ -21,7 +21,7 @@ Clock = clock_at(NOW)
 
 
 def test_voice_check_ignores_noise():
-    from pip_assistant.core.voicecheck import voice_seconds_sync
+    from pip_assistant.common.voicecheck import voice_seconds_sync
     rng = np.random.default_rng(0)
     hiss = (rng.standard_normal(16000) * 32768 * 10 ** (-45 / 20)).astype(np.int16)
     click = np.zeros(16000, np.int16)

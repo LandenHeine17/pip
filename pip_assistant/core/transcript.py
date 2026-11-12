@@ -42,10 +42,10 @@ class Transcript:
     def last_ours(self) -> dict | None:
         return next((line for line in reversed(self._fresh()) if line["ours"]), None)
 
-    def mark_cut(self) -> None:
-        """Someone talked over Pip's last line."""
+    def mark_cut(self, cut: bool = True) -> None:
+        """Someone talked over Pip's last line (cut=False: it was only a "yeah", and he carried on)."""
         if (line := self.last_ours()) is not None:
-            line["cut"] = True
+            line["cut"] = cut
 
     def render(self) -> list[str]:
         out = []

@@ -335,3 +335,54 @@ async def test_a_clap_switch_off_is_cleared_when_claps_cant_switch_him_back(tmp_
     await asyncio.sleep(0.05)
     assert conv.mic.listening and ("ears.mic", None, {"mode": "on"}) in got
     await finish(bus, tasks)
+
+
+# ---------------------------------------------------------------- CB-020: a "yeah" over Pip isn't "stop"
+def barge_in():
+    return {"reason": "barge_in", "had_speech": True, "seconds": 0.6, "quiet_s": 0.0}, room()[1]
+
+
+async def talked_over_mid_answer(tmp_path, heard, monkeypatch=None):
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, heard, social={"join_in": False})
+    conv.spoken, conv.say_reason, conv.voice_kind = ["The bus comes at ten.", "Then another at half past."], "answer", "direct"
+    conv.transcript.add("Pip", "The bus comes at ten. Then another at half past.", ours=True)
+    await ears.emit("speech.interrupted", {"level_dbfs": -25, "said": 1})      # cut off in the second sentence
+    await asyncio.sleep(0.05)
+    got.clear()
+    return bus, conv, ears, got, asks, tasks
+
+
+async def test_a_yeah_over_pip_and_he_carries_on(tmp_path):
+    bus, conv, ears, got, asks, tasks = await talked_over_mid_answer(tmp_path, "Yeah.")
+    assert conv.paused and conv.paused["left"] == ["Then another at half past."]
+    await ears.emit("heard.utterance", *barge_in())
+    await asyncio.sleep(0.2)
+    assert says(got) == ["Then another at half past."] and not asks and conv.paused is None
+    assert not conv.transcript.last_ours()["cut"]
+    [d] = [r["data"] for r in bus.trace.recent() if r["type"] == "turn.decision"]
+    assert d == {"decision": "resumed_after_backchannel", "why": "backchannel"}
+    await finish(bus, tasks)
+
+
+async def test_real_words_over_pip_take_the_turn(tmp_path):
+    bus, conv, ears, got, asks, tasks = await talked_over_mid_answer(tmp_path, "No, I meant the one tomorrow.")
+    await ears.emit("heard.utterance", *barge_in())
+    await asyncio.sleep(0.3)
+    assert "Then another at half past." not in says(got) and len(asks) == 1 and conv.paused is None
+    assert asks[0][1]["text"] == "No, I meant the one tomorrow."
+    await finish(bus, tasks)
+
+
+async def test_talked_over_by_nothing_he_carries_on_and_a_long_talk_cancels(tmp_path, monkeypatch):
+    bus, conv, ears, got, asks, tasks = await talked_over_mid_answer(tmp_path, "")
+    await ears.emit("heard.utterance", {"reason": "barge_in", "had_speech": False, "seconds": 0.4}, private={})
+    await asyncio.sleep(0.1)
+    assert says(got) == ["Then another at half past."]
+    from pip_assistant.core import conversation
+    monkeypatch.setattr(conversation, "RESUME_WITHIN_S", 0.2)
+    got.clear()
+    conv.say_reason = "answer"
+    await ears.emit("speech.interrupted", {"level_dbfs": -25, "said": 0})
+    await asyncio.sleep(0.4)                                    # still talking after the wait: it's their turn
+    assert conv.paused is None and says(got) == [] and conv.transcript.last_ours()["cut"]
+    await finish(bus, tasks)

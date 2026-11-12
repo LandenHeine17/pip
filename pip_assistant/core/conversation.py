@@ -74,7 +74,7 @@ from .commands import HALLUCINATION, clean
 from . import states
 from .states import DETAILS, situation
 from .transcript import Transcript
-from .turns import TurnTaking, looks_unfinished  # noqa: F401  (looks_unfinished: tests import it from here)
+from .turns import RESUME_WITHIN_S, TurnTaking, is_backchannel, looks_unfinished  # noqa: F401  (tests import looks_unfinished)
 
 log = logging.getLogger(__name__)
 
@@ -192,6 +192,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.stt = stt
         self.stt_limited = False     # Groq's daily limit is used up (D-115): not offline, just heard on the Pi
         self.answer_id = None
+        self.paused = None          # an answer paused because someone talked over him: {left, aid, task} (CB-020)
         self.answer_done = asyncio.Event()
         self.speech_done = asyncio.Event()
         bus.core_listen("heard.wake", self.on_wake)
@@ -288,6 +289,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         if self.ringing:
             await self.schedule.acknowledge("name")  # saying his name answers an alarm (FEAT-037)
         self.answer_id = None  # a new request replaces anything in progress
+        self.drop_paused()
         await self.command("thinker", "thinker.cancel")
         await self.chime()
         self.listening_for(8.0)
@@ -312,9 +314,54 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.refresh_state()
         await self.note("interrupted")
         self.transcript.mark_cut()
+        # His answer is paused, not dropped, until it's clear what they said (CB-020): a "yeah", a laugh or
+        # nothing at all and he carries on; real words and it's cancelled (resume_paused / drop_paused).
+        said = int(msg.data.get("said") or 0) - (1 if self.filler_said == "searching" else 0)
+        left = self.spoken[max(0, said):] if self.say_reason == "answer" else []
+        if self.voice_kind in ("direct", "mentioned") and (left or self.answer_id) and not self.ringing:
+            self.drop_paused()
+            self.paused = {"left": left, "aid": self.answer_id,
+                           "task": asyncio.create_task(self._paused_timeout())}
+            return
+        self.drop_paused()
         if self.answer_id:
             await self.command("thinker", "thinker.cancel", {"answer_id": self.answer_id})
             self.answer_id = None
+
+    async def _paused_timeout(self) -> None:
+        await asyncio.sleep(RESUME_WITHIN_S)    # they're still talking, or said something: not just a "yeah"
+        self.paused["task"] = None
+        self.drop_paused()
+
+    def drop_paused(self) -> None:
+        """Someone really took the turn: the paused answer is cancelled (as before D-122)."""
+        p, self.paused = self.paused, None
+        if not p:
+            return
+        if p["task"]:
+            p["task"].cancel()
+        if p["aid"] and p["aid"] == self.answer_id:
+            self.answer_id = None
+            if _loop_running():
+                asyncio.ensure_future(self.command("thinker", "thinker.cancel", {"answer_id": p["aid"]}))
+        self.transcript.mark_cut()
+        self.refresh_state()
+
+    async def resume_paused(self, why: str) -> bool:
+        """It was only a "yeah", a laugh or a sound: he carries on from the sentence he was cut off in."""
+        p, self.paused = self.paused, None
+        if not p:
+            return False
+        if p["task"]:
+            p["task"].cancel()
+        self.transcript.mark_cut(False)
+        self.last_cut = -1e9             # it wasn't a hint to wait longer
+        self.voice_kind = "direct"
+        for text in p["left"]:
+            await self.say(text, "answer")
+        await self.decided("resumed_after_backchannel", why)
+        self.refresh_state()
+        return True
 
     async def on_speech_started(self, msg: Message) -> None:
         self.speaking, self.say_pending_until = True, 0.0
@@ -346,6 +393,9 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             return  # roommates don't give speeches (D-79)
         self.speech_done.clear()
         self.spoken.append(text)
+        if self.paused and self.paused["aid"] == msg.data.get("answer_id"):
+            self.paused["left"].append(text)   # talked over: kept until it's clear whether he carries on
+            return
         self.filler_said = self.filler_said or "first sentence"  # he's answering: no longer "thinking"
         self.voice_kind = self.answer_kind   # what he's saying is an answer, or him joining in
         await self.say(text, "answer")
@@ -373,6 +423,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             self.transcribing = bool(msg.data.get("had_speech"))
             self.refresh_state()
         if not msg.data.get("had_speech"):
+            await self.resume_paused("nothing")   # talked over by silence: he carries on
             await self._finish_pending()
             return
         if reason == "room" and self.enrolling:
@@ -390,6 +441,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         if not await self.has_voice(pcm, reason):
             self.transcribing = False
             self.refresh_state()
+            await self.resume_paused("no voice")
             await self._finish_pending()
             return
         if self.enrolling and reason in ("follow_up", "wake", "barge_in"):
@@ -408,6 +460,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             self.transcribing = False
             self.refresh_state()
             log.warning("speech-to-text failed: %s", e)
+            self.drop_paused()
             await self.bus.publish(Message("event", "stt.failed", data={"error": type(e).__name__}))
             if reason == "wake":
                 await self.say(SAYINGS["stt_failed"], "error")
@@ -421,6 +474,8 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         await self.bus.publish(Message("event", "stt.done", data={"seconds": stt_s, "chars": len(text),
                                                                    "reason": reason, "offline": offline,
                                                                    "speaker": self.speaker.level if self.speaker else None}))
+        if self.paused and await self.only_listening(text):
+            return
         if self.ringing and self.commands:
             reply = await self.commands.while_ringing(text, reason)
             if reply is not None:
@@ -441,6 +496,20 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             return
         await self.addressed(text, reason, stt_s=stt_s, offline=offline, heard_s=msg.data.get("seconds") or 0,
                              ended_at=self.speech_ended(msg))
+
+    async def only_listening(self, text: str) -> bool:
+        """Pip was talked over and his answer paused: was it only "yeah", a laugh, or nothing speech-to-text
+        could make out? Then he carries on (CB-020) and it isn't a new turn. Anything else, even "thanks",
+        takes the turn (a voice was checked for first, so it was really said)."""
+        heard = text.strip(" .?!,")
+        if not heard:
+            return await self.resume_paused("nothing")
+        if is_backchannel(heard):
+            self.hear(text)
+            await self.feed(text, "direct", self.speaker)
+            return await self.resume_paused("backchannel")
+        self.drop_paused()
+        return False
 
     def speech_ended(self, msg: Message) -> float:
         """When they stopped talking, as time.monotonic(): pip-ears sent the speech (msg.ts) after waiting

@@ -82,7 +82,7 @@ async def test_talking_over_pip_keeps_a_sentence_already_under_way():
         async def emit(self, kind, data):
             Bus.emitted.append(kind)
     e = ears_main.Ears.__new__(ears_main.Ears)
-    e.bus, e.seg = Bus(), Segmenter()
+    e.bus, e.seg, e.said_n = Bus(), Segmenter(), 0
 
     async def stop_speaking():
         pass
@@ -101,3 +101,41 @@ async def test_talking_over_pip_keeps_a_sentence_already_under_way():
     e.seg.capture = None                                 # nothing under way: a new recording, as before
     await e.talked_over(-20.0)
     assert e.seg.capture["reason"] == "barge_in"
+
+
+async def test_only_a_voice_cuts_him_off(monkeypatch):
+    """D-122: ~240 ms of loud sound over Pip stops him only if it has a human voice in it (the owner's spec,
+    2026-11-12). A knock or a clap is traced as speech.overlap_ignored, once, and he carries on."""
+    from pip_assistant.ears import main as ears_main
+    from pip_assistant.ears.segmenter import Segmenter
+
+    class Bus:
+        emitted = []
+
+        async def emit(self, kind, data):
+            Bus.emitted.append(kind)
+    e = ears_main.Ears.__new__(ears_main.Ears)
+    e.bus, e.seg, e.cfg, e.loud_frames, e.overlap_noted = Bus(), Segmenter(), {"barge_in_dbfs": -45.0}, 0, False
+    cut = []
+
+    async def talked_over(db):
+        cut.append(db)
+    e.talked_over = talked_over
+    loud = (np.ones(1280) * 3000).astype(np.int16)
+    voice = {"seconds": 0.0}
+    monkeypatch.setattr(ears_main, "voice_seconds_sync", lambda pcm: voice["seconds"])
+    for _ in range(9):                                   # a knock that goes on: three checks, no voice
+        e.seg.history.append((loud, True))
+        await e.heard_over(loud, -20.0)
+    assert cut == [] and Bus.emitted == ["speech.overlap_ignored"]
+    voice["seconds"] = 0.3                               # someone talking
+    for _ in range(3):
+        await e.heard_over(loud, -20.0)
+    assert cut == [-20.0]
+    e.cfg["barge_in_voice_check"], voice["seconds"] = False, 0.0   # switched off: loudness alone, as before D-122
+    for _ in range(3):
+        await e.heard_over(loud, -20.0)
+    assert cut == [-20.0, -20.0]
+    for _ in range(5):                                   # quiet: never
+        await e.heard_over(loud, -60.0)
+    assert len(cut) == 2
