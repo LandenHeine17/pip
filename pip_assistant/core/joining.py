@@ -11,12 +11,26 @@ words are spoken). He only asks when all of these hold:
     - it isn't quiet hours (23:00–07:00, D-66)
     - Claude's usage limit isn't reached: after pip-thinker's "usage.limited" he doesn't join in until it
       resets (D-69, common/usage.py). Replies to people carry on as normal.
+    - the last line isn't a question to someone else: that turn belongs to them (CB-012, D-124)
+    - he wasn't just told off: talked over while joining in, or "not now" / "we're talking" within
+      10 s of it, and he stays out for 15 minutes (CB-031, D-124)
 
-If anyone starts talking while he's deciding, or the conversation moves on before he speaks, he
-drops it. Joining in can never set timers or save memories (nothing overheard is ever acted on).
+If anyone starts talking while he's deciding, the conversation moves on before he speaks, or his reply
+comes too late (over 5 s), he drops it (CB-030). Joining in can never set timers or save memories (nothing
+overheard is ever acted on).
 """
 import asyncio
+import re
 import time
+
+from .names import names_pip
+
+# Being told to stay out, said soon after he joined in
+REJECTED = re.compile(r"\b(not now|we'?re talking|we are talking|nobody asked|no one asked|shut up|be quiet|"
+                      r"stay out|butt out|stop it|not you|wasn'?t talking to you|go away)\b", re.I)
+REJECT_WITHIN_S = 10.0      # "not now" this soon after he joined in is about him
+SUPPRESS_S = 15 * 60.0      # …and then he doesn't join in for this long
+STALE_S = 5.0               # a join-in reply this late is dropped: the moment has passed (Claude p90 ~4.5 s)
 
 INTERVALS = {"quiet": 120.0, "normal": 40.0, "chatty": 15.0}
 MOODS = {
@@ -49,6 +63,8 @@ class Joining:
         self.checked_count = -1      # transcript.count when he last considered joining in
         self.task: asyncio.Task | None = None
         self.paused_until = 0.0      # Claude's usage limit: no joining in until then (unix time)
+        self.joined_at = 0.0         # when he last spoke up uninvited
+        self.suppressed_until = 0.0  # told to stay out: no joining in until then (CB-031)
         bus = getattr(conv, "bus", None)
         if bus is not None and hasattr(bus, "core_listen"):
             bus.core_listen("usage.limited", self.on_limited)
@@ -90,6 +106,17 @@ class Joining:
             self.checked_count = self.conv.transcript.count
             await self.conv.join_in(self.mood_text())
 
+    def joined(self) -> None:
+        self.joined_at = self.clock()
+
+    def told_off(self, text: str = "", talked_over: bool = False) -> bool:
+        """Talked over while joining in, or "not now" soon after it: he stays out for a while (CB-031)."""
+        if talked_over or (self.clock() - self.joined_at <= REJECT_WITHIN_S and REJECTED.search(text or "")):
+            self.suppressed_until = self.clock() + SUPPRESS_S
+            self.cancel_wait()
+            return True
+        return False
+
     def mood_text(self) -> str:
         return MOODS[self.mood]
 
@@ -100,5 +127,11 @@ class Joining:
                 and tr.count != self.checked_count
                 and self.pause - 0.05 <= now - human["ts"] <= self.live
                 and now - self.last_check >= self.interval
-                and now >= self.paused_until
+                and now >= self.paused_until and now >= self.suppressed_until
+                and not self.question_for_someone_else(human.get("text", ""))
                 and not in_quiet_hours(self.quiet_hours, now))
+
+    @staticmethod
+    def question_for_someone_else(text: str) -> bool:
+        """'Sam, did you eat?': the next turn is theirs, not his (CB-012)."""
+        return text.rstrip().endswith("?") and not names_pip(text)

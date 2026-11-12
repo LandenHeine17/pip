@@ -157,7 +157,7 @@ async def room_setup(tmp_path, stt_text="", replies=None, social=None, people=No
     await bus.start()
     ears, thinker = BusClient("ears", socket_path=sock), BusClient("thinker", socket_path=sock)
     got, asks = [], []
-    replies = {"direct": "Sure.", "mentioned": "", "join": "", **(replies or {})}
+    replies = {"direct": "Sure.", "mentioned": "", "follow_up": "", "join": "", **(replies or {})}
 
     async def record(msg):
         got.append((msg.type, msg.private.get("text"), msg.data))

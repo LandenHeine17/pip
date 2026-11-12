@@ -76,7 +76,8 @@ clap_settle_ms = 700               # …and then nothing more for this long (thr
 own_commands = "sure"              # Pip's fixed-phrasing commands: "sure" = clearly worded ones (stop, snooze, a timer for a
                                    # length, what time is it) at once, everything else to Claude (D-123); "offline" = only
                                    # without internet (D-94); "always" = try them first, as before step 6.
-follow_up_seconds = 8.0            # After Pip answers, talk again within this time without saying his name.
+follow_up_seconds = 8.0            # After Pip answers, talk again within this time without saying his name…
+follow_up_anyone = false           # …anyone (true), or only the person he answered, by voice, unless he asked a question (D-124).
 wait_after_name_seconds = 5.0      # Said only his name? Pip listens quietly this long for the rest (no "Yes?" talking over you).
 # Knowing when you're done talking (D-106, D-122). Each wait is counted from when you stop talking: the 0.7 s pause
 # ([listen]) and speech-to-text count towards it, so Pip holds only for what's left. If you start talking again he

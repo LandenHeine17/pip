@@ -82,6 +82,9 @@ SCHEMA = {
                                  "(D-92). Off: Pip only reacts to the wake word.", "bool", ["ears"]),
     "conversation.follow_up_seconds": _s(L, "Follow-up window", "After Pip answers, you can talk again within this "
                                          "many seconds without saying his name.", "float", ["core"], min=0, max=30),
+    "conversation.follow_up_anyone": _s(L, "Follow-ups from anyone", "Off: without his name, only the person Pip just "
+                                        "answered (by voice) carries on, or anyone if he asked a question; someone "
+                                        "else is room talk (D-124). On: anyone in the window counts.", "bool", ["core"]),
     "listen.wait_for_speech_seconds": _s(L, "Wait for you to start", "In the follow-up window, how many seconds to "
                                          "wait for you to start talking.", "float", ["ears"], min=1, max=15),
     "conversation.wait_after_name_seconds": _s(L, "After just his name", "Said only his name? Pip listens quietly "
