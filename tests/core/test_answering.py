@@ -53,8 +53,8 @@ async def test_only_the_name_listens_quietly_for_the_rest(tmp_path):
 
 async def test_paused_mid_sentence_waits_and_joins_the_rest(tmp_path):
     bus, conv, ears, got, tasks = await setup(tmp_path, "Pippletron, what's the")
-    conv.unfinished_wait = 0.2
-    await ears.emit("heard.utterance", {"reason": "wake", "had_speech": True, "seconds": 1.5},
+    conv.unfinished_wait = 1.2                                       # counted from when they stopped (D-122)
+    await ears.emit("heard.utterance", {"reason": "wake", "had_speech": True, "seconds": 1.5, "quiet_s": 0.0},
                     private={"audio_b64": audio_b64()})
     await asyncio.sleep(0.2)
     assert [t for k, t, _ in got if k == "ears.say"] == []

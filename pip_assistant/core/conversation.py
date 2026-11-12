@@ -104,7 +104,7 @@ def _loop_running() -> bool:
 
 class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acting, Feed):
     SAYINGS = SAYINGS   # so the parts in other files (core/acting.py) can use them as self.SAYINGS
-    TURN_WAITS = {"short": 0.6, "statement": 1.2, "long": 1.5, "after_interrupt": 1.0}   # as in defaults.toml
+    TURN_WAITS = {"short": 1.0, "statement": 1.6, "long": 2.0, "after_interrupt": 0.5}   # as in defaults.toml (D-122)
 
     def __init__(self, bus, cfg: dict | None = None, stt=None, schedule=None, local_stt=None, people=None, memory=None,
                  mic=None, modules=None, prefs=None):
@@ -167,14 +167,18 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         if schedule is not None:
             schedule.watchers.append(self.refresh_state)
         self.wait_after_name = c.get("wait_after_name_seconds", 5.0)
-        self.unfinished_wait = c.get("unfinished_wait_seconds", 2.0)
+        self.unfinished_wait = c.get("unfinished_wait_seconds", 3.0)
         t = self.TURN_WAITS                                             # knowing when you're done (D-106)
         self.turn_short = c.get("turn_wait_short_seconds", t["short"])
         self.turn_statement = c.get("turn_wait_statement_seconds", t["statement"])
         self.turn_long = c.get("turn_wait_long_seconds", t["long"])
         self.turn_after_cut = c.get("turn_wait_after_interrupt_seconds", t["after_interrupt"])
         self.max_utterance = (cfg or {}).get("listen", {}).get("max_utterance_seconds", 12.0)
-        self.last_cut = -1e9         # when someone last talked over Pip (he waits longer for a minute, D-106)
+        self.last_cut = -1e9         # when someone last talked over Pip (he waits longer on the next turn, D-122)
+        self.end_silence = (cfg or {}).get("listen", {}).get("end_silence_seconds", 0.7)
+        self.pending_ended = 0.0     # when they stopped talking, for the held turn (time.monotonic())
+        self.pending_why = ""        # what kind of turn it sounded like (turns.py turn_kind)
+        self.turn_since_speech = 0.0 # end of their speech → the held turn answered (traced in turn.decision)
         self.mic_off_since = None    # for "mic was off for 12 s" on the feed
         self.max_sentences = c.get("max_sentences", 2)
         self.expect_until = 0.0     # Pip was just called: the next speech is for him, name or not
@@ -303,7 +307,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             self.pending_task = asyncio.create_task(self._answer_pending(wait=self.max_utterance + 4.0))
 
     async def on_interrupted(self, msg: Message) -> None:
-        self.last_cut = time.monotonic()   # talked over: wait a bit longer for a while (D-106)
+        self.last_cut = time.monotonic()   # talked over: wait a bit longer on the next turn (D-106, D-122)
         self.cut_until = self.last_cut + 1.5   # the face shows it for a moment
         self.refresh_state()
         await self.note("interrupted")
@@ -435,16 +439,26 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             await self.bus.publish(Message("event", "wake.rejected", data={"why": "transcript names Ziggletron"}))
             await self._finish_pending()
             return
-        await self.addressed(text, reason, stt_s=stt_s, offline=offline, heard_s=msg.data.get("seconds") or 0)
+        await self.addressed(text, reason, stt_s=stt_s, offline=offline, heard_s=msg.data.get("seconds") or 0,
+                             ended_at=self.speech_ended(msg))
+
+    def speech_ended(self, msg: Message) -> float:
+        """When they stopped talking, as time.monotonic(): pip-ears sent the speech (msg.ts) after waiting
+        `quiet_s` of silence. Time spent on speech-to-text and in the queue counts towards the turn wait (D-122)."""
+        try:
+            ago = max(0.0, time.time() - float(msg.ts)) + float(msg.data.get("quiet_s", self.end_silence) or 0)
+        except (TypeError, ValueError):
+            ago = self.end_silence
+        return time.monotonic() - min(ago, 30.0)
 
     async def respond(self, text: str, reason: str, offline: bool = False, **data) -> None:
         """Their turn is over: answer it."""
         self.expect_until = 0.0
+        since = {"since_speech_s": self.turn_since_speech, "reason": reason}
         if offline or self.own_commands == "always":
             # No Claude without the internet: Pip's own fixed-phrasing commands do the basics (D-83, D-94)
-            if await self.people_command(text, offline):
-                return
-            if await self.local_command(text, self.speaker):
+            if await self.people_command(text, offline) or await self.local_command(text, self.speaker):
+                await self.decided("fast_command", "offline" if offline else "always", **since)
                 return
         if offline:
             # Offline and not one of the basics: he stays quiet (no repeated "I'm offline" line, owner D-115).
@@ -452,6 +466,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             await self.bus.publish(Message("event", "answer.offline", data={}))
             await self.note("offline_quiet")
             return
+        await self.decided("answered", self.pending_why, **since)
         await self.answer(text, reason)
 
     async def on_room(self, msg: Message) -> None:
@@ -520,7 +535,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             self.answer_id = None
             await self.command("thinker", "thinker.cancel")
         await self.addressed(text, "expected" if expected else "transcript", offline=offline, chime=not expected,
-                             heard_s=msg.data.get("seconds") or 0)
+                             heard_s=msg.data.get("seconds") or 0, ended_at=self.speech_ended(msg))
 
     async def modules_answer(self, text: str, speaker, how: str) -> bool:
         """Offer something heard to the modules (room_heard, D-121): room talk, or something said to or about Pip

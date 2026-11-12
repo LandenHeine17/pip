@@ -165,7 +165,8 @@ class Ears:
             self.seg.start("barge_in", lookback=0.4)
 
     async def _send_utterance(self, utt) -> None:
-        data = {"reason": utt.reason, "seconds": utt.seconds, "had_speech": utt.had_speech, "word": utt.word}
+        data = {"reason": utt.reason, "seconds": utt.seconds, "had_speech": utt.had_speech, "word": utt.word,
+                "quiet_s": utt.quiet_s}
         private = {"audio_b64": base64.b64encode(utt.audio.tobytes()).decode()} if utt.had_speech else {}
         await self.bus.emit("heard.utterance", data, private=private)
 

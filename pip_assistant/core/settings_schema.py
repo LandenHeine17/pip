@@ -85,17 +85,18 @@ SCHEMA = {
     "conversation.wait_after_name_seconds": _s(L, "After just his name", "Said only his name? Pip listens quietly "
                                                "this many seconds for the rest.", "float", ["core"], min=1, max=15),
     "conversation.unfinished_wait_seconds": _s(L, "After a half-finished sentence", "Stopped mid-sentence (\"what's "
-                                               "the...\")? Pip waits this many seconds for the rest before answering.",
-                                               "float", ["core"], min=0, max=10),
-    "conversation.turn_wait_short_seconds": _s(L, "Turn wait: question", "After you pause, extra seconds Pip waits "
-                                               "before answering a question or short request (D-106).",
-                                               "float", ["core"], min=0, max=5),
+                                               "the...\", \"remind me to\")? Seconds from when you stop talking before "
+                                               "Pip answers (D-122).", "float", ["core"], min=0.5, max=10),
+    "conversation.turn_wait_short_seconds": _s(L, "Turn wait: question", "Seconds from when you stop talking before "
+                                               "Pip answers a question or short request. The 0.7 s pause and "
+                                               "speech-to-text count towards it (D-106, D-122).",
+                                               "float", ["core"], min=0.5, max=5),
     "conversation.turn_wait_statement_seconds": _s(L, "Turn wait: statement", "…after something longer that ends "
-                                                   "like a statement.", "float", ["core"], min=0, max=5),
+                                                   "like a statement.", "float", ["core"], min=0.5, max=5),
     "conversation.turn_wait_long_seconds": _s(L, "Turn wait: story", "…after two or more sentences (you might be "
-                                              "telling a story).", "float", ["core"], min=0, max=5),
-    "conversation.turn_wait_after_interrupt_seconds": _s(L, "Turn wait: after being talked over", "Added for a "
-                                                         "minute after someone talked over him: he takes the hint.",
+                                              "telling a story).", "float", ["core"], min=0.5, max=5),
+    "conversation.turn_wait_after_interrupt_seconds": _s(L, "Turn wait: after being talked over", "Added to the "
+                                                         "next turn after someone talked over him: he takes the hint.",
                                                          "float", ["core"], min=0, max=5),
     # ---- Conversation & joining in
     "social.join_in": _s(C, "Join in", "Pip listens to the room and decides for himself when to join in (D-92). "
