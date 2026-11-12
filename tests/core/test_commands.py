@@ -7,6 +7,8 @@ import pytest
 from helpers import FakeSTT, clock_at, commands_at, finish, say, utt
 from helpers import alarms_bus as setup_bus
 
+from pip_assistant.core.commands import sure
+
 NOW = datetime(2026, 11, 4, 19, 30)  # a Wednesday evening
 Clock = clock_at(NOW)
 
@@ -204,6 +206,7 @@ async def test_if_claude_fails_pips_own_commands_still_try(tmp_path):
     clock = Clock()
     said = "Pip, set a timer for ten minutes"
     bus, sched, conv, ears, got, tasks = await setup_bus(tmp_path, clock, FakeSTT(said))
+    conv.own_commands = "offline"           # (with "sure" this one is done without Claude anyway, D-123)
 
     async def broken(*a, **k):
         from pip_assistant.common.messages import Message
@@ -234,4 +237,42 @@ async def test_offline_uses_local_hearing_and_only_does_commands(tmp_path):
     await ears.emit("heard.utterance", d, private=p)
     await asyncio.sleep(0.2)
     assert local.calls == calls
+    await finish(bus, tasks)
+
+
+# ---------------------------------------------------------------- D-123: clearly worded commands, without Claude
+@pytest.mark.parametrize("said", ["Pip, stop.", "Shut up.", "never mind", "Snooze.", "What time is it?",
+                                  "Set a timer for ten minutes.", "Can you set a pasta timer for 5 minutes please?",
+                                  "10 minute timer", "start a timer for an hour and a half", "cancel the pasta timer",
+                                  "how long is left on the timer"])
+def test_clearly_worded_commands_are_sure(said):
+    assert sure(said)
+
+
+@pytest.mark.parametrize("said", ["set a timer for after dinner", "can you stop the music in 10 minutes",
+                                  "what time is it in Tokyo", "set a timer for ten minutes and remind me to call mom",
+                                  "set an alarm for 7", "remind me to call mom in 10 minutes", "how long until christmas",
+                                  "set a timer", "what time does the store close", "stop it pip I'm talking to Sam"])
+def test_anything_more_goes_to_claude(said):
+    assert not sure(said)
+
+
+async def test_a_sure_command_is_done_without_claude_and_stop_is_instant(tmp_path):
+    clock = Clock()
+    stt = FakeSTT("Pip, set a timer for ten minutes.")
+    bus, sched, conv, ears, got, tasks = await setup_bus(tmp_path, clock, stt)
+    d, p = utt("wake")
+    await ears.emit("heard.utterance", d, private=p)
+    await asyncio.sleep(0.3)
+    assert [t for k, t, _ in got if k == "ears.say"] == ["Timer's on, 10 minutes."] and len(sched.active()) == 1
+    stt.text = "Pip, stop."
+    await ears.emit("heard.utterance", d, private=p)
+    await asyncio.sleep(0.3)
+    assert ("ears.stop", None, {}) in got and ("ears.listen", None, {"seconds": 0}) in got
+    stt.text = "Pip, set a timer for after dinner."              # not clear: Claude works it out (D-94)
+    await ears.emit("heard.utterance", d, private=p)
+    await asyncio.sleep(0.3)
+    assert [x[1] for x in got if x[0] == "thinker.ask"] == ["Pip, set a timer for after dinner."]
+    decisions = [r["data"]["why"] for r in bus.trace.recent() if r["type"] == "turn.decision"]
+    assert sorted(decisions) == ["short", "stop", "sure"]     # the timer and stop: fast; "after dinner": answered
     await finish(bus, tasks)

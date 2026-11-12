@@ -112,9 +112,11 @@ SCHEMA = {
                                       "quiet this many minutes (0 = never).", "int", ["core"], min=0, max=600),
     "conversation.max_sentences": _s(C, "Short answers", "Pip stops after this many sentences unless you asked for "
                                      "detail or a story (D-79).", "int", ["core"], min=1, max=10),
-    "conversation.own_commands": _s(C, "Pip's own commands", "\"offline\": Pip's fixed-phrasing commands are used "
-                                    "only without internet (online, Claude understands any wording, D-94); "
-                                    "\"always\": try them first.", "str", ["core"], choices=["offline", "always"]),
+    "conversation.own_commands": _s(C, "Pip's own commands", "\"sure\": clearly worded commands (stop, snooze, "
+                                    "a timer for a length, what time is it) are done at once without Claude; anything "
+                                    "else goes to Claude (D-123). \"offline\": only without internet (D-94). "
+                                    "\"always\": try them first for everything.", "str", ["core"],
+                                    choices=["sure", "offline", "always"]),
     "thinker.thinking_tone": _s(C, "Thinking tone", "A soft tone when Pip starts thinking (D-86): always, slow "
                                 "(only if the answer is slow) or off.", "str", ["core"],
                                 choices=["always", "slow", "off"]),
