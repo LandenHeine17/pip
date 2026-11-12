@@ -294,6 +294,18 @@ flowchart TD
 - Pip becomes the device hub on the Pi, with no Home Assistant: ESP32/ESPHome devices announce themselves over MQTT and appear on the dashboard for approval; Eightree plugs via the local Tuya protocol (D-18, D-36). New brands are added as one adapter module each.
 - Music from local files on Pip's speaker (D-20).
 
+### The owner's conversation rules (CB-001–050), where they stand (2026-11-12)
+From the owner's spec `~/Pip_Conversational_Behavior_Specification_v2.md` (background; decisions win).
+
+| Rules | Status |
+|---|---|
+| CB-001–010 turn-taking (separate "stopped" / "finished" / "may speak", hold unfinished turns, resumed speech) | **Changed (D-122):** one budget from the end of speech, more unfinished endings, a turn stays open if they start again during speech-to-text. Not yet: prosody (intonation) as a cue; turns over 12 s are split and joined, not one capture |
+| CB-011–017 addressing, who has the floor | Already: called vs mentioned (D-80, D-92); voice match never grants trust by itself (D-87, D-118). **Changed (D-124):** follow-ups from the voice he answered; no joining in after a question to someone else. Not yet: TV/media voices told apart (CB-016); per-guest opt-out conflicts with D-90 unless the owner decides |
+| CB-018–025 interruptions and repair | **Changed (D-122):** only a voice cuts him off; a "yeah"/laugh/nothing and he carries on; the transcript keeps only what was heard; Claude told to pick up after a cut and fix corrections briefly; "you're right" only when agreeing. Not yet: spoken backchannels from Pip himself (CB-025) |
+| CB-026–034 joining in | Already: mood, quiet hours, cooldown, never acts on overheard talk (D-92). **Changed (D-124):** told off or talked over → out for 15 min; late replies dropped. Not yet: a visual-only channel for low-priority ideas (CB-033) |
+| CB-035–042 style and delivery | Already in the personality and rules: short answers, no "Great question", not ending on a question, confirmation only after the action is done (D-79, D-84). **Changed:** nothing made up (D-124); the first spoken piece starts sooner (D-122) |
+| CB-043–050 privacy | Already: D-90/D-91 mic switches, D-114, D-118, D-119, trace without words. Reason codes: `turn.decision` (D-122). Mic-off surviving a restart: already (`core/mic.py`) |
+
 ## 4. A request, start to finish
 
 ```mermaid
