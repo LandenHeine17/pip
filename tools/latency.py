@@ -166,6 +166,10 @@ def report(rows: list) -> dict:
         "talk_overs": dict(talk_overs(rows)),
         "follow_ups": {"requests": len(follow), "passed": sum(1 for r in follow if r["outcome"] == "passed")},
         "decisions": dict(decisions),
+        # look-ups Claude asked for (the calendar, the web: D-102, D-125) and Claude's own built-in web search
+        "look_ups": stats([d["seconds"] for _, ty, d in rows if ty == "action.looked" and "seconds" in d]),
+        "builtin_searches": stats([d["total_s"] for _, ty, d in rows if ty == "thinker.ask" and d.get("searched")
+                                   and "total_s" in d]),
         "join_ins": {"considered": sum(1 for _, ty, _ in rows if ty == "join.considered"),
                      "spoke": sum(1 for _, ty, d in rows if ty == "conversation.event" and d.get("kind") == "joined")},
     }
@@ -182,6 +186,7 @@ def show(rep: dict) -> str:
               f"Talked over: {rep['talk_overs']}",
               f"Follow-ups: {rep['follow_ups']['requests']} requests, {rep['follow_ups']['passed']} passed by Claude",
               f"Joining in: {rep['join_ins']['considered']} considered, {rep['join_ins']['spoke']} spoke",
+              f"Look-ups (calendar, web): {rep['look_ups']} · Claude's own web search, whole answer: {rep['builtin_searches']}",
               f"Decisions: {rep['decisions']}"]
     return "\n".join(lines)
 

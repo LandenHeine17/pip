@@ -324,7 +324,7 @@ tour: [
 <h2>Modules</h2>
 <p>Every feature that isn't Pip's core is a <b>module</b>: a folder in <code>pip_assistant/modules/</code> with a description file
 (<code>module.toml</code>) and a little code (<code>module.py</code>). Pip finds them at startup. Today: google, calendar, todos, screen,
-six_seven (and _template, the example).</p>
+six_seven, websearch (and _template, the example).</p>
 <div class="note"><b>The rule (D-120):</b> Pip's programs <b>never name a module</b>. pip-core and pip-web ask <i>every</i> module the same
 questions through <b>hooks</b>, so a module can be added, changed or switched off without touching them.
 [[tools/check_map.py#modules_named|tools/check_map.py]] refuses a commit that breaks this, and the tests check it too.</div>
@@ -368,6 +368,8 @@ tour: [
   {title: "The calendar's box: its data", text: "Only today's and tomorrow's events Pip may show the room.", ref: "modules/calendar/dashboard.py#DashboardPage.tv"},
   {title: "The calendar's box: drawn", text: "The module's own script draws its box on the monitor (tv.html loads it).", ref: "modules/calendar/static/monitor.js"},
   {title: "A module that hears everything", text: "six seven: the whole module is one hook.", ref: "modules/six_seven/module.py#SixSeven.room_heard"},
+  {title: "A module that looks things up", text: "websearch (D-125): Claude replies ACTION {\"do\": \"look\", \"kind\": \"web\", \"query\": …}; this asks Brave Search (the only host it may reach), keeps a few short results, and pip-core asks Claude again with them. About 5 s, where Claude's own search took 10-15.", ref: "modules/websearch/module.py#WebSearch.do_look"},
+  {title: "Look-ups in pip-core", text: "The same path for every module's look-up (the calendar's too): checked, done (awaited if it's async), then Claude is asked once more. Over a second, and Pip says \"Let me look that up.\"", ref: "core/acting.py#Acting.look_up"},
   {title: "The guard", text: "Reads the code of Pip's programs and fails if any names a module.", ref: "tools/check_map.py#modules_named"},
 ]},
 

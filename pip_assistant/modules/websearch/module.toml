@@ -1,0 +1,28 @@
+# Web search (D-125): looks things up on the web for Claude, fast. Claude asks for a look-up
+# (ACTION look, kind web), this module asks the Brave Search API, keeps a few short snippets, and Claude is
+# asked again with them: about 5 s, where Claude's own built-in web search took 10-15 s. Keeps nothing.
+# Needs a Brave Search API key in ~/pip-data/secrets.toml:   [websearch]   api_key = "..."
+
+name = "websearch"
+kind = "provider"
+summary = "Looks things up on the web (Brave Search) when Claude needs current facts."
+says_examples = ["Pip, who won the Huskers game?", "is Target open right now?"]
+offline = false                     # needs the internet
+permissions = ["network:api.search.brave.com"]
+needs = []
+
+[settings.results]
+default = 3
+explain = "How many web results Claude reads (more is slower and costs more tokens)."
+
+[settings.timeout_seconds]
+default = 4.0
+explain = "Give up on a web search after this many seconds."
+
+[claude]
+instructions = """
+Web: for current facts you don't know (news, scores, opening hours, prices, recent events), reply with ONLY:
+ACTION {"do": "look", "kind": "web", "query": "huskers football score"}
+Use the weather and what you're told first, and never search for things you already know. When you get the
+results, answer in a sentence or two from them; never read out links or sources.
+"""

@@ -133,7 +133,9 @@ SCHEMA = {
                         "haiku is quickest.", "str", ["thinker"], choices=["sonnet", "opus", "haiku"]),
     "thinker.effort": _s(B, "Effort", "How hard Claude thinks: low is quickest (like Ziggletron).", "str", ["thinker"],
                          choices=["low", "medium", "high", "xhigh", "max"]),
-    "thinker.web_search": _s(B, "Web search", "Let Claude look things up for current facts.", "bool", ["thinker"]),
+    "thinker.web_search": _s(B, "Claude's own web search", "Claude's built-in web search (slow, 10-15 s). Off since "
+                             "D-125: the websearch module looks things up instead (about 5 s). Turn on to use the "
+                             "old way, e.g. without a Brave Search key.", "bool", ["thinker"]),
     "thinker.timeout_seconds": _s(B, "Give up after", "Give up on an answer after this many seconds.",
                                   "float", ["thinker"], min=10, max=180),
     "builder.enabled": _s(B, "Self-changes", "Let Pip change his own code when asked (each change needs your "
