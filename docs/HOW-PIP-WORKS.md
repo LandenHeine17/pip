@@ -59,16 +59,18 @@ Say someone says **"Hey Pip, what time is it?"** Here's what happens, and where 
 
 1. **pip-ears hears the wake word** (`ears/wake.py`) and sends `heard.wake`. It keeps capturing until you pause (`ears/segmenter.py`).
 2. **pip-core** `Conversation.on_wake` plays the chime and starts the "listening" window. *Face: listening, "Heard my name: go on".*
-3. **pip-ears sends the audio** as `heard.utterance`, with the audio in `private`.
-4. `Conversation.on_utterance` checks there's a voice in it (not a cough). It works out who's talking (`core/people.py`) and turns it into text with Groq (`core/stt.py`). *Face: "Working out what you said".*
-5. `Conversation.addressed` **holds your words** for a moment in case you're not finished (`turn_wait`, D-106). Ending with a question mark means a short wait; a long statement means a longer one. *Face: "Waiting to see if you're done", with a countdown.*
-6. Nothing more came, so `respond` calls `answer`. That sends a `thinker.ask` request with the room transcript, the schedule, who's talking and their memories. A soft thinking tone plays. *Face: thinking, "Working on an answer".*
+3. **pip-ears sends the audio** as `heard.utterance`, with the audio in `private` and how long it waited in silence (`quiet_s`).
+4. `Conversation.queue_utterance` puts it in a queue, so nothing else from pip-ears waits behind speech-to-text; one worker takes each in order to `Conversation.on_utterance`. That checks there's a voice in it (not a cough), works out who's talking (`core/people.py`) and turns it into text with Groq (`core/stt.py`). *Face: "Working out what you said".*
+5. `Conversation.addressed` **holds your words** in case you're not finished (`turn_kind` and `turn_wait`, D-106, D-122). The wait is a budget **counted from when you stopped talking** (`speech_ended`), so the pause and speech-to-text already count: a question gets 1.0 s in all, a long statement more, a half-finished sentence 3 s. *Face: "Waiting to see if you're done", with a countdown.*
+6. Nothing more came, so `respond` takes it. **A clearly worded command** ("what time is it", "set a timer for 10 minutes", "stop": `commands.sure`, D-123) is done at once on the Pi. Anything else goes to `answer`, which sends a `thinker.ask` request with the room transcript, the schedule, who's talking and their memories. A soft thinking tone plays. *Face: thinking, "Working on an answer".* Each step is traced as a `turn.decision` (`decided`), which `tools/latency.py` reads to show where the seconds went.
 7. **pip-thinker** (`thinker/main.py`) asks Claude and streams each sentence back as `answer.sentence`.
 8. `Conversation.on_sentence` sends each sentence to pip-ears with `ears.say`. *Face: "Getting the words out", then once the voice starts (`speech.started`), speaking, "Answering".*
-9. When the voice finishes (`speech.finished`), `_maybe_follow_up` opens a short window to reply without saying his name. *Face: listening, "Listening for your reply", with a countdown.*
+9. When the voice finishes (`speech.finished`), `_maybe_follow_up` opens a short window to reply without saying his name. It's for **the person he answered** (`follow_up_for` compares voices; anyone if he asked a question, D-124). *Face: listening, "Listening for your reply", with a countdown.*
 10. Nobody replies, so the window runs out. *Face: idle, "Say my name if you need me".*
 
-If Claude replies with an **ACTION** ("set a timer for 10 minutes"), `claude_action` checks all of it with `core/actions.py`, does it (or none of it, if any part is wrong), and says the confirmation (D-84). Each answer keeps **who asked** (`asker`), so if someone else talks while Claude works, the action is still done as the person who asked. Room talk that isn't for Pip goes through `Conversation.on_room`. It's kept in the room transcript (`core/transcript.py`) and might lead Pip to join in (`core/joining.py`).
+If Claude replies with an **ACTION** ("set a timer for 10 minutes"), `claude_action` checks all of it with `core/actions.py`, does it (or none of it, if any part is wrong), and says the confirmation (D-84). Each answer keeps **who asked** (`asker`), so if someone else talks while Claude works, the action is still done as the person who asked. Room talk that isn't for Pip goes through `Conversation.on_room` and `room_talk`. It's kept in the room transcript (`core/transcript.py`) and might lead Pip to join in (`core/joining.py`).
+
+**Talked over** (D-122): pip-ears stops him only if the sound over him has a voice in it (`Ears.heard_over`). pip-core's `on_interrupted` then **pauses** the answer instead of cancelling it. If what was said turns out to be only "yeah", a laugh or nothing (`only_listening`, `is_backchannel` in `core/turns.py`), `resume_paused` says the rest, starting from the sentence he was cut off in; real words cancel it (`drop_paused`) and become the next turn.
 
 ## 3. The face state machine
 
@@ -129,7 +131,9 @@ Some of the waits are settings, in the `[conversation]` section of `pip_assistan
 
 - `wait_after_name_seconds`: how long he listens after hearing only his name;
 - `follow_up_seconds`: the follow-up window, half as long again if he asked a question;
-- `turn_wait_*`: how long he waits to see if you're done.
+- `turn_wait_*` and `unfinished_wait_seconds`: how long he waits to see if you're done, counted from when you stop talking (D-122);
+- `follow_up_anyone`: off means only the person he answered can follow up without his name (D-124);
+- `own_commands`: "sure" means clearly worded commands are done without Claude (D-123).
 
 `refresh_state()` is called whenever one of the fields changes. It publishes only when the (state, detail) pair is different, and sets a timer to check again when the next deadline (`listen_until`, `cut_until`, …) passes. When the dashboard reconnects (pip-web restarting), `on_program_connected` sends it the current state, so it never starts blank.
 
@@ -335,6 +339,7 @@ Exit codes: **0** live, **1** rolled back (healthy again), **2** stopped before 
 | To understand… | Read |
 |---|---|
 | everything said in the room, and when Pip answers | `core/conversation.py`: `on_room`, `answer`; `core/turns.py`: `addressed` |
+| how fast he answers, and where the time goes | `tools/latency.py` (run it: `uv run tools/latency.py`), `turn.decision` in the trace, `core/turns.py` (the waits), `commands.sure` (instant commands) |
 | what Claude is told about the room, people and what's set | `core/context.py` (`for_claude`) |
 | when he joins in by himself | `core/joining.py` |
 | knowing who's talking | `core/people.py`, `core/peoplecmds.py` |
