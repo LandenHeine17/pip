@@ -12,6 +12,8 @@ they read and set its fields like its own.
     request_change    asking Pip to change himself (M1b, PIP-NEW-069): passed on to pip-builder
     look_up           Claude asked to see something first (ACTION look, D-102): fetch it and ask again
 """
+import asyncio
+import inspect
 import json
 import logging
 import time
@@ -146,21 +148,37 @@ class Acting:
             return self.SAYINGS["change_unavailable"], False
         return self.SAYINGS["change_asked"], True
 
+    async def _say_looking(self, after: float) -> None:
+        await asyncio.sleep(after)
+        if not self.filler_said:
+            self.filler_said = "searching"
+            await self.say("Let me look that up.", "searching")
+            self.refresh_state()
+
     async def look_up(self, looks: list[dict], again: tuple | None, t0: float, asker: tuple | None = None) -> None:
-        """Claude asked to see more first (the calendar for next Friday, …): fetch it and ask again."""
+        """Claude asked to see more first (the calendar for next Friday, the web, …): fetch it and ask again.
+        A module's look-up may be async (a web search, D-125); if it takes over a second, Pip says so."""
         from . import actions
         found = []
         asker = asker or (self.speaker, self.last_pcm)
-        if again is not None:
-            ctx = self._action_ctx(asker[0])
-            for a in looks[:3]:
-                try:
-                    _, act, plan, call = actions.check_module_action(f"look:{a.get('kind')}", a, ctx, ctx["call"].now)
-                    found.append(act.do(plan, call))
-                except Exception as e:
-                    if not isinstance(e, (actions.Invalid, ValueError, TypeError, KeyError)):
-                        log.exception("look-up failed")
-        await self.bus.publish(Message("event", "action.looked", data={"count": len(found), "again": again is not None}))
+        started = time.perf_counter()
+        slow = asyncio.create_task(self._say_looking(1.0)) if again is not None else None
+        try:
+            if again is not None:
+                ctx = self._action_ctx(asker[0])
+                for a in looks[:3]:
+                    try:
+                        _, act, plan, call = actions.check_module_action(f"look:{a.get('kind')}", a, ctx, ctx["call"].now)
+                        got = act.do(plan, call)
+                        found.append(await got if inspect.isawaitable(got) else got)
+                    except Exception as e:
+                        if not isinstance(e, (actions.Invalid, ValueError, TypeError, KeyError)):
+                            log.warning("look-up failed: %s", type(e).__name__)   # (never the query: it's what was said)
+        finally:
+            if slow:
+                slow.cancel()
+        await self.bus.publish(Message("event", "action.looked", data={"count": len(found), "again": again is not None,
+                                                                        "seconds": round(time.perf_counter() - started, 2)}))
         if not found:   # a second look-up, or nothing to look at: don't go round in circles
             text = "Sorry, I couldn't find that."
             await self.speak_reply(text, "command", t0)

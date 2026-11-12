@@ -189,7 +189,7 @@ async def test_restart_gives_up_waiting(tmp_path):
     conv = FakeConv()
     conv.state = "thinking"
     a, calls = api(tmp_path, conv, max_wait_seconds=0.05)
-    await a.handle({"action": "set", "changes": {"thinker.web_search": False}})
+    await a.handle({"action": "set", "changes": {"thinker.web_search": True}})
     await asyncio.wait_for(a.task, 1)
     assert calls == ["thinker"]
 

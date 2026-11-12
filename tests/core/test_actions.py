@@ -126,3 +126,33 @@ async def test_claude_looks_the_calendar_up_then_answers(tmp_path):
     await asyncio.sleep(0.6)
     assert len(asks) == 2 and says(got) == ["Sorry, I couldn't find that."]
     await finish(bus, tasks)
+
+
+async def test_a_slow_web_look_up_is_awaited_and_pip_says_so(tmp_path, monkeypatch):
+    """D-125: a module's look-up may be async (the websearch module asks Brave). It's awaited, Claude is asked
+    again with what it found, and if it takes over a second Pip says "Let me look that up." first."""
+    import httpx
+
+    from pip_assistant.common.modules import ROOT, read
+    from pip_assistant.core.modules import Registry
+
+    monkeypatch.setenv("PIP_DATA", str(tmp_path))
+    (tmp_path / "secrets.toml").write_text('[websearch]\napi_key = "BSA-test"\n')
+
+    async def brave(request):
+        await asyncio.sleep(1.3)
+        return httpx.Response(200, json={"web": {"results": [{"title": "Huskers 24, Iowa 17", "description": "Final."}]}})
+    reg = Registry.load({}, infos=[read(ROOT / "websearch")], db_path=tmp_path / "pip.db",
+                        transport=httpx.MockTransport(brave))
+    look = 'ACTION {"do": "look", "kind": "web", "query": "huskers score"}'
+    bus, conv, ears, got, asks, tasks = await setup(
+        tmp_path, "Pip, did the Huskers win?", social={"join_in": False}, modules=reg, schedule=Schedule(tmp_path / "pip.db"),
+        replies={"direct": [look, "Yep, 24 to 17."]})
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(2.0)
+    assert len(asks) == 2 and "Huskers 24, Iowa 17" in asks[1][1]["looked_up"]
+    assert says(got) == ["Let me look that up.", "Yep, 24 to 17."]
+    [looked] = [r["data"] for r in bus.trace.recent() if r["type"] == "action.looked"]
+    assert looked["count"] == 1 and looked["seconds"] >= 1.3
+    assert "huskers" not in json.dumps(bus.trace.recent()).lower()     # the query is never logged
+    await finish(bus, tasks)

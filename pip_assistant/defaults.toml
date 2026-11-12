@@ -104,7 +104,8 @@ thinking_tone_after_seconds = 1.5  # For "slow": play it if the answer hasn't st
 model = "sonnet"                   # Claude model: "sonnet" starts answering in ~0.9 s vs ~2.3 s for the default Opus.
 effort = "low"                     # How hard Claude thinks: low is quickest (like Ziggletron).
 timeout_seconds = 45.0             # Give up on an answer after this long.
-web_search = true                  # Let Claude look things up for current facts.
+web_search = false                 # Claude's own built-in web search (slow: 10-15 s). Off since D-125: the websearch
+                                   # module looks things up instead (~5 s). On: the old way, e.g. without a Brave key.
 location = "Lincoln, Nebraska"     # Where Pip lives (D-63).
 
 [web]
