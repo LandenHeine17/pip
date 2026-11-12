@@ -62,6 +62,7 @@ class TurnTaking:
             text = f"{self.pending} {text}"
             self.pending = ""
             chime = chime or self.pending_how[3]
+            data["kind"] = self.pending_how[2].get("kind") or data.get("kind")   # the turn is still who it was for
         if self.pending_task:
             self.pending_task.cancel()
             self.pending_task = None
@@ -80,6 +81,8 @@ class TurnTaking:
             await self.note("waiting", seconds=round(wait, 1))
         if merged:
             await self.decided("held_more_speech", why)
+        elif why == "unfinished":
+            await self.decided("waited_unfinished", why, wait_s=wait)
         self.pending, self.pending_how = text, (reason, offline, data, chime)
         self.pending_ended, self.pending_why = ended, why
         self.turn_until = time.monotonic() + wait

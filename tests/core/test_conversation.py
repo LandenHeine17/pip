@@ -297,3 +297,109 @@ async def test_talking_again_during_speech_to_text_keeps_the_turn_open(tmp_path)
     await asyncio.sleep(1.5)
     assert len(asks) == 1 and asks[0][1]["text"] == "Pip, so tomorrow what's the weather?"
     await finish(bus, tasks)
+
+
+# ---------------------------------------------------------------- D-124: follow-ups are for the person he answered
+def test_who_a_follow_up_is_for(tmp_path):
+    from pip_assistant.core.conversation import Conversation
+    from pip_assistant.core.people import Match
+    c = Conversation(Bus(tmp_path / "s", Trace(tmp_path / "pip.db"), Health([], restart=False)), {"conversation": {}})
+    alex, sam = Match("a", "Alex", "sure", 0.8), Match("s", "Sam", "sure", 0.8)
+    c.follow = {"asker": alex, "question": False, "until": time.monotonic() + 5}
+    assert c.in_follow_up()
+    assert c.follow_up_for(Match("a", "Alex", "probably", 0.4)) == "direct"     # the same voice
+    assert c.follow_up_for(sam) == "room"                                       # clearly someone else
+    assert c.follow_up_for(Match()) == "follow_up"                              # can't tell: Claude decides
+    c.follow["asker"] = None
+    assert c.follow_up_for(alex) == "follow_up"
+    c.follow["question"] = True                                                  # he asked: anyone may answer
+    assert c.follow_up_for(sam) == "direct"
+    c.follow["question"], c.follow_anyone = False, True                          # the setting: anyone, as before
+    assert c.follow_up_for(sam) == "direct"
+
+
+async def answered_then(tmp_path, monkeypatch, then_voice, asker):
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, "Pip, when does the bus come?", social={"join_in": False},
+                                                    conversation={"follow_up_seconds": 5.0})
+
+    async def identify(pcm):
+        return who["now"]
+    who = {"now": asker}
+    monkeypatch.setattr(conv, "identify", identify)
+    await ears.emit("heard.utterance", {**room()[0], "reason": "wake"}, private=room()[1])
+    await asyncio.sleep(0.2)
+    await ears.emit("speech.started", {})
+    await ears.emit("speech.finished", {"interrupted": False, "spoken": True})
+    await asyncio.sleep(0.1)
+    assert conv.in_follow_up() and len(asks) == 1
+    who["now"], conv.stt.text = then_voice, "and on Sunday"
+    await ears.emit("heard.utterance", {**room()[0], "reason": "follow_up"}, private=room()[1])
+    await asyncio.sleep(0.3)
+    return bus, conv, asks, tasks
+
+
+async def test_the_same_voice_carries_on_without_his_name(tmp_path, monkeypatch):
+    from pip_assistant.core.people import Match
+    alex = Match("a", "Alex", "sure", 0.8)
+    bus, conv, asks, tasks = await answered_then(tmp_path, monkeypatch, alex, alex)
+    assert [k for k, _ in asks] == ["direct", "direct"]
+    await finish(bus, tasks)
+
+
+async def test_someone_elses_voice_after_an_answer_is_room_talk(tmp_path, monkeypatch):
+    from pip_assistant.core.people import Match
+    bus, conv, asks, tasks = await answered_then(tmp_path, monkeypatch, Match("s", "Sam", "sure", 0.8),
+                                                 Match("a", "Alex", "sure", 0.8))
+    assert [k for k, _ in asks] == ["direct"] and conv.transcript.lines[-1]["text"] == "and on Sunday"
+    assert [r["data"]["decision"] for r in bus.trace.recent() if r["type"] == "turn.decision"][0] == "follow_up_other_voice"
+    await finish(bus, tasks)
+
+
+async def test_an_unknown_voice_after_an_answer_lets_claude_decide(tmp_path, monkeypatch):
+    bus, conv, asks, tasks = await answered_then(tmp_path, monkeypatch, None, None)
+    assert [k for k, _ in asks] == ["direct", "follow_up"]
+    await finish(bus, tasks)
+
+
+# ---------------------------------------------------------------- joining in more politely (D-124)
+async def test_no_join_in_on_a_question_to_someone_else(tmp_path):
+    """CB-012: 'Sam, did you finish the essay?' - the next turn is Sam's, even if Pip could answer."""
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, "Sam, did you finish the essay?",
+                                                    replies={"join": "SAY: It's due Friday."})
+    conv.joining.last_check = -1e9
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.4)
+    assert asks == []
+    await finish(bus, tasks)
+
+
+async def test_told_off_after_joining_in_he_stays_out(tmp_path):
+    """CB-031: 'not now' soon after he joined in, or being talked over while he does: no joining in for 15 minutes."""
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, "not now Pip we're talking")
+    conv.joining.joined()
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.3)
+    assert conv.joining.suppressed_until > time.time() + 14 * 60
+    conv.joining.suppressed_until, conv.joining.last_check, conv.joining.joined_at = 0.0, -1e9, 0.0
+    assert not conv.joining.told_off("we're talking about the game")      # long after he joined in: not about him
+    conv.voice_kind, conv.say_reason = "join", "answer"
+    await ears.emit("speech.interrupted", {"level_dbfs": -20, "said": 0})
+    await asyncio.sleep(0.1)
+    assert conv.joining.suppressed_until > time.time() + 14 * 60
+    whys = [r["data"]["why"] for r in bus.trace.recent() if r["type"] == "turn.decision"
+            and r["data"]["decision"] == "join_suppressed"]
+    assert sorted(whys) == ["talked_over", "told"]
+    await finish(bus, tasks)
+
+
+async def test_a_join_in_reply_that_comes_too_late_is_dropped(tmp_path):
+    """CB-030: by 5 s the moment has passed."""
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path)
+    conv.transcript.add("Someone", "I wonder how far away the moon is")
+    conv.join_count = conv.transcript.count
+    conv.answer_id, conv.answer_kind, conv.join_spoke = "j1", "join", False
+    conv.join_asked_at = time.monotonic() - 6
+    await conv.on_sentence(Message("event", "answer.sentence", data={"answer_id": "j1"}, private={"text": "Far."}))
+    await asyncio.sleep(0.05)
+    assert says(got) == [] and conv.answer_id is None
+    await finish(bus, tasks)

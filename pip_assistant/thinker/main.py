@@ -1,6 +1,6 @@
 """pip-thinker: turns what someone said into Pip's answer, using Claude (M1a step 3).
 
-Takes:  thinker.ask (request; data.answer_id, data.kind = direct / mentioned / join; private: text, transcript
+Takes:  thinker.ask (request; data.answer_id, data.kind = direct / follow_up / mentioned / join; private: text, transcript
         (the room conversation), schedule, people, memories, mood, looked_up: all filled in by pip-core)
         → streams answer.sentence events, then replies with the whole answer (and any ACTION line, privately)
         thinker.ask with data.kind = preview (private: personality, question): the Settings page's "Try it".
@@ -85,6 +85,8 @@ work, complaints that don't ask for a change ("you're glitchy today"), what-ifs 
 things you can already do (timers, memories, voices) never use request_change: just answer. If they ask \
 to undo or take back a change, tell them to press Undo on the Changes page; you can't approve or undo changes.
 
+Talking: a line of yours marked "(cut off)" was heard only up to where someone talked over you; pick up from what they said rather than repeating it. When they correct you ("no, I said fifteen"), just fix it, no long apology. Say "you're right" only when you actually agree. Opinions are fine, but never make up things you did or saw (you don't eat, go places or watch games).
+
 Use the weather below for weather questions instead of searching. Only search the web for current \
 facts you genuinely don't know (news, scores, opening hours).
 
@@ -125,7 +127,7 @@ class Thinker:
     name = "Pip"   # fills {name} in the personality; settings ([pip] name) override it in __init__
     usage = None
     paused_until = 0.0
-    KIND = {"direct": "answer", "mentioned": "mention", "join": "join", "preview": "preview"}
+    KIND = {"direct": "answer", "follow_up": "answer", "mentioned": "mention", "join": "join", "preview": "preview"}
 
     # ---------------------------------------------------------------- the usage meter (D-69, PIP-NEW-089)
     def show_usage(self) -> None:
@@ -225,6 +227,11 @@ class Thinker:
                       "question or request for you, or clearly invites you in. If they're talking about you, or "
                       "to each other, or you're not sure, reply with just PASS and nothing else. Otherwise reply "
                       "with exactly what you'll say."),
+        "follow_up": ("The last line came right after you spoke, without your name, and it may not be for you: "
+                      "someone else may be talking to the room. Reply only if it's clearly for you - it follows on "
+                      "from what you said, answers your question, or asks you something. If it's for someone else, "
+                      "or you're not sure, reply with just PASS and nothing else. Otherwise reply with exactly what "
+                      "you'll say."),
         "join": ("Nobody spoke to you directly, and there's a pause in the conversation. Would you say something "
                  "right now? Go by your own sense of when to join in. {mood}\n\nIf you'll stay quiet, reply with "
                  "just PASS. If you'll speak, reply with SAY: followed by exactly the words you'd say out loud - "

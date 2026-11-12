@@ -119,7 +119,7 @@ def situation(c) -> tuple[str, str, float]:
         return "listening", c.listen_why, c.listen_until
     if now < c.offline_until:                     # speech-to-text fell back to the Pi in the last 2 minutes
         return "offline", "no_internet", 0.0
-    if working and c.answer_kind == "mentioned":
+    if working and c.answer_kind in ("mentioned", "follow_up"):   # "is that for me?" (D-124)
         return "idle", "mentioned", 0.0
     if working and c.answer_kind == "join":
         return "idle", "joining", 0.0
