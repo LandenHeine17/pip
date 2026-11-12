@@ -86,6 +86,10 @@ class TurnTaking:
         self.refresh_state()
         self.expect_until = time.monotonic() + wait + 1.0
         await self.command("ears", "ears.listen", {"seconds": wait + 0.5})   # more speech now = the same turn
+        if self.last_started > ended:
+            # They started talking again while this was with speech-to-text (heard.started isn't held up behind it,
+            # D-122): keep holding until that speech arrives, as on_started does.
+            wait = self.max_utterance + 4.0
         self.pending_task = asyncio.create_task(self._answer_pending(wait=wait))
 
     def turn_kind(self, text: str, heard_s: float = 0.0) -> str:

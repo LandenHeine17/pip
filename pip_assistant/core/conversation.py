@@ -56,6 +56,7 @@ built from, so `self.…` works the same everywhere):
 """
 import asyncio
 import base64
+import collections
 import logging
 import re
 import time
@@ -193,10 +194,13 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.stt_limited = False     # Groq's daily limit is used up (D-115): not offline, just heard on the Pi
         self.answer_id = None
         self.paused = None          # an answer paused because someone talked over him: {left, aid, task} (CB-020)
+        self.heard: collections.deque = collections.deque()   # speech waiting for speech-to-text, in order
+        self.heard_ready = asyncio.Event()
+        self.heard_worker: asyncio.Task | None = None
         self.answer_done = asyncio.Event()
         self.speech_done = asyncio.Event()
         bus.core_listen("heard.wake", self.on_wake)
-        bus.core_listen("heard.utterance", self.on_utterance)
+        bus.core_listen("heard.utterance", self.queue_utterance)
         bus.core_listen("heard.started", self.on_started)
         bus.core_listen("speech.interrupted", self.on_interrupted)
         bus.core_listen("speech.finished", self.on_speech_finished)
@@ -415,6 +419,37 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             await asyncio.sleep(self.tone_after)
         if self.answer_id == aid and not self.filler_said:
             await self.command("ears", "ears.tone", {"name": "thinking"})
+
+    HEARD_MAX = 8   # speech waiting its turn for speech-to-text; past this, the oldest room talk is skipped
+
+    async def queue_utterance(self, msg: Message) -> None:
+        """Speech from pip-ears goes in a queue and is handled (on_utterance) one at a time, in order, by a worker.
+        Speech-to-text takes ~0.5 s; done here directly, it held up every message after it from pip-ears, so
+        his name, "someone started talking" or a talk-over waited behind it (the owner's spec, 2026-11-12)."""
+        if len(self.heard) >= self.HEARD_MAX:
+            old = next((m for m in self.heard if m.data.get("reason") == "room"), self.heard[0])
+            self.heard.remove(old)
+            await self.bus.publish(Message("event", "heard.skipped", data={"reason": old.data.get("reason")}))
+        self.heard.append(msg)
+        self.heard_ready.set()
+        if self.heard_worker is None or self.heard_worker.done():
+            self.heard_worker = asyncio.create_task(self._hear_in_order())
+
+    async def _hear_in_order(self) -> None:
+        while True:
+            await self.heard_ready.wait()
+            while self.heard:
+                msg = self.heard.popleft()
+                try:
+                    await self.on_utterance(msg)
+                except Exception:
+                    log.exception("handling something heard failed")
+            self.heard_ready.clear()
+
+    async def drain(self) -> None:
+        """Wait until everything heard so far has been handled (for tests)."""
+        while self.heard or (self.heard_worker and self.heard_ready.is_set()):
+            await asyncio.sleep(0.01)
 
     async def on_utterance(self, msg: Message) -> None:
         reason = msg.data.get("reason")

@@ -6,7 +6,7 @@ import json
 import time
 
 import pytest
-from helpers import finish, room, says
+from helpers import FakeSTT, finish, room, says
 from helpers import room_setup as setup
 
 from pip_assistant.common.messages import Message
@@ -225,4 +225,75 @@ async def test_switching_listening_off_stops_voice_learning(tmp_path):
     conv.enrolling = {"pid": "p1", "name": "Sam", "got": [], "extra": [], "misses": 0, "until": time.monotonic() + 60}
     await conv.set_mic(False)
     assert conv.enrolling is None
+    await finish(bus, tasks)
+
+
+# ---------------------------------------------------------------- nothing waits behind speech-to-text (D-122)
+class DelayedSTT(FakeSTT):
+    def __init__(self, text, seconds):
+        super().__init__(text)
+        self.seconds = seconds
+
+    async def transcribe(self, pcm):
+        self.calls += 1
+        await asyncio.sleep(self.seconds)
+        return self.text
+
+
+async def test_urgent_messages_do_not_wait_behind_speech_to_text(tmp_path):
+    """Speech-to-text takes ~0.5 s (2 s here). It used to hold up every message from pip-ears after it: his name, a
+    talk-over and "someone started talking" now arrive at once, and what was heard is still handled in order."""
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, social={"join_in": False})
+    conv.stt = DelayedSTT("did you see the game", 2.0)
+    seen = []
+    orig_wake, orig_cut = conv.on_wake, conv.on_interrupted
+
+    async def wake(msg):
+        seen.append(("wake", time.monotonic()))
+        await orig_wake(msg)
+
+    async def cut(msg):
+        seen.append(("cut", time.monotonic()))
+        await orig_cut(msg)
+    bus.core_listeners = [(p, {conv.on_wake: wake, conv.on_interrupted: cut}.get(h, h)) for p, h in bus.core_listeners]
+    t0 = time.monotonic()
+    await ears.emit("heard.utterance", *room())
+    await ears.emit("heard.utterance", *room())                   # two in a row: both transcribed, in order
+    await ears.emit("speech.interrupted", {"level_dbfs": -20})
+    await ears.emit("heard.wake", {"word": "pippletron", "score": 0.9})
+    await asyncio.sleep(0.3)
+    assert [w for w, _ in seen] == ["cut", "wake"] and all(at - t0 < 0.3 for _, at in seen)
+    assert conv.stt.calls == 1                                    # the first is still being transcribed
+    await asyncio.sleep(4.2)
+    await conv.drain()
+    assert conv.stt.calls == 2 and len(conv.transcript.lines) == 2
+    await finish(bus, tasks)
+
+
+async def test_too_much_waiting_skips_the_oldest_room_talk(tmp_path):
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, social={"join_in": False})
+    conv.stt = DelayedSTT("did you see the game", 0.5)
+    for _ in range(conv.HEARD_MAX + 2):
+        await conv.queue_utterance(Message("event", "heard.utterance", source="ears", data=room()[0], private=room()[1]))
+    assert len(conv.heard) == conv.HEARD_MAX
+    skipped = [r for r in bus.trace.recent() if r["type"] == "heard.skipped"]
+    assert len(skipped) == 2
+    await finish(bus, tasks)
+
+
+@pytest.mark.real_turn_waits
+async def test_talking_again_during_speech_to_text_keeps_the_turn_open(tmp_path):
+    """'someone started talking' now arrives while the first part is still with speech-to-text: he must still
+    wait for the rest instead of answering half a sentence."""
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, social={"join_in": False})
+    conv.stt = DelayedSTT("Pip, so tomorrow", 0.5)
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.1)
+    await ears.emit("heard.started", {"reason": "room"})             # they carry on
+    await asyncio.sleep(2.0)
+    assert not asks                                                 # still holding for the rest
+    conv.stt = DelayedSTT("what's the weather?", 0.1)
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(1.5)
+    assert len(asks) == 1 and asks[0][1]["text"] == "Pip, so tomorrow what's the weather?"
     await finish(bus, tasks)
