@@ -376,7 +376,8 @@ Built in small steps. Each step ends with something you can try.
 ### After M1 (2026-11-10)
 
 - **Structure review, phases 1–5 (done):** offline calendar privacy, one quiet-moment rule, big files split, **modules fully plug-in** (D-120, §7), tests sorted by part (§11).
-- **Polish from the owner's feedback (now):** a sentence under way when an alarm rings is heard whole, snoozed timers, several screen changes at once, the **Claude** page (what Pip sends and its tokens), clap measurements to tune false switch-offs, and the owner's own work on conversation speed and cut-offs. The **Guide** page (`/guide`) walks through the code.
+- **Polish from the owner's feedback (now):** a sentence under way when an alarm rings is heard whole, snoozed timers, several screen changes at once, the **Claude** page (what Pip sends and its tokens), clap measurements to tune false switch-offs. The **Guide** page (`/guide`) walks through the code.
+- **Conversation rework (2026-11-12, D-122–D-124)**, from the owner's conversational-behaviour spec, measured first with `tools/latency.py` (5.4 s from the end of speech to Pip's voice): the "are you done?" wait counts from the end of speech; only a voice cuts him off, and a "yeah" doesn't end his answer; speech waits in its own queue so nothing else from pip-ears waits behind speech-to-text; clearly worded commands skip Claude; follow-ups only from the person he answered; joining in steps back more. No new program and no change to the message bus's design.
 
 **Next: M2**, smarter conversation and self-knowledge ([PIP-SPEC §5](PIP-SPEC.md#5-building-it)): among others the offline Qwen fallback (D-75) and explaining himself from his docs, code and the decision trace (PIP-NEW-064–067).
 

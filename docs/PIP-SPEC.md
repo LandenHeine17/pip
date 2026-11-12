@@ -39,6 +39,7 @@ Pip is a playful companion living in a dorm room on a Raspberry Pi 5, with a USB
 | Does Claude handle "remember / forget" well? (D-88) | Yes: 8 of 8 after one fix. It words memories in the third person ("Alex takes his coffee black"), marks health things sensitive (to the inbox), updates on "actually…", forgets the right one, and asks "Who's this?" when an unrecognised voice says "remember I like…" | D-88 |
 | Can the Pi run Pip comfortably? | Yes: 10 min of everyday work used 16% CPU on average (55% peak), 1.5 GB memory, 68 °C; the wake detector never fell behind | — |
 | How strict should the wake words be? (D-74) | **Keep Pippletron 0.8 and Hey Pip 0.5.** From 14:21 to 07:30 (17 h) they gave 0 unexplained "Hey Pip" wakes and 1 "Pippletron" (00:24), and all 55 times Pip woke someone really spoke. Looser settings would have added near-misses (Hey Pip 0.42, Pippletron 0.65). The room was silent 94% of the time, so this is about 1 h of real sound: keep watching it in daily use | D-74 |
+| How long does Pip really take, and why? (D-122–D-124, measured 2026-11-12 from 48 h of the trace, `tools/latency.py`) | **5.4 s** (median; 12 s for the slowest 1 in 10) from the end of your speech to his voice, over 321 answers: 0.7 s pause + 0.4 s speech-to-text + **1.55 s "are you done?"** (the pause was paid twice, and +1 s was on for a minute after every talk-over) + **2.0 s Claude** + 0.3 s voice. Timers and other actions: **7 s**. Of 113 talk-overs, about 1 in 7 was followed by nothing or noise. 342 requests came in the follow-up window; Claude passed on 61 (room talk caught by it, and "stop"). Claude was asked 139 times whether to join in and spoke 28 times. Recheck with `tools/latency.py` after a day on the new version; the baseline is `~/pip-data/m0/results/conv-baseline.json` | D-122, D-123, D-124 |
 
 Live results are on the dashboard (`http://<pi-tailscale-ip>:8780`).
 
@@ -46,17 +47,18 @@ Live results are on the dashboard (`http://<pi-tailscale-ip>:8780`).
 
 ### Hearing and being called
 - An on-device detector listens for **"Hey Pip"** and **"Pippletron"** (D-74). Everything said in the room is also transcribed, so he answers when he's called by name in the words, like Ziggletron (Pip, Pipp, Pippy, Pips, Pippletron and close mishearings; never "Ziggletron") (D-80, D-92).
-- After an answer, anyone can follow up without the name for 8 s (12 s if he asked something).
-- **He waits until you're done** (D-106): after you pause he waits a moment (0.6 s after a question or short request, 1.2 s after a statement, 1.5 s after a few sentences, 3 s if you stopped mid-sentence, a second longer for a minute after being talked over). If you carry on, he keeps waiting and takes it all as one; only then does he chime and answer.
+- After an answer, **the person he answered** can follow up without the name for 8 s (anyone, for 12 s, if he asked something). Someone else's voice is room talk; if the voices can't tell, Claude decides (D-124).
+- **He waits until you're done** (D-106, D-122), counted from when you stop talking: 1.0 s after a question or short request, 1.6 s after a statement, 2.0 s after a few sentences, 3.0 s if you stopped mid-sentence ("remind me to…"), half a second more on the next turn after being talked over. If you carry on, he keeps waiting and takes it all as one; only then does he chime and answer.
+- **Clear commands are instant** (D-123): "stop", "never mind", "snooze", "what time is it", "set a pasta timer for 10 minutes", "cancel the timer", "how long is left" are done on the Pi without Claude when that's the whole sentence; anything more goes to Claude.
 - **"Stop", "shut up", "enough", "never mind"** (D-105): he goes silent (no "okay, stopping"), stops listening for a follow-up and goes back to idle. The chime can be switched off on the dashboard (Listening & sounds).
-- **Interruptions:** talking over him stops him instantly; he then hears what you said and decides whether it needs an answer ("never mind" gets silence). "Actually…" corrects your last request instead of making a new one (D-54, D-92).
+- **Interruptions:** talking over him stops him at once, if it's a voice (a knock or clap doesn't, D-122); he then hears what you said and decides whether it needs an answer ("never mind" gets silence). If it was only "yeah", "mhm", a laugh or nothing, he carries on from where he was cut off. "Actually…" corrects your last request instead of making a new one (D-54, D-92).
 - Long silence from the speakerphone means "muted or very quiet", shown as a status, never an error (D-38).
 
 ### Listening modes and privacy
 - **Pip listens like Ziggletron** (D-92, built 2026-11-07). Everything said in the room is transcribed by Groq (D-51) and kept in a short room transcript, in memory only, with who said it. Claude sees it, so Pip follows the conversation:
   - **called** ("Pip, …", "thanks, Pip", the wake word, or right after he spoke) → he chimes and answers;
   - **mentioned** ("Pip's been glitchy") → Claude decides whether a person would expect him to answer, and usually stays quiet;
-  - **neither** → after a short pause in a live conversation he **may join in**, at most every ~40 s ("normal" mood, a setting), never during private or tense talk.
+  - **neither** → after a short pause in a live conversation he **may join in**, at most every ~40 s ("normal" mood, a setting), never during private or tense talk, never after someone asked someone else a question, and not for 15 minutes after being told "not now" or talked over while joining in (D-124).
   - He can always **choose not to reply** ("never mind, we're good" gets silence).
 
 ```mermaid
