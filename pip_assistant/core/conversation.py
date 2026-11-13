@@ -76,7 +76,7 @@ from .commands import sure as sure_command
 from . import states
 from .states import DETAILS, situation
 from .transcript import Transcript
-from .turns import RESUME_WITHIN_S, TurnTaking, is_backchannel, looks_unfinished  # noqa: F401  (tests import looks_unfinished)
+from .turns import RESUME_WITHIN_S, TurnTaking, listening_only, looks_unfinished  # noqa: F401  (tests import looks_unfinished)
 
 log = logging.getLogger(__name__)
 
@@ -340,7 +340,10 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             self.answer_id = None
 
     async def _paused_timeout(self) -> None:
-        await asyncio.sleep(RESUME_WITHIN_S)    # they're still talking, or said something: not just a "yeah"
+        # What they said over him always comes (pip-ears records it: barge_in), however long they laugh: it decides.
+        # Only if it never does (speech-to-text stuck) is the answer given up. Before 2026-11-12 this gave up after
+        # 4 s, so a laugh that went on a few seconds always lost the answer.
+        await asyncio.sleep(self.max_utterance + RESUME_WITHIN_S)
         self.paused["task"] = None
         self.drop_paused()
 
@@ -577,11 +580,14 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
     async def only_listening(self, text: str) -> bool:
         """Pip was talked over and his answer paused: was it only "yeah", a laugh, or nothing speech-to-text
         could make out? Then he carries on (CB-020) and it isn't a new turn. Anything else, even "thanks",
-        takes the turn (a voice was checked for first, so it was really said)."""
-        heard = text.strip(" .?!,")
-        if not heard:
+        takes the turn. A laugh has a voice, so it gets past pip-ears' voice check and cuts him off; Whisper
+        then writes it as "haha", "(laughs)" or its phantom "Thank you." (turns.listening_only)."""
+        if not text.strip(" .?!,"):
             return await self.resume_paused("nothing")
-        if is_backchannel(heard):
+        what = listening_only(text)
+        if what == "laugh":
+            return await self.resume_paused("laugh")
+        if what == "backchannel":
             self.hear(text)
             await self.feed(text, "direct", self.speaker)
             return await self.resume_paused("backchannel")

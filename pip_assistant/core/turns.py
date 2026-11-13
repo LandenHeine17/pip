@@ -33,7 +33,14 @@ DANGLING = re.compile(r"\b(the|a|an|and|or|but|of|my|your|his|her|their|what's|w
 # Short replies that only show someone's listening: talking over Pip with one of these isn't asking him to stop
 BACKCHANNEL = re.compile(r"^(yeah|yep|yes|yup|mhm+|mm+|hm+|uh[ -]?huh|okay|ok|right|sure|cool|nice|wow|oh|ah|"
                          r"ha(ha)+|lol|true|got it|i see)( (yeah|okay|ok|right|sure))?$", re.I)
-# How long the room has to stay quiet after someone talked over him, before he carries on
+# Laughing, as speech-to-text writes it: "haha", "Ha ha ha.", "hehe", "lol"
+LAUGH = re.compile(r"\b(?:(?:ha|he|ho)h?){2,}\b|\b(?:ha|hah|heh|lol|lmao|lmfao)\b", re.I)
+# What it writes for a sound that isn't words: "(laughs)", "[Laughter]", "*chuckles*", "♪"
+SOUND_NOTE = re.compile(r"[\[(*♪][^\])*♪]*[\])*♪]?")
+# Its phantom words for a sound without words in it (D-85). A laugh over Pip often comes back as "Thank you."
+PHANTOM = re.compile(r"^(thank you|thanks for watching|you|bye)$")
+# After someone talks over him, how long he waits (on top of the longest they could talk, max_utterance_seconds)
+# for speech-to-text to say what it was, before giving the turn up as theirs
 RESUME_WITHIN_S = 4.0
 
 
@@ -48,7 +55,22 @@ def looks_unfinished(text: str) -> bool:
 
 def is_backchannel(text: str) -> bool:
     """'yeah', 'mhm', 'okay', a laugh: listening along, not taking the turn (CB-020)."""
-    return bool(BACKCHANNEL.match(re.sub(r"[^\w' -]", "", text).strip().lower()))
+    return listening_only(text) != ""
+
+
+def listening_only(text: str) -> str:
+    """What talking over Pip was, if it wasn't taking the turn: "laugh" ("haha", "(laughs)", the phantom
+    "Thank you." Whisper writes for a laugh), "backchannel" ("yeah", "mhm", "haha okay"), or "" for real words.
+    A laugh has a voice in it, so pip-ears can't tell it from speech and stops him; this is how he knows to carry on."""
+    t = SOUND_NOTE.sub(" ", text)
+    t = re.sub(r"[^\w' -]", " ", t).lower()
+    t = " ".join(t.replace("-", " ").split())
+    if not t or PHANTOM.match(t):
+        return "laugh"
+    rest = " ".join(LAUGH.sub(" ", t).split())
+    if not rest:
+        return "laugh"
+    return "backchannel" if BACKCHANNEL.match(rest) else ""
 
 
 class TurnTaking:
