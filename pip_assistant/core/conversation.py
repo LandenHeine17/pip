@@ -76,7 +76,7 @@ from .commands import sure as sure_command
 from . import states
 from .states import DETAILS, situation
 from .transcript import Transcript
-from .turns import RESUME_WITHIN_S, TurnTaking, listening_only, looks_unfinished  # noqa: F401  (tests import looks_unfinished)
+from .turns import RESUME_WITHIN_S, TurnTaking, is_phantom, listening_only, looks_unfinished  # noqa: F401  (tests import looks_unfinished)
 
 log = logging.getLogger(__name__)
 
@@ -522,6 +522,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         await self.bus.publish(Message("event", "stt.done", data={"seconds": stt_s, "chars": len(text),
                                                                    "reason": reason, "offline": offline,
                                                                    "speaker": self.speaker.level if self.speaker else None}))
+        text = await self.unless_phantom(text, self.speaker, reason)
         if self.paused and await self.only_listening(text):
             return
         if self.ringing and self.commands:
@@ -559,6 +560,20 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         if self.joining.told_off(text):
             await self.decided("join_suppressed", "told")
 
+    @staticmethod
+    def known_voice(speaker) -> bool:
+        """Pip recognised the voice as someone he knows (sure or probably)."""
+        return speaker is not None and bool(speaker.person_id) and speaker.level in ("sure", "probably")
+
+    async def unless_phantom(self, text: str, speaker, reason: str) -> str:
+        """Speech-to-text "hears" "Thank you." (or "you", "Bye.") in a cough, a laugh or a chair: the voice check
+        (D-85) lets those through because they sound like a voice. From a voice Pip doesn't know, it's treated as
+        noise (""); a known voice saying "thank you" is kept. Traced as heard.phantom (no words)."""
+        if text and is_phantom(text) and not self.known_voice(speaker):
+            await self.bus.publish(Message("event", "heard.phantom", data={"reason": reason}))
+            return ""
+        return text
+
     def in_follow_up(self) -> bool:
         """The follow-up window after one of his answers is open (a little slack: speech that started in it)."""
         return self.follow is not None and time.monotonic() <= self.follow["until"] + 2.0
@@ -572,8 +587,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         if self.follow_anyone or f["question"]:
             return "direct"
         a = f["asker"]
-        known = lambda m: m is not None and m.person_id and m.level in ("sure", "probably")
-        if known(a) and known(speaker):
+        if self.known_voice(a) and self.known_voice(speaker):
             return "direct" if a.person_id == speaker.person_id else "room"
         return "follow_up"
 
@@ -670,6 +684,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
                     self.hear(text, speaker)
                     await self.feed(text, "room", speaker, offline=offline)
                 return
+        text = await self.unless_phantom(text, speaker, "room")
         if not text.strip(" .?!,"):
             await self._finish_pending()
             return

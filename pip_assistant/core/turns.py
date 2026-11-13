@@ -37,8 +37,9 @@ BACKCHANNEL = re.compile(r"^(yeah|yep|yes|yup|mhm+|mm+|hm+|uh[ -]?huh|okay|ok|ri
 LAUGH = re.compile(r"\b(?:(?:ha|he|ho)h?){2,}\b|\b(?:ha|hah|heh|lol|lmao|lmfao)\b", re.I)
 # What it writes for a sound that isn't words: "(laughs)", "[Laughter]", "*chuckles*", "♪"
 SOUND_NOTE = re.compile(r"[\[(*♪][^\])*♪]*[\])*♪]?")
-# Its phantom words for a sound without words in it (D-85). A laugh over Pip often comes back as "Thank you."
-PHANTOM = re.compile(r"^(thank you|thanks for watching|you|bye)$")
+# Its phantom words for a sound without words in it (D-85). A laugh, a cough or a chair often comes back as
+# "Thank you." (2026-11-12: 1 in 10 of everything transcribed was exactly 10 letters long, mostly from no known voice)
+PHANTOM = re.compile(r"^(thank you( (so|very) much)?( for watching)?|thanks for watching|you|bye|bye bye)$")
 # After someone talks over him, how long he waits (on top of the longest they could talk, max_utterance_seconds)
 # for speech-to-text to say what it was, before giving the turn up as theirs
 RESUME_WITHIN_S = 4.0
@@ -56,6 +57,11 @@ def looks_unfinished(text: str) -> bool:
 def is_backchannel(text: str) -> bool:
     """'yeah', 'mhm', 'okay', a laugh: listening along, not taking the turn (CB-020)."""
     return listening_only(text) != ""
+
+
+def is_phantom(text: str) -> bool:
+    """Is this only what speech-to-text writes for a sound without words ("Thank you.", "you", "Bye.")?"""
+    return bool(PHANTOM.match(" ".join(re.sub(r"[^\w' ]", " ", text).lower().split())))
 
 
 def listening_only(text: str) -> str:
