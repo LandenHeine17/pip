@@ -22,8 +22,8 @@ __all__ = ["SettingsError", "GROUPS", "RINGTONES", "MOODS", "ALL", "SCHEMA", "TY
 
 # ==================================================================== the Settings page's description
 # Groups, in the page's order. "Personality" also holds the personality editor; "Advanced" is folded away.
-GROUPS = ["Voice & sounds", "Listening", "Conversation & joining in", "Location & weather", "Brain", "Personality",
-          "Advanced"]
+GROUPS = ["Voice & sounds", "Listening", "Taking turns", "Conversation & joining in", "Location & weather", "Brain",
+          "Personality", "Advanced"]
 RINGTONES = list(messages.RINGTONES)   # the ringtones pip-ears can play (one list, shared with ears/audio.py)
 MOODS = list(INTERVALS)                # quiet, normal, chatty: the moods core/joining.py knows
 ALL = ("core", "ears", "thinker", "web", "builder")
@@ -52,7 +52,7 @@ def _wake_choices():
     return sorted(found)
 
 
-V, L, C, W, B, P, A = GROUPS
+V, L, T, C, W, B, P, A = GROUPS
 SCHEMA = {
     # ---- Voice & sounds
     "ears.voice": _s(V, "Voice", "Pip's voice (a Piper voice). A new one is downloaded when you save (about 60 MB).",
@@ -74,35 +74,45 @@ SCHEMA = {
     "ears.wake_thresholds": _s(L, "Wake-word strictness", "How sure each detector must be (0–1): higher = fewer "
                                "false wakes, more misses. Pippletron is strict because \"Ziggletron\" sounds similar.",
                                "map", ["ears"], min=0.05, max=0.99),
-    "ears.barge_in": _s(L, "Stop when talked over", "Stop talking straight away when someone talks over Pip.",
-                        "bool", ["ears"]),
-    "ears.barge_in_voice_check": _s(L, "Only a voice cuts him off", "Talked over only counts if it has a human voice "
-                                    "in it, so a knock, a clap or the door doesn't stop him (D-122).", "bool", ["ears"]),
     "listen.transcript_wake": _s(L, "Hear the whole room", "Transcribe everything said in the room, like Ziggletron "
                                  "(D-92). Off: Pip only reacts to the wake word.", "bool", ["ears"]),
-    "conversation.follow_up_seconds": _s(L, "Follow-up window", "After Pip answers, you can talk again within this "
+    # ---- Taking turns: when Pip answers, when he stops, who he answers (D-106, D-122-D-124)
+    "conversation.turn_wait_short_seconds": _s(T, "After a question", "Seconds from when you stop talking before Pip "
+                                               "answers a question or short request. The end-of-speech pause and "
+                                               "speech-to-text count towards it (D-122).", "float", ["core"],
+                                               min=0.5, max=5),
+    "conversation.turn_wait_statement_seconds": _s(T, "After a statement", "…after something longer that ends like a "
+                                                   "statement.", "float", ["core"], min=0.5, max=5),
+    "conversation.turn_wait_long_seconds": _s(T, "After a story", "…after two or more sentences (you might be telling "
+                                              "a story).", "float", ["core"], min=0.5, max=5),
+    "conversation.unfinished_wait_seconds": _s(T, "After a half-finished sentence", "Stopped mid-sentence (\"what's "
+                                               "the...\", \"remind me to\")? He gives you longer to go on.",
+                                               "float", ["core"], min=0.5, max=10),
+    "conversation.turn_wait_after_interrupt_seconds": _s(T, "Extra after being talked over", "Added to the next "
+                                                         "turn after someone talked over him: he takes the hint.",
+                                                         "float", ["core"], min=0, max=5),
+    "conversation.wait_after_name_seconds": _s(T, "After just his name", "Said only his name? Pip listens quietly "
+                                               "this many seconds for the rest.", "float", ["core"], min=1, max=15),
+    "ears.barge_in": _s(T, "Stop when talked over", "Stop talking straight away when someone talks over Pip.",
+                        "bool", ["ears"]),
+    "ears.barge_in_voice_check": _s(T, "Only a voice cuts him off", "Talked over only counts if it has a human voice "
+                                    "in it, so a knock, a clap or the door doesn't stop him (D-122).", "bool", ["ears"]),
+    "conversation.carry_on_after_backchannel": _s(T, "Carry on after a \"yeah\" or a laugh", "Talked over by only "
+                                                  "\"yeah\", \"mhm\", a laugh or nothing: he picks up from the "
+                                                  "sentence he was cut off in. Off: anything over him ends his answer.",
+                                                  "bool", ["core"]),
+    "conversation.follow_up_seconds": _s(T, "Follow-up window", "After Pip answers, you can talk again within this "
                                          "many seconds without saying his name.", "float", ["core"], min=0, max=30),
-    "conversation.follow_up_anyone": _s(L, "Follow-ups from anyone", "Off: without his name, only the person Pip just "
+    "conversation.follow_up_anyone": _s(T, "Follow-ups from anyone", "Off: without his name, only the person Pip just "
                                         "answered (by voice) carries on, or anyone if he asked a question; someone "
                                         "else is room talk (D-124). On: anyone in the window counts.", "bool", ["core"]),
-    "listen.wait_for_speech_seconds": _s(L, "Wait for you to start", "In the follow-up window, how many seconds to "
+    "listen.wait_for_speech_seconds": _s(T, "Wait for you to start", "In the follow-up window, how many seconds to "
                                          "wait for you to start talking.", "float", ["ears"], min=1, max=15),
-    "conversation.wait_after_name_seconds": _s(L, "After just his name", "Said only his name? Pip listens quietly "
-                                               "this many seconds for the rest.", "float", ["core"], min=1, max=15),
-    "conversation.unfinished_wait_seconds": _s(L, "After a half-finished sentence", "Stopped mid-sentence (\"what's "
-                                               "the...\", \"remind me to\")? Seconds from when you stop talking before "
-                                               "Pip answers (D-122).", "float", ["core"], min=0.5, max=10),
-    "conversation.turn_wait_short_seconds": _s(L, "Turn wait: question", "Seconds from when you stop talking before "
-                                               "Pip answers a question or short request. The 0.7 s pause and "
-                                               "speech-to-text count towards it (D-106, D-122).",
-                                               "float", ["core"], min=0.5, max=5),
-    "conversation.turn_wait_statement_seconds": _s(L, "Turn wait: statement", "…after something longer that ends "
-                                                   "like a statement.", "float", ["core"], min=0.5, max=5),
-    "conversation.turn_wait_long_seconds": _s(L, "Turn wait: story", "…after two or more sentences (you might be "
-                                              "telling a story).", "float", ["core"], min=0.5, max=5),
-    "conversation.turn_wait_after_interrupt_seconds": _s(L, "Turn wait: after being talked over", "Added to the "
-                                                         "next turn after someone talked over him: he takes the hint.",
-                                                         "float", ["core"], min=0, max=5),
+    "conversation.own_commands": _s(T, "Pip's own commands", "\"sure\": clearly worded commands (stop, snooze, "
+                                    "a timer for a length, what time is it) are done at once without Claude; anything "
+                                    "else goes to Claude (D-123). \"offline\": only without internet (D-94). "
+                                    "\"always\": try them first for everything.", "str", ["core"],
+                                    choices=["sure", "offline", "always"]),
     # ---- Conversation & joining in
     "social.join_in": _s(C, "Join in", "Pip listens to the room and decides for himself when to join in (D-92). "
                          "Off: he only answers when called or his name comes up.", "bool", ["core"]),
@@ -111,15 +121,13 @@ SCHEMA = {
     "social.quiet_hours": _s(C, "Quiet hours", "Never joins in (or says welcome back) at these times, like "
                              "23:00-07:00 (D-66). Empty = no quiet hours.", "str", ["core"],
                              pattern=r"(([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d)?", example="23:00-07:00"),
+    "social.step_back_minutes": _s(C, "Step back after \"not now\"", "Told \"not now\" or talked over just after "
+                                   "joining in: he doesn't join in again for this many minutes (D-124).", "int",
+                                   ["core"], min=0, max=240),
     "social.welcome_back_minutes": _s(C, "Welcome back after", "\"Hey Landen, welcome back\" after the room was "
                                       "quiet this many minutes (0 = never).", "int", ["core"], min=0, max=600),
     "conversation.max_sentences": _s(C, "Short answers", "Pip stops after this many sentences unless you asked for "
                                      "detail or a story (D-79).", "int", ["core"], min=1, max=10),
-    "conversation.own_commands": _s(C, "Pip's own commands", "\"sure\": clearly worded commands (stop, snooze, "
-                                    "a timer for a length, what time is it) are done at once without Claude; anything "
-                                    "else goes to Claude (D-123). \"offline\": only without internet (D-94). "
-                                    "\"always\": try them first for everything.", "str", ["core"],
-                                    choices=["sure", "offline", "always"]),
     "thinker.thinking_tone": _s(C, "Thinking tone", "A soft tone when Pip starts thinking (D-86): always, slow "
                                 "(only if the answer is slow) or off.", "str", ["core"],
                                 choices=["always", "slow", "off"]),
@@ -169,6 +177,9 @@ SCHEMA = {
                               "float", ["core"], min=1, max=30),
     "stt.voice_check": _s(A, "Only send voices", "Only send sounds with a human voice in them to speech-to-text "
                           "(D-85: stops phantom \"Thank you.\").", "bool", ["core"]),
+    "stt.drop_phantoms": _s(A, "Ignore phantom \"Thank you.\"", "Speech-to-text writes \"Thank you.\", \"you\" or "
+                            "\"Bye.\" for a cough or a laugh. Alone, from a voice Pip doesn't know, they're treated as "
+                            "noise; a voice he knows is still answered.", "bool", ["core"]),
     "stt.min_voice_seconds": _s(A, "Least voice", "Less voice than this (seconds, except right after the wake word) "
                                 "is treated as noise.", "float", ["core"], min=0, max=2),
     "stt.offline_model": _s(A, "Offline speech-to-text", "Whisper model on the Pi, used only when Groq can't be "

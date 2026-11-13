@@ -143,12 +143,14 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         c = (cfg or {}).get("conversation", {})
         self.follow_up_s = c.get("follow_up_seconds", 8.0)
         self.follow_anyone = c.get("follow_up_anyone", False)   # D-124: off = only the same voice, or after a question
+        self.carry_on = c.get("carry_on_after_backchannel", True)   # a "yeah" or a laugh over him: he carries on (CB-020)
         self.follow = None           # the follow-up window after an answer: {asker, question, until} (D-124)
         self.last_asker = None       # who the current/last answer was for (people.Match)
         th = (cfg or {}).get("thinker", {})
         self.tone_mode = th.get("thinking_tone", "always")
         self.tone_after = th.get("thinking_tone_after_seconds", 1.5)
         st = (cfg or {}).get("stt", {})
+        self.drop_phantoms = st.get("drop_phantoms", True)   # "Thank you." from a voice he doesn't know is noise
         self.voice_check = st.get("voice_check", False) if cfg else False
         self.min_voice = st.get("min_voice_seconds", 0.15)
         # --- What the face shows: core/states.py reads these to work out his state (call refresh_state()
@@ -329,7 +331,8 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         left = self.spoken[max(0, said):] if self.say_reason == "answer" else []
         if self.voice_kind == "join" and self.say_reason == "answer" and self.joining.told_off(talked_over=True):
             await self.decided("join_suppressed", "talked_over")
-        if self.voice_kind in ("direct", "mentioned", "follow_up") and (left or self.answer_id) and not self.ringing:
+        if self.carry_on and self.voice_kind in ("direct", "mentioned", "follow_up") and (left or self.answer_id) \
+                and not self.ringing:
             self.drop_paused()
             self.paused = {"left": left, "aid": self.answer_id,
                            "task": asyncio.create_task(self._paused_timeout())}
@@ -569,7 +572,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         """Speech-to-text "hears" "Thank you." (or "you", "Bye.") in a cough, a laugh or a chair: the voice check
         (D-85) lets those through because they sound like a voice. From a voice Pip doesn't know, it's treated as
         noise (""); a known voice saying "thank you" is kept. Traced as heard.phantom (no words)."""
-        if text and is_phantom(text) and not self.known_voice(speaker):
+        if self.drop_phantoms and text and is_phantom(text) and not self.known_voice(speaker):
             await self.bus.publish(Message("event", "heard.phantom", data={"reason": reason}))
             return ""
         return text

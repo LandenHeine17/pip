@@ -38,6 +38,52 @@ textarea:focus{border-color:var(--accent);outline:none}
 #bar[hidden]{display:none}
 #barmsg{font-weight:600}
 #barmsg.good{color:var(--good)} #barmsg.bad{color:var(--bad)}
+/* live previews: what a setting does, redrawn as you change it */
+.slide{display:flex;gap:8px;align-items:center}
+.slide input[type=range]{width:12em;accent-color:var(--accent)}
+.unit{color:var(--muted);font-size:.86rem;min-width:2em}
+.was{color:var(--muted);font-size:.8rem;font-style:italic}
+.was[hidden]{display:none}
+.preview{flex-basis:100%;margin:4px 0 2px;padding:10px 12px;border-radius:12px;background:var(--soft);font-size:.88rem}
+.preview:empty{display:none}
+.row.off{opacity:.45}
+.row.off .explain::after{content:attr(data-off);display:block;font-style:italic}
+input[type=checkbox].switch{appearance:none;-webkit-appearance:none;width:42px;height:24px;border-radius:12px;background:var(--line);position:relative;cursor:pointer;transition:background .2s;margin:0;flex:none}
+input[type=checkbox].switch::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--card);box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .2s}
+input[type=checkbox].switch:checked{background:var(--accent)}
+input[type=checkbox].switch:checked::after{left:21px}
+.badge{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:10px;background:var(--accentbg);color:var(--accent)}
+.badge.ok{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+@keyframes flash{0%{background:color-mix(in srgb,var(--good) 28%,transparent)}100%{background:transparent}}
+.row.flash{animation:flash 1.6s ease-out}
+/* the turn-taking timeline */
+#turnviz{margin:4px 0 12px}
+.tl{display:grid;grid-template-columns:minmax(9em,15em) 1fr 4.2em;gap:6px 10px;align-items:center}
+.tl .say{font-size:.86rem}
+.tl .say i{color:var(--muted)}
+.tl .track{position:relative;height:20px;border-radius:6px;background:var(--soft);overflow:hidden}
+.tl .seg{position:absolute;top:0;bottom:0;transition:left .35s ease,width .35s ease}
+.tl .seg.pause{background:color-mix(in srgb,var(--muted) 35%,transparent)}
+.tl .seg.stt{background:color-mix(in srgb,var(--accent) 35%,transparent)}
+.tl .seg.hold{background:var(--accent)}
+.tl .tot{font-variant-numeric:tabular-nums;font-weight:700;text-align:right;transition:color .3s}
+.tl .axis{grid-column:2;display:flex;justify-content:space-between;font-size:.72rem;color:var(--muted)}
+.key{display:flex;gap:14px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);margin-top:8px}
+.key span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px;background:var(--c)}
+.scen{display:grid;grid-template-columns:auto 1fr;gap:4px 12px}
+.scen .out{font-weight:600}
+.scen .out.good{color:var(--good)} .scen .out.bad{color:var(--bad)}
+.cmds{display:flex;flex-wrap:wrap;gap:6px}
+.cmd{padding:4px 10px;border-radius:12px;background:var(--card);border:1px solid var(--line);transition:border-color .3s,background .3s}
+.cmd.fast{border-color:var(--good);background:color-mix(in srgb,var(--good) 12%,transparent)}
+.strip{position:relative;height:22px;border-radius:6px;background:var(--card);border:1px solid var(--line);margin:6px 0 2px}
+.strip .tick{position:absolute;top:3px;bottom:3px;width:3px;border-radius:2px;background:var(--accent);transition:left .35s}
+.strip .shade{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--accent) 30%,transparent);transition:left .35s,width .35s}
+.strip .now{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--bad)}
+.hours{display:flex;justify-content:space-between;font-size:.7rem;color:var(--muted)}
+.sent{transition:opacity .3s}
+.sent.cut{opacity:.35;text-decoration:line-through}
+@media (max-width:640px){.tl{grid-template-columns:1fr 3.6em}.tl .say{grid-column:1 / -1}.tl .axis{grid-column:1}.slide input[type=range]{width:8em}}
 details.adv>summary h2::before{content:"▸ ";color:var(--muted)}
 details.adv[open]>summary h2::before{content:"▾ "}
 </style>
@@ -53,7 +99,7 @@ details.adv[open]>summary h2::before{content:"▾ "}
 <section>
   <div class="head"><h2>Voice &amp; sounds</h2></div>
   <div id="g-voice"></div>
-  <label class="pref"><input type="checkbox" id="chime" data-pref="chime"> <span class="what" style="font-weight:600">Chime when he hears his name</span><span class="live">instant</span>
+  <label class="pref"><input type="checkbox" class="switch" id="chime" data-pref="chime"> <span class="what" style="font-weight:600">Chime when he hears his name</span><span class="live">instant</span>
     <span class="sub" style="flex-basis:100%">A short beep: "I heard you".</span></label>
 </section>
 
@@ -66,10 +112,17 @@ details.adv[open]>summary h2::before{content:"▾ "}
     <span class="sub" style="flex-basis:100%">Two claps switch listening off and on. The speakerphone's own noise filter removes claps,
     so they're heard on a second, plain USB microphone (any cheap one that isn't "noise-cancelling"). Choosing the
     microphone doesn't switch claps on: tick the box below for that.</span></div>
-  <label class="pref"><input type="checkbox" id="claps" data-pref="claps"> <span style="font-weight:600">Two claps switch listening</span><span class="live">instant</span>
+  <label class="pref"><input type="checkbox" class="switch" id="claps" data-pref="claps"> <span style="font-weight:600">Two claps switch listening</span><span class="live">instant</span>
     <span class="sub" style="flex-basis:100%">While it's off, two claps just show up in the dashboard's Conversation as a trial.</span></label>
-  <label class="pref"><input type="checkbox" id="state_bars" data-pref="state_bars"> <span style="font-weight:600">Show what Pip is doing in the Conversation</span><span class="live">instant</span>
+  <label class="pref"><input type="checkbox" class="switch" id="state_bars" data-pref="state_bars"> <span style="font-weight:600">Show what Pip is doing in the Conversation</span><span class="live">instant</span>
     <span class="sub" style="flex-basis:100%">A small bar each time it changes ("Waiting to see if you're done", "Following the conversation"…), for understanding him.</span></label>
+</section>
+
+<section>
+  <div class="head"><h2>Taking turns</h2><span class="sub">when Pip answers, when he stops, who he answers</span></div>
+  <div class="sub">How long he waits is counted from when you stop talking. Change a wait below and watch it here.</div>
+  <div id="turnviz"></div>
+  <div id="g-turns"></div>
 </section>
 
 <section>
@@ -129,7 +182,7 @@ details.adv[open]>summary h2::before{content:"▾ "}
 
 <script src="/pip.js"></script>
 <script>
-const GROUPS = {"Voice & sounds": "g-voice", "Listening": "g-listen", "Conversation & joining in": "g-conv",
+const GROUPS = {"Voice & sounds": "g-voice", "Listening": "g-listen", "Taking turns": "g-turns", "Conversation & joining in": "g-conv",
   "Location & weather": "g-where", "Brain": "g-brain", "Personality": "g-personality", "Advanced": "g-advanced"};
 const SECTIONS = {pip: "Pip", ears: "Voice and wake words", listen: "Hearing speech", stt: "Speech-to-text",
   voices: "Recognising voices", social: "Joining in", alarms: "Timers and alarms", mic: "Clap tuning",
@@ -170,17 +223,21 @@ function render(){
     ${m.summary ? `<div class="sub">${esc(m.summary)}</div>` : ""}${m.settings.map(rowHTML).join("")}`).join("")
     || `<div class="empty">No module settings.</div>`;
   $("modtitle").textContent = S.modules.map(m => m.name).join(" · ") || "Modules";
-  updateBar();
+  updateBar(); refresh();
 }
 
 function rowHTML(s){
   const k = esc(s.key), changed = s.key in draft, bad = s.key in errors;
-  const showReset = !same(val(s.key), s.default);
-  return `<div class="row${changed ? " changed" : ""}${bad ? " bad" : ""}" data-row="${k}">
+  const showReset = !same(val(s.key), s.default), dep = DEPENDS[s.key], off = dep && !dep[0]();
+  const badge = justSaved[s.key] === "applying" ? `<span class="badge">applying…</span>`
+    : justSaved[s.key] ? `<span class="badge ok">✓ ${esc(justSaved[s.key])}</span>` : "";
+  return `<div class="row${changed ? " changed" : ""}${bad ? " bad" : ""}${off ? " off" : ""}" data-row="${k}">
     <span class="what">${esc(s.label)}</span>${control(s)}
+    <span class="was" ${changed ? "" : "hidden"}>was ${esc(fmt(s.value))}</span>${badge}
     <button class="ghost" data-reset="${k}" title="Back to ${esc(fmt(s.default))}" ${showReset ? "" : "hidden"}>↺ default</button>
     ${extra(s)}
-    <span class="sub explain">${esc(s.explain)}</span>
+    <span class="sub explain" ${dep ? `data-off="${esc(dep[1])}"` : ""}>${esc(s.explain)}</span>
+    ${PREVIEW[s.key] ? `<div class="preview" data-preview="${k}"></div>` : ""}
     <span class="err">${esc(errors[s.key] || "")}</span></div>`;
 }
 function fmt(v){ if (Array.isArray(v)) return v.join(", ") || "(none)";
@@ -190,9 +247,14 @@ function fmt(v){ if (Array.isArray(v)) return v.join(", ") || "(none)";
 function control(s){
   const v = val(s.key), k = esc(s.key);
   const nattrs = (lo, hi, step) => `${lo != null ? `min="${esc(lo)}"` : ""} ${hi != null ? `max="${esc(hi)}"` : ""} step="${step}"`;
-  if (s.type === "bool") return `<input type="checkbox" data-key="${k}" ${v ? "checked" : ""}>`;
+  if (s.type === "bool") return `<input type="checkbox" class="switch" data-key="${k}" ${v ? "checked" : ""} aria-label="${esc(s.label)}">`;
+  if ((s.type === "int" || s.type === "float") && s.min != null && s.max != null && !s.advanced) {
+    const step = s.type === "int" ? 1 : (s.max - s.min) > 20 ? 0.5 : 0.1;
+    return `<span class="slide"><input type="range" data-key="${k}" value="${esc(v ?? s.min)}" ${nattrs(s.min, s.max, step)} aria-label="${esc(s.label)}">
+      <input type="number" data-key="${k}" value="${esc(v ?? "")}" ${nattrs(s.min, s.max, s.type === "int" ? 1 : "any")} style="width:6em"><span class="unit">${unit(s.key)}</span></span>`;
+  }
   if (s.type === "int" || s.type === "float")
-    return `<input type="number" data-key="${k}" value="${esc(v ?? "")}" ${nattrs(s.min, s.max, s.type === "int" ? 1 : "any")} style="width:8em">`;
+    return `<input type="number" data-key="${k}" value="${esc(v ?? "")}" ${nattrs(s.min, s.max, s.type === "int" ? 1 : "any")} style="width:8em"> <span class="unit">${unit(s.key)}</span>`;
   if (s.type === "str" && s.choices) {
     const opts = s.choices.includes(v) ? s.choices : [...s.choices, v];
     return `<select data-key="${k}">${opts.map(c => `<option value="${esc(c)}" ${c === v ? "selected" : ""}>${esc(choiceLabel(s, c))}</option>`).join("")}</select>`;
@@ -237,6 +299,9 @@ function readInput(el){
   if (s.type === "int" || s.type === "float") return num(el.value);
   return el.value;
 }
+function unit(key){
+  return /_seconds$/.test(key) ? "s" : /_minutes$/.test(key) ? "min" : /_ms$/.test(key) ? "ms" : /dbfs$/.test(key) ? "dBFS"
+    : /_db$/.test(key) ? "dB" : /_hours$/.test(key) ? "h" : key === "ears.speech_rate" ? "×" : ""; }
 function setDraft(key, value, rerender){
   if (same(value, meta[key].value)) delete draft[key]; else draft[key] = value;
   delete errors[key];
@@ -246,12 +311,18 @@ function setDraft(key, value, rerender){
     if (rerender) row.outerHTML = rowHTML(meta[key]);
     else { row.classList.toggle("changed", key in draft); row.classList.remove("bad");
       row.querySelector(".err").textContent = "";
+      row.querySelector(".was").hidden = !(key in draft);
       row.querySelector("[data-reset]").hidden = same(val(key), meta[key].default); }
   }
-  updateBar();
+  updateBar(); refresh();
 }
 function onEdit(ev){ const el = ev.target; if (!el.dataset || !el.dataset.key || !(el.dataset.key in meta)) return;
-  setDraft(el.dataset.key, readInput(el), false); }
+  const v = readInput(el);
+  if (el.type === "number" && v === null) return;   // half-typed: wait for a number
+  setDraft(el.dataset.key, v, false);
+  if (!el.dataset.item)   // the slider and its number box move together
+    for (const x of el.closest(".row").querySelectorAll(`[data-key="${CSS.escape(el.dataset.key)}"]`)) if (x !== el) x.value = el.value;
+}
 document.addEventListener("input", onEdit);
 document.addEventListener("change", onEdit);
 document.addEventListener("click", ev => {
@@ -267,7 +338,8 @@ function updateBar(){
   $("bar").hidden = !n && !status.text;
   $("save").hidden = $("discard").hidden = !n;
   $("barmsg").className = status.cls === "pending" ? "" : status.cls;
-  $("barmsg").textContent = status.text || `${n} unsaved change${n === 1 ? "" : "s"}`;
+  const what = Object.keys(draft).slice(0, 3).map(k => `${meta[k].label}: ${fmt(meta[k].value)} → ${fmt(draft[k])}`).join(" · ");
+  $("barmsg").textContent = status.text || `${n} unsaved change${n === 1 ? "" : "s"}: ${what}${n > 3 ? " …" : ""}`;
 }
 $("discard").onclick = () => { draft = {}; errors = {}; status = {text: "", cls: ""}; render(); };
 $("save").onclick = save;
@@ -285,12 +357,25 @@ async function save(){
     return;
   }
   if (r.error) { status = {text: r.error, cls: "bad"}; updateBar(); return; }
+  const saved = Object.keys(changes);
   draft = {}; errors = {};
+  for (const k of saved) justSaved[k] = r.applying && r.applying.length ? "applying" : "saved";
   await load();
-  showApplying(r);
+  flashRows(saved);
+  showApplying(r, saved);
+}
+let justSaved = {};
+function flashRows(keys){
+  for (const k of keys) { const row = document.querySelector(`[data-row="${CSS.escape(k)}"]`);
+    if (row) { row.classList.remove("flash"); void row.offsetWidth; row.classList.add("flash"); } }
+}
+function settle(keys, word){
+  for (const k of keys) justSaved[k] = word;
+  render(); flashRows(keys);
+  setTimeout(() => { for (const k of keys) if (justSaved[k] === word) delete justSaved[k]; render(); }, 6000);
 }
 let pollTimer = null;
-function showApplying(r){
+function showApplying(r, saved = []){
   if (r.applying && r.applying.length) {
     status = {text: `Saved: applying when Pip is quiet (restarting: ${r.applying.join(", ")})`, cls: "pending"};
     if (!pollTimer) { let tries = 0;
@@ -298,7 +383,7 @@ function showApplying(r){
         tries++;
         try { const g = await getJSON("/api/settings");
           if (g && !g.error && !(g.applying || []).length) { clearInterval(pollTimer); pollTimer = null;
-            status = {text: "Applied.", cls: "good"}; await load(); setTimeout(() => { if (status.text === "Applied.") { status = {text: "", cls: ""}; updateBar(); } }, 6000); }
+            status = {text: "Applied: Pip is using it now.", cls: "good"}; await load(); settle(saved, "applied"); setTimeout(() => { if (status.text === "Applied: Pip is using it now.") { status = {text: "", cls: ""}; updateBar(); } }, 6000); }
         } catch (e) { /* the dashboard itself may be restarting */ }
         if (tries > 120 && pollTimer) { clearInterval(pollTimer); pollTimer = null;
           status = {text: "Still not applied after 4 minutes: check the dashboard's Programs.", cls: "bad"}; }
@@ -306,7 +391,7 @@ function showApplying(r){
       }, 2000); }
   } else if (r.restart_needed && r.restart_needed.length) {
     status = {text: `Saved. Pip isn't running as a service here: restart ${r.restart_needed.map(p => "pip-" + p).join(", ")} to apply.`, cls: "bad"};
-  } else if (r.ok) status = {text: "Saved.", cls: "good"};
+  } else if (r.ok) { status = {text: "Saved: Pip uses it from now on.", cls: "good"}; settle(saved, "in use"); }
   updateBar();
 }
 window.addEventListener("beforeunload", ev => { if (Object.keys(draft).length) { ev.preventDefault(); ev.returnValue = ""; } });
@@ -322,6 +407,134 @@ async function tryVoice(){
     else if ("ears.voice" in draft || (S.applying || []).includes("ears")) {
       status = {text: r.note || "That's the voice Pip uses now.", cls: ""}; updateBar(); } }
   catch (e) { alert("Couldn't reach Pip"); }
+}
+
+// ------------------------------------------------------------------ live previews: what a setting does, as you change it
+// Each one is redrawn on every edit (refresh), from the values on the page (saved or not). They only illustrate:
+// the real rules are in core/turns.py, core/conversation.py, core/commands.py and core/joining.py.
+const on = k => k in meta && !!val(k), n = k => Number(val(k));
+const secs = x => `${(Math.round(x * 10) / 10).toFixed(1)} s`;
+const STT_S = 0.4;   // speech-to-text, typical (tools/latency.py, 2026-11-12)
+// a row that only matters when another setting is on: [is it in use?, what to say when it isn't]
+const DEPENDS = {
+  "thinker.thinking_tone_after_seconds": [() => val("thinker.thinking_tone") === "slow", "Only used when the thinking tone is \"slow\"."],
+  "ears.barge_in_voice_check": [() => on("ears.barge_in"), "Only used when \"Stop when talked over\" is on."],
+  "conversation.carry_on_after_backchannel": [() => on("ears.barge_in"), "Only used when \"Stop when talked over\" is on."],
+  "conversation.follow_up_anyone": [() => n("conversation.follow_up_seconds") > 0, "Only used when there's a follow-up window."],
+  "listen.wait_for_speech_seconds": [() => n("conversation.follow_up_seconds") > 0, "Only used when there's a follow-up window."],
+  "social.mood": [() => on("social.join_in"), "Only used when \"Join in\" is on."],
+  "social.step_back_minutes": [() => on("social.join_in"), "Only used when \"Join in\" is on."],
+};
+
+const TURNS = [
+  ["After a question", "conversation.turn_wait_short_seconds", "What time is it?"],
+  ["After a statement", "conversation.turn_wait_statement_seconds", "I finally finished that puzzle last night."],
+  ["After a story", "conversation.turn_wait_long_seconds", "So I went to the store. They were out of milk."],
+  ["Half-finished", "conversation.unfinished_wait_seconds", "Remind me to…"],
+];
+let afterCut = false;
+function turnViz(){
+  const box = $("turnviz"); if (!box || !("conversation.turn_wait_short_seconds" in meta)) return;
+  const pause = n("listen.end_silence_seconds") || 0.7, extra = afterCut ? n("conversation.turn_wait_after_interrupt_seconds") : 0;
+  const rows = TURNS.map(([name, key, eg]) => { const total = Math.max(n(key) + extra, pause + STT_S); return {name, key, eg, total}; });
+  const span = Math.max(4, Math.ceil(Math.max(...rows.map(r => r.total)) + 0.5));
+  const pc = x => `${(100 * x / span).toFixed(2)}%`;
+  if (!box.dataset.built) {   // built once, then only the widths change, so they glide
+    box.innerHTML = `<div class="tl">${rows.map(r => `<div class="say"><b>${esc(r.name)}</b><br><i>"${esc(r.eg)}"</i></div>
+        <div class="track" data-tl="${esc(r.key)}"><div class="seg pause"></div><div class="seg stt"></div><div class="seg hold"></div></div>
+        <div class="tot" data-tot="${esc(r.key)}"></div>`).join("")}<div></div><div class="axis" id="tlaxis"></div><div></div></div>
+      <div class="key"><span style="--c:color-mix(in srgb,var(--muted) 35%,transparent)">you've stopped: the pause that says so</span>
+        <span style="--c:color-mix(in srgb,var(--accent) 35%,transparent)">speech-to-text (about ${STT_S} s)</span>
+        <span style="--c:var(--accent)">waiting in case you go on</span><span>then Claude: about 1–2 s to his first word</span></div>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:.88rem"><input type="checkbox" class="switch" id="aftercut"> Show it just after someone talked over him</label>`;
+    box.dataset.built = "1";
+    $("aftercut").onchange = e => { afterCut = e.target.checked; turnViz(); };
+  }
+  $("tlaxis").innerHTML = Array.from({length: span + 1}, (_, i) => `<span>${i} s</span>`).join("");
+  for (const r of rows) {
+    const t = box.querySelector(`[data-tl="${CSS.escape(r.key)}"]`), [a, b, c] = t.children;
+    a.style.left = "0"; a.style.width = pc(pause);
+    b.style.left = pc(pause); b.style.width = pc(STT_S);
+    c.style.left = pc(pause + STT_S); c.style.width = pc(Math.max(0, r.total - pause - STT_S));
+    const tot = box.querySelector(`[data-tot="${CSS.escape(r.key)}"]`);
+    tot.textContent = secs(r.total); tot.style.color = r.key in draft ? "var(--accent)" : "";
+  }
+}
+
+const PREVIEW = {
+  "conversation.carry_on_after_backchannel": () => {
+    const stops = on("ears.barge_in"), voice = on("ears.barge_in_voice_check"), carry = on("conversation.carry_on_after_backchannel");
+    const out = (txt, cls) => `<span class="out ${cls}">${esc(txt)}</span>`;
+    const resumed = carry ? out("stops for a moment, then carries on", "good") : out("stops; that answer is over", "bad");
+    const rows = !stops ? [["anything", out("he keeps talking (say \"stop\" with his name to stop him)", "")]] : [
+      ["\"Wait, no, I meant tomorrow\"", out("stops and listens", "good")],
+      ["\"Yeah\" / \"mhm\"", resumed],
+      ["Someone laughs", resumed],
+      ["A knock or a clap", voice ? out("keeps talking", "good") : resumed]];
+    return `<div style="margin-bottom:4px">While Pip is answering, if someone talks over him…</div>
+      <div class="scen">${rows.map(([a, b]) => `<span>${esc(a)}</span>${b}`).join("")}</div>`;
+  },
+  "conversation.follow_up_anyone": () => {
+    const w = n("conversation.follow_up_seconds"), anyone = on("conversation.follow_up_anyone");
+    const ok = `<span class="out good">answers</span>`, room = `<span class="out">room talk: stays out (unless it calls him)</span>`;
+    return `<div style="margin-bottom:4px">Caleb: "Pip, what's the weather?" · Pip answers · then within ${secs(w)}, without his name…</div>
+      <div class="scen"><span>Caleb: "And tomorrow?"</span>${ok}
+        <span>Landen: "Should we go out?"</span>${anyone ? ok : room}
+        <span>Landen, after Pip asked a question</span>${ok}</div>`;
+  },
+  "conversation.own_commands": () => {
+    const mode = val("conversation.own_commands");
+    const cmds = [["stop", 1], ["snooze", 1], ["set a timer for 10 minutes", 1], ["what time is it", 1],
+                  ["push my alarm back a bit", 2], ["what's the weather tomorrow", 0], ["remind me about the thing later", 2]];
+    const fast = lvl => mode === "always" ? lvl > 0 : mode === "sure" ? lvl === 1 : false;
+    return `<div style="margin-bottom:6px">${mode === "offline" ? "Online, everything goes to Claude (about 2 s); these are only done by Pip himself when the internet is down."
+      : "Green: done at once by Pip himself (about 0.3 s). The rest go to Claude (about 2 s)."}</div>
+      <div class="cmds">${cmds.map(([c, l]) => `<span class="cmd ${fast(l) ? "fast" : ""}">${fast(l) ? "⚡" : "🧠"} "${esc(c)}"</span>`).join("")}</div>`;
+  },
+  "social.mood": () => {
+    const iv = {quiet: 120, normal: 40, chatty: 15}[val("social.mood")] || 40, span = 300;
+    const ticks = Array.from({length: Math.floor(span / iv)}, (_, i) => (i + 1) * iv);
+    return `<div>In 5 minutes of the room talking, he thinks about joining in about <b>${ticks.length}</b> time${ticks.length === 1 ? "" : "s"} (and usually stays quiet).</div>
+      <div class="strip">${ticks.map(t => `<div class="tick" style="left:calc(${(100 * t / span).toFixed(1)}% - 2px)"></div>`).join("")}</div>
+      <div class="hours"><span>0 min</span><span>5 min</span></div>`;
+  },
+  "social.step_back_minutes": () => {
+    const m = n("social.step_back_minutes");
+    return m ? `Told "not now" at 9:00 → he doesn't join in again until ${clock(9 * 60 + m)}. Called by name, he still answers.`
+             : `He doesn't step back: he may join in again at the next pause.`;
+  },
+  "social.quiet_hours": () => {
+    const q = String(val("social.quiet_hours") || ""), m = q.match(/^(\d\d):(\d\d)-(\d\d):(\d\d)$/);
+    if (!m) return q ? "" : "No quiet hours: he may join in at any time.";
+    const a = +m[1] * 60 + +m[2], b = +m[3] * 60 + +m[4], d = new Date(), now = d.getHours() * 60 + d.getMinutes();
+    const shade = (x, y) => `<div class="shade" style="left:${(100 * x / 1440).toFixed(2)}%;width:${(100 * (y - x) / 1440).toFixed(2)}%"></div>`;
+    const quiet = a <= b ? (now >= a && now < b) : (now >= a || now < b);
+    return `<div class="strip">${a <= b ? shade(a, b) : shade(a, 1440) + shade(0, b)}<div class="now" style="left:${(100 * now / 1440).toFixed(2)}%"></div></div>
+      <div class="hours"><span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+      <div style="margin-top:4px">Shaded: he never joins in. Right now (red line) he ${quiet ? "<b>is in quiet hours</b>" : "may join in"}.</div>`;
+  },
+  "conversation.max_sentences": () => {
+    const k = n("conversation.max_sentences");
+    const s = ["Rainy, around fifty.", "Grab a jacket.", "It clears up by Friday.", "The weekend looks sunny.", "Next week cools off again."];
+    return `<div style="margin-bottom:4px">An answer Claude wrote at length, as Pip says it:</div>${s.map((x, i) => `<span class="sent ${i >= k ? "cut" : ""}">${esc(x)}</span>`).join(" ")}
+      <div style="margin-top:4px">Asking for detail or a story lifts the limit.</div>`;
+  },
+  "thinker.thinking_tone": () => ({always: "A soft tone every time he starts thinking.",
+    slow: `A soft tone only if his answer hasn't started after ${secs(n("thinker.thinking_tone_after_seconds"))}.`,
+    off: "No tone: he's silent until he answers."})[val("thinker.thinking_tone")] || "",
+  "ears.speech_rate": () => { const r = n("ears.speech_rate") || 1;
+    return `"The bus comes at ten, then another at half past." takes about <b>${secs(3.2 / r)}</b> to say.`; },
+  "stt.drop_phantoms": () => on("stt.drop_phantoms")
+    ? `A cough that speech-to-text writes as "Thank you." is ignored, unless it was a voice Pip knows.`
+    : `"Thank you." from anyone gets an answer, even when it was only a cough or a laugh.`,
+};
+function clock(min){ const h = Math.floor(min / 60) % 24, m = min % 60; return `${h}:${String(m).padStart(2, "0")}`; }
+function refresh(){
+  for (const el of document.querySelectorAll("[data-preview]")) { const f = PREVIEW[el.dataset.preview];
+    try { el.innerHTML = f ? f() : ""; } catch (e) { el.innerHTML = ""; } }
+  for (const [k, [inUse]] of Object.entries(DEPENDS)) { const row = document.querySelector(`[data-row="${CSS.escape(k)}"]`);
+    if (row) row.classList.toggle("off", !inUse()); }
+  turnViz();
 }
 
 // ------------------------------------------------------------------ live preferences (core/prefs.py): instant

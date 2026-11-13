@@ -135,7 +135,10 @@ Some of the waits are settings, in the `[conversation]` section of `pip_assistan
 - `follow_up_seconds`: the follow-up window, half as long again if he asked a question;
 - `turn_wait_*` and `unfinished_wait_seconds`: how long he waits to see if you're done, counted from when you stop talking (D-122);
 - `follow_up_anyone`: off means only the person he answered can follow up without his name (D-124);
-- `own_commands`: "sure" means clearly worded commands are done without Claude (D-123).
+- `own_commands`: "sure" means clearly worded commands are done without Claude (D-123);
+- `carry_on_after_backchannel`: off means anything said over him ends his answer (D-126).
+
+Two more are elsewhere: `[social] step_back_minutes` (how long he stays out of the conversation after "not now") and `[stt] drop_phantoms` (a lone "Thank you." from a voice he doesn't know is noise). All of these are on the Settings page, most under **Taking turns**, with a live preview of what they do.
 
 `refresh_state()` is called whenever one of the fields changes. It publishes only when the (state, detail) pair is different, and sets a timer to check again when the next deadline (`listen_until`, `cut_until`, …) passes. When the dashboard reconnects (pip-web restarting), `on_program_connected` sends it the current state, so it never starts blank.
 
@@ -238,6 +241,7 @@ Or ask Pip ("Pip, I'd like a shopping list"): his self-changes are told to follo
 
 - **Settings** start in `pip_assistant/defaults.toml`; your changes are in `~/pip-data/settings.toml`; `common/settings.py` loads both when a program starts (`load()`).
 - The Settings page (`web/static/settings.html`) asks pip-core (`core/settingsapi.py`) through `/api/settings`. `SCHEMA` in `core/settings_schema.py` says, for every setting: its group, label, explanation, allowed values, and **which programs read it**. Saving checks every change (`validate`), writes only what differs from the defaults (`save`), then restarts just those programs at a quiet moment (`quiet()` in `core/states.py`).
+- **Seeing what a setting does** (D-126): `PREVIEW` in `settings.html` has a small function per setting that draws what it means from the values on the page, saved or not ("Someone laughs → stops for a moment, then carries on"). `turnViz` draws the turn-taking timeline, and `DEPENDS` greys out a setting that another one switches off. They're only illustrations: the real rules stay in `core/`. After saving, `settle` marks each saved row "applying…" and then "✓ applied".
 - **To add a setting:** add it to `defaults.toml` with a comment, read it where it's used, and add a `SCHEMA` entry. `tests/core/test_settings.py` fails if the two don't match.
 - **The personality** (who he is, how he talks) is `common/personality.py`: `~/pip-data/personality.md` if you've edited it, else the built-in text, with `{name}` and `{location}` filled in. pip-thinker reads it fresh whenever the file changes, then adds `RULES` (the fixed part: actions, memory, privacy) from `thinker/main.py`.
 

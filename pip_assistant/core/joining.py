@@ -29,7 +29,7 @@ from .names import names_pip
 REJECTED = re.compile(r"\b(not now|we'?re talking|we are talking|nobody asked|no one asked|shut up|be quiet|"
                       r"stay out|butt out|stop it|not you|wasn'?t talking to you|go away)\b", re.I)
 REJECT_WITHIN_S = 10.0      # "not now" this soon after he joined in is about him
-SUPPRESS_S = 15 * 60.0      # …and then he doesn't join in for this long
+SUPPRESS_S = 15 * 60.0      # …and then he doesn't join in for this long ([social] step_back_minutes)
 STALE_S = 5.0               # a join-in reply this late is dropped: the moment has passed (Claude p90 ~4.5 s)
 
 INTERVALS = {"quiet": 120.0, "normal": 40.0, "chatty": 15.0}
@@ -59,6 +59,7 @@ class Joining:
         self.pause = s.get("pause_seconds", 1.2)
         self.live = s.get("live_conversation_seconds", 60.0)
         self.quiet_hours = s.get("quiet_hours", "23:00-07:00")
+        self.step_back = float(s.get("step_back_minutes", SUPPRESS_S / 60)) * 60
         self.last_check = 0.0
         self.checked_count = -1      # transcript.count when he last considered joining in
         self.task: asyncio.Task | None = None
@@ -112,7 +113,7 @@ class Joining:
     def told_off(self, text: str = "", talked_over: bool = False) -> bool:
         """Talked over while joining in, or "not now" soon after it: he stays out for a while (CB-031)."""
         if talked_over or (self.clock() - self.joined_at <= REJECT_WITHIN_S and REJECTED.search(text or "")):
-            self.suppressed_until = self.clock() + SUPPRESS_S
+            self.suppressed_until = self.clock() + self.step_back
             self.cancel_wait()
             return True
         return False
