@@ -160,6 +160,18 @@ class Recall(Module):
             return f"No notes of conversations for {what} (notes are kept {self.ctx.settings['keep_days']} days)."
         return f"Your notes of conversations for {what}: " + " ".join(self.line(n) for n in found[:3])
 
+    def export_data(self) -> dict:
+        return {"conversation_notes": [{"from": time.strftime("%Y-%m-%d %H:%M", time.localtime(n["start"])),
+                                        "to": time.strftime("%H:%M", time.localtime(n["end"])),
+                                        "people": n["people"], "notes": n["notes"]} for n in self.notes()]}
+
+    async def wipe_data(self) -> int:
+        n = len(self.notes())
+        self.db.execute("DELETE FROM recall_notes")
+        self.db.commit()
+        self.lines = []
+        return n
+
     async def forget_person(self, person_id: str, name: str) -> int:
         """They're removed from the household: notes of conversations they took part in are deleted."""
         if not name:

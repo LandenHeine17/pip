@@ -323,6 +323,7 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
                              Route("/api/prefs", prefs, methods=["GET", "POST"]), Route("/api/stream", stream),
                              Route("/settings", settings_page),
                              Route("/api/settings", passed_to_core("core.settings", 300), methods=["GET", "POST"]),
+                             Route("/api/data", passed_to_core("core.data", 60), methods=["GET", "POST"]),
                              Route("/api/personality", passed_to_core("core.personality", 70), methods=["GET", "POST"]),
                              Route("/api/migrate", passed_to_core("core.migrate", 60), methods=["GET", "POST"]),
                              Route("/changes", changes_page),

@@ -159,6 +159,17 @@ details.adv[open]>summary h2::before{content:"▾ "}
 </section>
 
 <section>
+  <div class="head"><h2>Your data</h2><span class="sub">a copy of everything, or a fresh start</span></div>
+  <div class="sub">The download has who lives here, every memory, the conversation notes, your settings and the personality.
+    Voiceprints are never in it (they never leave the Pi), nor are passwords and keys.</div>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+    <button class="primary" id="dexport">Download my data</button>
+    <button class="ghost" id="dwipe" style="color:var(--bad)">Delete everything…</button><span class="sub" id="dmsg"></span></div>
+  <div class="sub" style="margin-top:6px">"Delete everything" forgets every memory, every voice (people stay by name and can learn their voice again),
+    the conversation notes and what's been said lately. Settings, the personality, timers and the calendar stay.</div>
+</section>
+
+<section>
   <div class="head"><h2>Bring over from Ziggletron</h2></div>
   <div id="migrate"><div class="empty">Checking…</div></div>
 </section>
@@ -595,6 +606,28 @@ $("ptry").onsubmit = async ev => {
   try { const r = await postJSON("/api/personality", {action: "preview", text: $("ptext").value, question: $("pq").value});
     $("panswer").textContent = r.error ? `Couldn't try it: ${r.error}` : (r.answer || "(no answer)"); }
   catch (e) { $("panswer").textContent = "Couldn't reach Pip"; }
+};
+
+// ------------------------------------------------------------------ your data (core/yourdata.py, D-128)
+$("dexport").onclick = async () => {
+  $("dmsg").textContent = "Gathering…";
+  try { const r = await postJSON("/api/data", {action: "export"});
+    if (r.error) { $("dmsg").textContent = r.error; return; }
+    const url = URL.createObjectURL(new Blob([JSON.stringify(r, null, 1)], {type: "application/json"}));
+    const a = document.createElement("a");
+    a.href = url; a.download = `pip-data-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    const more = Object.values(r.modules || {}).flatMap(d => Object.values(d || {})).reduce((n, v) => n + (Array.isArray(v) ? v.length : 0), 0);
+    $("dmsg").textContent = `Downloaded: ${r.memories.length} memories, ${r.people.length} people${more ? `, ${more} other items (conversation notes…)` : ""}.`;
+  } catch (e) { $("dmsg").textContent = "Couldn't reach Pip"; }
+};
+$("dwipe").onclick = async () => {
+  const typed = prompt("This deletes every memory, every voice and the conversation notes, for good. Type DELETE to go ahead.");
+  if (typed !== "DELETE") { $("dmsg").textContent = typed === null ? "" : "Not deleted (it needs DELETE, in capitals)."; return; }
+  $("dmsg").textContent = "Deleting…";
+  try { const r = await postJSON("/api/data", {action: "wipe", confirm: "DELETE"});
+    $("dmsg").textContent = r.error ? r.error : `Deleted ${r.memories} memories, ${r.voices} voices and ${r.other} other things.`; }
+  catch (e) { $("dmsg").textContent = "Couldn't reach Pip"; }
 };
 
 // ------------------------------------------------------------------ bring over from Ziggletron (read-only there)

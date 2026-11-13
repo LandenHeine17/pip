@@ -169,6 +169,15 @@ class Module:
         """Links for one person on the dashboard's People card: [{"label", "href"}]."""
         return []
 
+    def export_data(self) -> dict | None:
+        """Its own data for the owner's download (Settings → Your data, PIP-NEW-034), or None."""
+        return None
+
+    async def wipe_data(self) -> int:
+        """"Delete everything" (Settings → Your data): drop its own data about people and what was said.
+        Returns how many things were removed."""
+        return 0
+
     async def forget_person(self, person_id: str, name: str) -> int:
         """Someone is removed from the household (PIP-NEW-033, D-128): drop everything this module keeps about them
         (their accounts, their notes…). Returns how many things were removed."""
@@ -423,6 +432,25 @@ class Registry:
     def pages(self) -> list[dict]:
         return [{"name": i.name, "label": i.label or i.name.title(), "page": i.page}
                 for i in self.infos.values() if i.page]
+
+    def export_data(self) -> dict:
+        out = {}
+        for mname, m in self.modules.items():
+            try:
+                if (d := m.export_data()) is not None:
+                    out[mname] = d
+            except Exception:
+                log.exception("module %s export_data failed", mname)
+        return out
+
+    async def wipe_data(self) -> int:
+        n = 0
+        for mname, m in self.modules.items():
+            try:
+                n += int(await m.wipe_data() or 0)
+            except Exception:
+                log.exception("module %s wipe_data failed", mname)
+        return n
 
     async def forget_person(self, person_id: str, name: str) -> int:
         """Every module drops what it keeps about someone being removed (Module.forget_person)."""

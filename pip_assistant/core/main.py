@@ -88,6 +88,9 @@ def build(cfg: dict) -> Core:
     bus.core_handlers["core.personality"] = lambda m: privately(personality_api.handle, m)
     bus.core_handlers["core.migrate"] = lambda m: privately(migration.handle, m)
     bus.core_handlers["core.settings"] = lambda m: privately(settings_api.handle, m)
+    from .yourdata import YourData   # Settings → Your data: export and delete everything (PIP-NEW-034, D-128)
+    your_data = YourData(memory, people, modules, conv)
+    bus.core_handlers["core.data"] = lambda m: privately(your_data.handle, m)
     return Core(bus, trace, schedule, net, modules)
 
 
