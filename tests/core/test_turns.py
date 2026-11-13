@@ -382,7 +382,7 @@ async def test_a_laugh_over_pip_and_he_carries_on(tmp_path):
         await asyncio.sleep(0.2)
         assert says(got) == ["Then another at half past."] and not asks and conv.paused is None, heard
         [d] = [r["data"] for r in bus.trace.recent() if r["type"] == "turn.decision"]
-        assert d == {"decision": "resumed_after_backchannel", "why": "laugh"}
+        assert d["decision"] == "resumed_after_backchannel" and d["why"] in ("laugh", "nothing")   # (phantom: nothing)
         await finish(bus, tasks)
 
 
@@ -421,4 +421,26 @@ async def test_talked_over_by_nothing_he_carries_on_and_a_long_talk_cancels(tmp_
     await ears.emit("speech.interrupted", {"level_dbfs": -25, "said": 0})
     await asyncio.sleep(0.4)                                    # nothing ever came back from speech-to-text: given up
     assert conv.paused is None and says(got) == [] and conv.transcript.last_ours()["cut"]
+    await finish(bus, tasks)
+
+
+# ---------------------------------------------------------------- phantom "Thank you." (D-85, 2026-11-12)
+def test_phantom_phrases():
+    from pip_assistant.core.turns import is_phantom
+    assert all(is_phantom(t) for t in ("Thank you.", "thank you so much!", "You", "Bye.", "Thanks for watching!"))
+    assert not any(is_phantom(t) for t in ("Thank you, Pip, what time is it?", "Thanks", "you too", "bye Pip"))
+
+
+async def test_a_phantom_thank_you_from_no_known_voice_is_noise(tmp_path):
+    from pip_assistant.core.people import Match
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, "Thank you.", social={"join_in": False})
+    conv.follow = {"until": time.monotonic() + 10, "question": True, "asker": None}
+    await ears.emit("heard.utterance", {"reason": "follow_up", "had_speech": True, "seconds": 1.1, "quiet_s": 0.0},
+                    private=room()[1])
+    await asyncio.sleep(0.3)
+    assert not asks and says(got) == []
+    assert [r["data"] for r in bus.trace.recent() if r["type"] == "heard.phantom"] == [{"reason": "follow_up"}]
+    # someone Pip knows really saying it is kept
+    assert await conv.unless_phantom("Thank you.", Match("p1", "Sam", "sure"), "follow_up") == "Thank you."
+    assert await conv.unless_phantom("Thank you.", Match(), "follow_up") == ""
     await finish(bus, tasks)

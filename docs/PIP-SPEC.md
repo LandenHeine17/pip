@@ -231,7 +231,7 @@ stateDiagram-v2
 
 The monitor has three of its own: **Starting up** (connecting to Pip), **Can't reach Pip** (trying again), and **Dozing** after 10 quiet minutes. How it all works in the code, and how to change it: [HOW-PIP-WORKS.md §3](HOW-PIP-WORKS.md#3-the-face-state-machine).
 
-Sounds without a human voice in them (a click, a cough, a hiss) are dropped before speech-to-text, so Pip no longer "hears" a phantom "Thank you." (D-85).
+Sounds without a human voice in them (a click, a cough, a hiss) are dropped before speech-to-text, so Pip no longer "hears" a phantom "Thank you." (D-85). Some sounds still get through: on 2026-11-12, 1 in 10 of everything transcribed was exactly 10 letters ("Thank you."), almost all from a voice Pip didn't recognise. So "Thank you.", "you", "Bye." and "Thanks for watching" on their own, from a voice he doesn't know, are now treated as noise; from a known voice they're kept.
 
 ### Screen and dashboard
 - **What Pip hears and does** (D-108): the Conversation box shows everything heard (grey = not for Pip, green = to Pip, "mentioned Pip"), his replies, and small bars for what happened (chimed, waiting for you to finish, stayed quiet, interrupted, mic off/on and for how long, timers ringing, offline). Live only, never saved. The **coloured circle** at the top shows his state: grey idle, green listening, purple thinking, blue speaking, orange interrupted, red ringing, dark grey mic off, slate offline, with what exactly he's doing next to it. The face on the monitor uses the same colours.

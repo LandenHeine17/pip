@@ -72,6 +72,8 @@ If Claude needs to **look something up** first (the calendar beyond tomorrow, or
 
 **Talked over** (D-122): pip-ears stops him only if the sound over him has a voice in it (`Ears.heard_over`). pip-core's `on_interrupted` then **pauses** the answer instead of cancelling it. If what was said turns out to be only "yeah", a laugh or nothing (`only_listening`, `listening_only` in `core/turns.py`), `resume_paused` says the rest, starting from the sentence he was cut off in; real words cancel it (`drop_paused`) and become the next turn. A laugh has a voice in it, so it does stop him; speech-to-text then writes it as "haha", "(laughs)" or its phantom "Thank you.", and `listening_only` counts all of those as a laugh. The answer stays paused until what they said comes back, however long they laugh.
 
+**Phantom "Thank you."** (D-85): sounds with no voice never reach speech-to-text (`has_voice`). But a cough, a laugh or a chair can sound enough like a voice to get through, and Whisper then writes "Thank you." (or "you", "Bye."). So after speech-to-text, `unless_phantom` treats exactly those phrases as noise unless the voice is someone Pip recognises (`is_phantom` in `core/turns.py`); a known voice saying "thank you" still gets an answer. Each one is traced as `heard.phantom`.
+
 ## 3. The face state machine
 
 ### The idea
