@@ -51,7 +51,7 @@ Live results are on the dashboard (`http://<pi-tailscale-ip>:8780`).
 - **He waits until you're done** (D-106, D-122), counted from when you stop talking: 1.0 s after a question or short request, 1.6 s after a statement, 2.0 s after a few sentences, 3.0 s if you stopped mid-sentence ("remind me to…"), half a second more on the next turn after being talked over. If you carry on, he keeps waiting and takes it all as one; only then does he chime and answer.
 - **Clear commands are instant** (D-123): "stop", "never mind", "snooze", "what time is it", "set a pasta timer for 10 minutes", "cancel the timer", "how long is left" are done on the Pi without Claude when that's the whole sentence; anything more goes to Claude.
 - **"Stop", "shut up", "enough", "never mind"** (D-105): he goes silent (no "okay, stopping"), stops listening for a follow-up and goes back to idle. The chime can be switched off on the dashboard (Listening & sounds).
-- **Interruptions:** talking over him stops him at once, if it's a voice (a knock or clap doesn't, D-122); he then hears what you said and decides whether it needs an answer ("never mind" gets silence). If it was only "yeah", "mhm", a laugh or nothing, he carries on from where he was cut off. "Actually…" corrects your last request instead of making a new one (D-54, D-92).
+- **Interruptions:** talking over him stops him, if it's a voice (a knock or clap doesn't, D-122). Since D-128 a voice first only makes him quieter: if you keep talking (about half a second) he stops; a short laugh or "yeah" and he comes back up without stopping. "Hold on" makes him wait (up to 30 s) until "go on". Cut short after two sentences, he asks "Want the rest?"; he then hears what you said and decides whether it needs an answer ("never mind" gets silence). If it was only "yeah", "mhm", a laugh or nothing, he carries on from where he was cut off. "Actually…" corrects your last request instead of making a new one (D-54, D-92).
 - Long silence from the speakerphone means "muted or very quiet", shown as a status, never an error (D-38).
 
 ### Listening modes and privacy
@@ -81,10 +81,10 @@ flowchart LR
 - He says what actually happened ("Timer's on" only once the timer exists), asks one short question when unsure, and says so when he doesn't know.
 
 ### Memory (built in step 5)
-- Saves things **when you ask** ("Pip, remember the bins go out Tuesday night"). **Never** saves overheard conversation. Never deletes old memories by itself (D-54). *Later:* Pip asking first ("Want me to remember that?").
+- Saves things **when you ask** ("Pip, remember the bins go out Tuesday night"). **Never** saves overheard conversation. Never deletes old memories by itself (D-54). Since D-128 he may ask once, "Want me to remember that?", when you tell him something lasting; "yes" saves it.
 - New memories are visible to the household by default; one can be made private, and then it's only used when its owner's voice is recognised for sure. Admins can read all memories (D-15, D-16).
 - **Every memory is saved straight away** (D-119, owner, 2026-11-10): sensitive ones, ones about someone else, ones from a voice Pip doesn't recognise, and ones said while he's offline. Only passwords, codes, card and phone numbers are refused. A memory asked to be private stays private; if Pip didn't recognise the voice, it's used for nobody until its owner is set in the Memory Center.
-- A **Memory Center** on the dashboard: search, add, edit, make private, archive (kept but not used) and delete. Its inbox only holds memories brought over from Ziggletron (D-117) or waiting from before D-119; a private one there is only shown to, or approvable by, the person who made it.
+- A **Memory Center** on the dashboard: search, add, edit, make private, archive (kept but not used) and delete. Each memory says where it came from and when. A new memory that may contradict one already kept ("Sam's birthday is June 3" after "May 3") is flagged: keep this one, keep the old one, or both are right (D-128). "To review" shows those and memories over 6 months old. Its inbox only holds memories brought over from Ziggletron (D-117) or waiting from before D-119; a private one there is only shown to, or approvable by, the person who made it.
 - No conversation transcripts or recordings are kept as logs. Your test recordings and voice-trained models stay on the Pi (D-72).
 
 | Say | Pip |
@@ -250,9 +250,17 @@ Sounds without a human voice in them (a click, a cough, a hiss) are dropped befo
 ### Switched over from Ziggletron (done)
 - Pip has taken over: Ziggletron is switched off (D-82), the monitor shows Pip's face (D-110), and Ziggletron's memories and personality were brought over (D-117). Ziggletron stays installed as the owner's fallback; only the owner starts it.
 
-### Explaining himself (later, M2)
-- Answers "how does your memory work?" from an up-to-date feature list, the docs and his own code (read-only), and says when the docs and code disagree (PIP-NEW-064–067).
-- Answers "why didn't you answer me?" from a 48-hour record of what he decided and why, never by guessing (PIP-NEW-066).
+### Explaining himself (built 2026-11-13, M2, D-128)
+- "What can you do?" / "can you…?": answered from a list of his built-in features and each module's summary (`common/capabilities.py`), never by guessing; for anything else he says he can't yet and that you could ask him to learn it.
+- "Why didn't you answer me?", "why did you stop?": he looks at what he heard and decided in the last 10 minutes (the decision trace: times and labels, never the words) and explains it.
+- "How long do you wait?", "are you okay?", "why do you remember that?": his current settings, how his programs, internet and speech-to-text are doing, and where a memory came from (who, when, how).
+- *Not yet:* answering "how does your memory work?" from his docs and code (PIP-NEW-065, 067).
+
+### Remembering conversations (built 2026-11-13, M2, D-128)
+- Once the room has been quiet 10 minutes, Claude writes Pip **a few lines of notes** about the conversation: the topics, anything planned, who was there. Never quotes, never anything secret; health, money and relationships only as a topic.
+- Notes are **kept 30 days**, then deleted. The dashboard's **Conversations** page lists them by day; delete any, or all.
+- Pip reads the last day's notes with every request, and looks older ones up when you ask ("what were we talking about last week?", "what did Caleb say about the trip on Tuesday?").
+- Nothing is noted while listening is off, or from an alarm heard with listening off.
 
 ### Six seven (built 2026-11-10, D-121)
 - Pip offers everything he hears (room talk, and what's said to him) to his modules, and a module may answer with something for him to say. The `six_seven` module uses it, and is the one place the joke lives: **said to Pip**, "six seven" together ("six seven", "6-7", "67"; not "6:07", or "a timer for 6 minutes and 7 seconds", which still reach Claude); **in the room**, a six and a seven anywhere in a sentence. Then Pip says "six seven, six seven, six fucking seven" **and his face on the monitor freaks out** at the same moment, then both rest for 30 seconds (setting `pause_seconds`). **Any hour**, quiet hours too (owner, 2026-11-10). He says it only when he's free to talk; the face still reacts if he isn't. It keeps nothing of what was said. Switch it off with `enabled = false` under `[modules.six_seven]`.
