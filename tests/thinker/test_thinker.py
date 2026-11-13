@@ -188,3 +188,20 @@ async def test_what_pip_sends_keeps_sizes_and_tokens_never_the_words(monkeypatch
     assert secret not in repr(reply.private["recent"]) and "jazz" not in repr(reply.private["recent"])   # never the words
     fixed = reply.private["fixed"]
     assert "sunny" in fixed["rules"] and fixed["modules"] == {"calendar": "Calendar: …"} and fixed["personality"]
+
+
+def test_narrating_the_request_is_not_said():
+    # owner, 2026-11-12: "Landen's asking what I just did. Honest answer, short: I jumped in..."
+    sp = SentenceSplitter()
+    out = sp.feed("Landen's asking what I just did. Honest answer, short: I jumped in and got it wrong. ") + sp.flush()
+    assert out == ["I jumped in and got it wrong."]
+    sp = SentenceSplitter()
+    out = sp.feed("Caleb's asking about upgrading me to an H200. Ha, I'd take it. ") + sp.flush()
+    assert out == ["Ha, I'd take it."]
+    sp = SentenceSplitter()                                          # if that's all there is, it's still said
+    assert sp.feed("Caleb's asking a fair one.") + sp.flush() == ["Caleb's asking a fair one."]
+    sp = SentenceSplitter()                                          # ordinary answers are untouched
+    out = sp.feed("Seven: thirty minutes, then. Landen's asking too. ") + sp.flush()
+    assert out == ["Seven: thirty minutes, then.", "Landen's asking too."]
+    sp = SentenceSplitter()
+    assert sp.feed("Your alarm's at 7:30. ") + sp.flush() == ["Your alarm's at 7:30."]

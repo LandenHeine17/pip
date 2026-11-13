@@ -15,6 +15,8 @@ travels to pip-thinker only in messages' `private` part (D-34).
 import time
 from collections import deque
 
+GAP_S = 5 * 60   # a quiet spell this long is marked in what Claude reads
+
 
 class Transcript:
     def __init__(self, max_lines: int = 40, max_age: float = 3 * 3600, clock=time.time):
@@ -48,8 +50,14 @@ class Transcript:
             line["cut"] = cut
 
     def render(self) -> list[str]:
-        out = []
+        """The lines for Claude. A quiet spell of GAP_S or more is marked ("(25 minutes later)"), so Claude can see
+        that older talk is over and doesn't bring it back up (owner, 2026-11-12: he joked about something from
+        long before; the [HH:MM] times alone weren't enough)."""
+        out, prev = [], None
         for line in self._fresh():
+            if prev is not None and line["ts"] - prev >= GAP_S:
+                out.append(f"({round((line['ts'] - prev) / 60)} minutes later)")
+            prev = line["ts"]
             when = time.strftime("%H:%M", time.localtime(line["ts"]))
             out.append(f"[{when}] {line['speaker']}: {line['text']}" + (" (cut off)" if line["cut"] else ""))
         return out
