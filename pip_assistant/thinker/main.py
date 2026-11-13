@@ -94,6 +94,10 @@ Each message starts, in brackets, with the date and time, who's speaking and who
 Weather: {weather}"""
 
 
+AGAIN = ("Your last reply was only notes to yourself about how to answer, and none of it was said. Reply with only "
+         "the words you'll say out loud.")
+
+
 class OneOffCLI(ClaudeCLI):
     """For previews: no process is started in advance, so a preview never replaces the warm one for Pip's
     real personality."""
@@ -308,6 +312,12 @@ class Thinker:
                               looked_up=msg.private.get("looked_up", ""))
         try:
             text, info = await self._ask(self.claude, kind, aid, system, user, sentence, searching, held=kind == "join")
+            if info.get("only_notes") and aid not in self.cancelled:
+                # It only wrote notes to itself ("Caleb's asking... Keep it short and cheeky."), none of it said:
+                # once more, told so (owner, 2026-11-12)
+                text, info = await self._ask(self.claude, kind, aid, system, user + "\n\n" + AGAIN, sentence,
+                                             searching, held=kind == "join")
+                info["asked_again"] = True
         except Exception as e:
             log.warning("answer failed: %s", e)
             return msg.reply({"error": f"{type(e).__name__}: {str(e)[:120]}"}, source="thinker")

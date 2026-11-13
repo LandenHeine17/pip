@@ -25,7 +25,12 @@ URL = re.compile(r"https?://\S+|\[([^\]]+)\]\([^)]+\)")
 NARRATION = re.compile(r"^(?:[A-Z][a-z]+|someone|they|he|she)(?:'s| is| are)\s+(?:asking|wondering|saying|telling|"
                        r"talking|curious|checking|bringing up)\b", re.I)
 LABEL = re.compile(r"^(?:[A-Za-z']+[ ,-]*){1,5}:\s+(?=\S)")   # "Honest answer, short: " (no digits: never "7:30")
-LABEL_WORDS = re.compile(r"\b(answer|version|take|reply|response|truth|summary)\b", re.I)
+TONE = r"short|brief|cheeky|funny|light|casual|simple|quick|playful|snappy|punchy|witty|sassy|honest|teasing|chill"
+LABEL_WORDS = re.compile(rf"\b(answer|version|take|reply|response|truth|summary|{TONE})\b", re.I)
+# A note to itself about how to answer: "Keep it short and cheeky.", "Be playful here.", "One-liner."
+SELF_NOTE = re.compile(rf"^(?:(?:keep|make|play) (?:it|this)|be|stay|go|aim for)\s+(?:(?:a bit|a little|very|really|"
+                       rf"super|pretty|nice and)\s+)*(?:{TONE}|one[- ]liner)(?:(?:,|,? and|,? but)\s+(?:{TONE}))*"
+                       rf"(?: here| about it| with it| then)?[.!]?$|^one[- ]liner[.!]?$", re.I)
 
 
 def unnarrate(sentence: str) -> str:
@@ -52,7 +57,7 @@ class SentenceSplitter:
         self.long_after, self.first_after = long_after, first_after
         self.stopped = False
         self.cut = 0   # pieces given out so far
-        self.held = ""   # a first sentence that only narrated the request: dropped if the real answer follows
+        self.notes = 0   # sentences before the answer that were only Claude's notes to itself (not said)
 
     def feed(self, piece: str) -> list[str]:
         if self.stopped:
@@ -75,28 +80,24 @@ class SentenceSplitter:
         return self._lead([s for s in (speakable(x) for x in out) if s])
 
     def _lead(self, out: list[str]) -> list[str]:
-        """Before anything's been said: skip sentences narrating the request, and labels before the answer."""
+        """Before anything's been said: skip Claude's notes to itself (narrating the request, how to answer it)
+        and labels before the answer. If nothing but notes comes, `notes` says so and pip-thinker asks again."""
         kept = []
         for s in out:
             if self.cut == 0 and not kept:
-                if NARRATION.match(s):
-                    self.held = s
+                if NARRATION.match(s) or SELF_NOTE.match(s):
+                    self.notes += 1
                     continue
                 s = unnarrate(s)
                 if not s:
                     continue
             kept.append(s)
-        if kept:
-            self.held = ""
         self.cut += len(kept)
         return kept
 
     def flush(self) -> list[str]:
         rest, self.buf = speakable(self.buf), ""
-        out = self._lead([rest] if rest else [])
-        if not out and self.held and self.cut == 0:   # it was the whole answer: better said than silence
-            out, self.held, self.cut = [self.held], "", 1
-        return out
+        return self._lead([rest] if rest else [])
 
 
 def is_action(text: str) -> bool:
@@ -236,6 +237,8 @@ class ClaudeCLI:
             for s in split.flush():
                 full.append(s)
                 await on_sentence(s)
+            if mode == "speak" and not full and split.notes:
+                info["only_notes"] = True   # it only planned its answer out loud: pip-thinker asks again
             await proc.wait()
             if proc.returncode not in (0, None) and not full and mode not in ("action", "pass"):
                 err = (await proc.stderr.read()).decode(errors="replace")[-200:]
