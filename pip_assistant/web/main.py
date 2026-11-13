@@ -76,6 +76,7 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
     page = resources.files("pip_assistant.web").joinpath("static/index.html").read_text()
     tv_page = resources.files("pip_assistant.web").joinpath("static/tv.html").read_text()
     weather = Weather((cfg or {}).get("thinker", {}).get("location", "Lincoln, Nebraska"))
+    face_look = dict((cfg or {}).get("face", {}))   # how the face looks on the monitor (Settings → Face, D-128)
     css = resources.files("pip_assistant.web").joinpath("static/pip.css").read_text()
     js = resources.files("pip_assistant.web").joinpath("static/pip.js").read_text()
     mods = {m.name: m for m in enabled_modules(cfg or {})}
@@ -285,7 +286,7 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         (timers, the screen's layout and what each module's boxes show: core/dashapi.py tv_snapshot), the
         scripts that draw modules' boxes, the weather, and the Pi's health numbers if that box is showing."""
         out = {"state": state.pip_state, "state_detail": state.pip_detail, "online": state.online, "weather": {},
-               "box_scripts": box_scripts}
+               "box_scripts": box_scripts, "face": face_look}
         try:
             r = await bus.request("core", "core.tv", timeout=3)
             out.update(r.private or {})

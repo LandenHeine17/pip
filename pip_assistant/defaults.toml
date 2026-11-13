@@ -113,6 +113,13 @@ web_search = false                 # Claude's own built-in web search (slow: 10-
                                    # module looks things up instead (~5 s). On: the old way, e.g. without a Brave key.
 location = "Lincoln, Nebraska"     # Where Pip lives (D-63).
 
+[face]
+# How Pip's face looks on the monitor (D-128). Changed on the Settings page, with a preview.
+eye_style = "rounded"              # rounded (squircle), round, square or tall.
+colors = "states"                  # states (a colour for each state, like the dashboard's circle), blue, mint, warm or white.
+expressions = true                 # Brief reactions: pleased when thanked, confused when he didn't catch it, amused at a joke, surprised when talked over, sleepy in quiet hours.
+status_icons = true                # Small icons in the corner: listening off, no internet, quiet hours, a usage limit reached.
+
 [web]
 host = "127.0.0.1"                 # Address the dashboard listens on. On the Pi this is the Tailscale address.
 port = 8790                        # Port for the dashboard.

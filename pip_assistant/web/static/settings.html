@@ -131,6 +131,11 @@ details.adv[open]>summary h2::before{content:"▾ "}
 </section>
 
 <section>
+  <div class="head"><h2>Face</h2><span class="sub">how he looks on the monitor</span></div>
+  <div id="g-face"></div>
+</section>
+
+<section>
   <div class="head"><h2>Location &amp; weather</h2></div>
   <div id="g-where"></div>
 </section>
@@ -193,7 +198,7 @@ details.adv[open]>summary h2::before{content:"▾ "}
 
 <script src="/pip.js"></script>
 <script>
-const GROUPS = {"Voice & sounds": "g-voice", "Listening": "g-listen", "Taking turns": "g-turns", "Conversation & joining in": "g-conv",
+const GROUPS = {"Voice & sounds": "g-voice", "Listening": "g-listen", "Taking turns": "g-turns", "Conversation & joining in": "g-conv", "Face": "g-face",
   "Location & weather": "g-where", "Brain": "g-brain", "Personality": "g-personality", "Advanced": "g-advanced"};
 const SECTIONS = {pip: "Pip", ears: "Voice and wake words", listen: "Hearing speech", stt: "Speech-to-text",
   voices: "Recognising voices", social: "Joining in", alarms: "Timers and alarms", mic: "Clap tuning",
@@ -541,10 +546,37 @@ const PREVIEW = {
     off: "No tone: he's silent until he answers."})[val("thinker.thinking_tone")] || "",
   "ears.speech_rate": () => { const r = n("ears.speech_rate") || 1;
     return `"The bus comes at ten, then another at half past." takes about <b>${secs(3.2 / r)}</b> to say.`; },
+  "face.eye_style": () => `${faceSVG("idle", faceColor("speaking"))} ${faceSVG("surprised", faceColor("speaking"))}`,
+  "face.colors": () => faceRow(),
+  "face.expressions": () => on("face.expressions")
+    ? `<div style="display:flex;gap:14px;flex-wrap:wrap">${[["pleased", "thanked"], ["confused", "didn't catch it"], ["amused", "a joke"], ["surprised", "talked over"], ["sleepy", "quiet hours"]]
+        .map(([e, why]) => `<span style="text-align:center">${faceSVG(e, faceColor("idle"))}<br><span class="sub">${why}</span></span>`).join("")}</div>`
+    : "Only his usual faces for what he's doing.",
+  "face.status_icons": () => on("face.status_icons")
+    ? `<span class="cmd">✕ Not listening</span> <span class="cmd">⚠ No internet</span> <span class="cmd">☾ Quiet hours</span> <span class="cmd">⌛ Claude's limit</span> <span class="sub">(only the ones that are true)</span>`
+    : "No corner icons: the big word under his face still says when he's not listening or offline.",
   "stt.drop_phantoms": () => on("stt.drop_phantoms")
     ? `A cough that speech-to-text writes as "Thank you." is ignored, unless it was a voice Pip knows.`
     : `"Thank you." from anyone gets an answer, even when it was only a cough or a laugh.`,
 };
+// A small drawing of the face for the Face settings (the monitor's real one is a canvas in tv.html).
+const STATE_COLORS = { idle: "#b9bec6", listening: "#5fe0b0", thinking: "#a58cff", speaking: "#6ea8ff" };
+const ONE_COLOR = { blue: "#6ea8ff", mint: "#5fe0b0", warm: "#ffb347", white: "#dfe3ea" };
+function faceColor(state){ return ONE_COLOR[val("face.colors")] || STATE_COLORS[state] || "#b9bec6"; }
+function faceSVG(expr, color){
+  const st = val("face.eye_style"), tall = st === "tall";
+  const ew = tall ? 15 : 18, eh = (tall ? 27 : 23) * ({ sleepy: .2, pleased: .55, amused: .6, surprised: 1.25 }[expr] || 1);
+  const rx = st === "round" ? ew / 2 : st === "square" ? 2 : 7;
+  const smile = { confused: -3, surprised: 0, sleepy: 2, pleased: 9, amused: 10 }[expr] ?? 5;
+  const eye = x => `<rect x="${x - ew / 2}" y="${30 - eh / 2}" width="${ew}" height="${eh}" rx="${Math.min(rx, eh / 2)}" fill="${color}"/>`;
+  const mouth = expr === "surprised" ? `<ellipse cx="50" cy="62" rx="6" ry="5" fill="${color}"/>`
+    : `<path d="M38 60 Q50 ${60 + smile} 62 60" stroke="${color}" stroke-width="4" fill="none" stroke-linecap="round"/>`;
+  return `<svg width="76" height="58" viewBox="0 0 100 76" style="background:#14161c;border-radius:10px">${eye(34)}${eye(66)}${mouth}</svg>`;
+}
+function faceRow(){
+  return `<div style="display:flex;gap:14px;flex-wrap:wrap">${["idle", "listening", "thinking", "speaking"].map(s =>
+    `<span style="text-align:center">${faceSVG("idle", faceColor(s))}<br><span class="sub">${s}</span></span>`).join("")}</div>`;
+}
 function clock(min){ const h = Math.floor(min / 60) % 24, m = min % 60; return `${h}:${String(m).padStart(2, "0")}`; }
 function refresh(){
   for (const el of document.querySelectorAll("[data-preview]")) { const f = PREVIEW[el.dataset.preview];

@@ -211,3 +211,23 @@ async def test_noise_never_reaches_speech_to_text(tmp_path):
     assert stt.calls == 0 and "thinker.ask" not in [k for k, _, _ in got]
     assert len([r for r in bus.trace.recent() if r["type"] == "heard.noise"]) == 3
     await finish(bus, tasks)
+
+
+def test_the_monitors_corner_icons(tmp_path):
+    """D-128: face_status says only yes/no for each icon."""
+    import time as _t
+    from pip_assistant.core.conversation import Conversation
+    from pip_assistant.core.dashapi import face_status
+    from pip_assistant.core.bus import Bus
+    from pip_assistant.core.health import Health
+    from pip_assistant.core.mic import MicSwitch
+    from pip_assistant.core.trace import Trace
+    c = Conversation(Bus(tmp_path / "s", Trace(tmp_path / "pip.db"), Health([], restart=False)), {"conversation": {},
+                     "social": {"quiet_hours": "00:00-23:59"}}, mic=MicSwitch(tmp_path / "pip.db"))
+    c.mic.set_dashboard(False)
+    c.joining.paused_until = _t.time() + 60
+
+    class Net:
+        online = False
+    st = face_status(c, Net())
+    assert st == {"mic_off": True, "offline": True, "quiet_hours": True, "claude_limited": True, "stt_limited": False}

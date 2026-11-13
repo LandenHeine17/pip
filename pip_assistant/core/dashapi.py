@@ -47,6 +47,17 @@ def tv_snapshot(schedule: Schedule, modules: Registry) -> dict:
     return {"now": now, "alerts": alerts, **modules.tv()}
 
 
+def face_status(conv: Conversation, net) -> dict:
+    """The monitor's small status icons (PIP-NEW-062, D-128): listening off, no internet, quiet hours, Claude's usage
+    limit reached, speech-to-text's daily limit used up. Only yes/no: nothing personal."""
+    import time as _time
+    from .joining import in_quiet_hours
+    j = conv.joining
+    return {"mic_off": not conv.listening, "offline": net is not None and not net.online,
+            "quiet_hours": bool(j.quiet_hours) and in_quiet_hours(j.quiet_hours),
+            "claude_limited": j.paused_until > _time.time(), "stt_limited": bool(conv.stt_limited)}
+
+
 def people_snapshot(people: People, modules: Registry, conv: Conversation) -> dict:
     """The People card: everyone, voice learning in progress, and the links modules add for each person
     ("Connect Google"). Sent privately."""

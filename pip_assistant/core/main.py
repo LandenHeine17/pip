@@ -12,7 +12,7 @@ from ..common.program import release_info
 from ..common.messages import Message
 from .bus import Bus
 from .conversation import Conversation
-from .dashapi import (alert_action, alerts_snapshot, memory_action, memory_snapshot, mic_action, people_action,
+from .dashapi import (alert_action, alerts_snapshot, face_status, memory_action, memory_snapshot, mic_action, people_action,
                       people_snapshot, tv_snapshot)
 from .memory import Memory
 from .mic import MicSwitch
@@ -64,7 +64,8 @@ def build(cfg: dict) -> Core:
                         mic=mic, modules=modules, prefs=prefs)
     conv.net = net
     bus.core_handlers["core.alerts"] = lambda m: ({"count": len(schedule.active())}, alerts_snapshot(schedule, modules))
-    bus.core_handlers["core.tv"] = lambda m: ({}, tv_snapshot(schedule, modules))   # the TV page (D-110)
+    bus.core_handlers["core.tv"] = lambda m: ({}, {**tv_snapshot(schedule, modules),   # the TV page (D-110)
+                                                   "status": face_status(conv, net)})   # its corner icons (D-128)
     bus.core_handlers["core.alert_action"] = lambda m: alert_action(schedule, conv, m)
     bus.core_handlers["module.request"] = modules.request          # a module's dashboard page (/api/m/<name>)
     bus.core_handlers["core.modules"] = lambda m: {"modules": modules.pages()}

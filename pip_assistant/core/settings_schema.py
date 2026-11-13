@@ -22,7 +22,7 @@ __all__ = ["SettingsError", "GROUPS", "RINGTONES", "MOODS", "ALL", "SCHEMA", "TY
 
 # ==================================================================== the Settings page's description
 # Groups, in the page's order. "Personality" also holds the personality editor; "Advanced" is folded away.
-GROUPS = ["Voice & sounds", "Listening", "Taking turns", "Conversation & joining in", "Location & weather", "Brain",
+GROUPS = ["Voice & sounds", "Listening", "Taking turns", "Conversation & joining in", "Face", "Location & weather", "Brain",
           "Personality", "Advanced"]
 RINGTONES = list(messages.RINGTONES)   # the ringtones pip-ears can play (one list, shared with ears/audio.py)
 MOODS = list(INTERVALS)                # quiet, normal, chatty: the moods core/joining.py knows
@@ -52,7 +52,7 @@ def _wake_choices():
     return sorted(found)
 
 
-V, L, T, C, W, B, P, A = GROUPS
+V, L, T, C, F, W, B, P, A = GROUPS
 SCHEMA = {
     # ---- Voice & sounds
     "ears.voice": _s(V, "Voice", "Pip's voice (a Piper voice). A new one is downloaded when you save (about 60 MB).",
@@ -138,6 +138,16 @@ SCHEMA = {
                                 choices=["always", "slow", "off"]),
     "thinker.thinking_tone_after_seconds": _s(C, "Slow means", "For \"slow\": play the tone if the answer hasn't "
                                               "started after this many seconds.", "float", ["core"], min=0.3, max=10),
+    # ---- Face (the monitor, D-128)
+    "face.eye_style": _s(F, "Eyes", "The shape of his eyes on the monitor.", "str", ["web"],
+                         choices=["rounded", "round", "square", "tall"]),
+    "face.colors": _s(F, "Colours", "\"states\": a colour for each thing he's doing (like the dashboard's circle); or one "
+                      "colour all the time (an alarm and losing touch stay red).", "str", ["web"],
+                      choices=["states", "blue", "mint", "warm", "white"]),
+    "face.expressions": _s(F, "Expressions", "Brief reactions: pleased when thanked, confused when he didn't catch "
+                           "something, amused at a joke, surprised when talked over, sleepy in quiet hours.", "bool", ["web"]),
+    "face.status_icons": _s(F, "Status icons", "Small icons in the corner: listening off, no internet, quiet hours, a "
+                            "usage limit reached.", "bool", ["web"]),
     # ---- Location & weather
     "thinker.location": _s(W, "Location", "Where Pip lives (D-63): used for the weather and local answers, "
                            "like \"Lincoln, Nebraska\".", "str", ["thinker", "web"], nonempty=True),

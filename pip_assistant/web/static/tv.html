@@ -41,6 +41,9 @@
   .name { font-size: 1.6rem; letter-spacing: .32em; text-transform: uppercase; color: var(--muted); position: relative; }
   canvas { width: 100%; height: 100%; min-height: 0; display: block; position: relative; }
 
+  /* Small status icons in the face box's corner (D-128): listening off, offline, quiet hours, a usage limit */
+  .icons { position: absolute; top: 1.1rem; right: 1.4rem; display: flex; gap: .6rem; z-index: 2; }
+  .icons span { font-size: 1.15rem; padding: .25rem .7rem; border-radius: 1rem; background: rgba(255,255,255,.07); color: #c8ccd4; white-space: nowrap; }
   .status { display: flex; align-items: center; justify-content: center; gap: 1.2rem; position: relative; min-height: 4rem; }
   .status .dot { width: 1.3rem; height: 1.3rem; border-radius: 50%; background: var(--state); transition: background .4s; }
   .status .word { font-size: 2.8rem; font-weight: 600; }
@@ -175,6 +178,7 @@
   <div class="main" id="face-box">
     <div class="glow"></div>
     <div class="name" id="name">Pip</div>
+    <div class="icons" id="icons"></div>
     <canvas id="face"></canvas>
     <div class="state">
       <div class="status"><span class="dot"></span><span class="word" id="word">Starting up</span><span class="detail" id="detail"></span></div>
@@ -237,13 +241,29 @@ const FACES = {
   // Brief reactions, on top of whatever it's doing:
   pleased:     { h: .72, happy: 1, smile: 1, mouth: 1.15 },   // thanked
   perked:      { h: 1.12, lean: .06, smile: .5 },             // it's just heard something for it
+  // More of them (PIP-NEW-062, D-128; Settings → Face → Expressions):
+  confused:    { h: .95, slant: .45, lookX: .35, lookY: -.2, smile: -.15, mouth: .55 },   // he didn't catch that
+  amused:      { h: .78, happy: .85, smile: .95, mouth: 1.1, gape: .3 },                   // a joke, a laugh
+  surprised:   { w: 1.08, h: 1.3, smile: 0, mouth: .5, gape: .6, lean: .05 },             // someone talked over him
+  sleepy:      { open: .18, slant: .3, lookY: .45, smile: .1, mouth: .6 },                 // dozing in quiet hours
 };
 // Pip's state colours, the same as the circle on the dashboard (D-108), brighter for a dark screen.
 const COLORS = {
   loading: "#a8a8b4", idle: "#b9bec6", listening: "#5fe0b0", thinking: "#a58cff", speaking: "#6ea8ff",
   interrupted: "#ffa64d", ringing: "#ff6b5e", mic_off: "#6b7280", offline: "#8c96a8", lost: "#ff6b5e",
   dozing: "#7fb2dc", pleased: "#6ea8ff", perked: "#5fe0b0",
+  confused: "#ffa64d", amused: "#6ea8ff", surprised: "#ffa64d", sleepy: "#6f8fb8",
 };
+// One colour all the time instead (Settings → Face → Colours); an alarm and losing touch stay red.
+const SCHEMES = { blue: "#6ea8ff", mint: "#5fe0b0", warm: "#ffb347", white: "#dfe3ea" };
+function colorOf(state) {
+  const base = state.split(":")[0], scheme = SCHEMES[(live.look || {}).colors];
+  if (scheme && !["ringing", "lost"].includes(base)) return scheme;
+  return COLORS[state] || COLORS[base] || COLORS.idle;
+}
+// The eyes' shape (Settings → Face → Eyes): how square the corners are, and tall eyes a little narrower.
+const EYES = { rounded: { p: 4, w: 1, h: 1 }, round: { p: 2, w: 1, h: 1 }, square: { p: 10, w: 1, h: 1 }, tall: { p: 4, w: .82, h: 1.18 } };
+function eyes() { return EYES[(live.look || {}).eye_style] || EYES.rounded; }
 // The big word for each state. The smaller words under it come from pip-core (core/states.py), except for
 // the screen's own three states, which have theirs here.
 const WORDS = {
@@ -280,17 +300,20 @@ function shown() {  // the state the screen is in
   return live.state;
 }
 function expression() {  // the state (or what exactly he's doing in it), or a reaction on top of it
-  const state = shown(), detailed = `${state}:${live.detail}`;
+  const state = shown(), detailed = `${state}:${live.detail}`, look = live.look || {};
+  if (look.expressions !== false && state === "dozing" && (live.status || {}).quiet_hours) return "sleepy";
   if (live.reaction && performance.now() < live.reactionUntil) {
+    if (live.reaction === "surprised" && !["lost", "ringing"].includes(state)) return "surprised";
     // Six seven is too much to keep in, whatever he's doing; only an alarm or losing touch comes first.
     if (live.reaction === "sixseven" && state !== "lost" && state !== "ringing") return "sixseven";
     // Other reactions colour his quiet moments; they don't hide that he's busy. He can smile while talking.
-    if (["idle", "listening", "dozing"].includes(state) || (state === "speaking" && live.reaction === "pleased"))
+    if (["idle", "listening", "dozing"].includes(state) || (state === "speaking" && ["pleased", "amused", "confused"].includes(live.reaction)))
       return live.reaction;
   }
   return live.detail && FACES[detailed] ? detailed : state;
 }
 function react(name, seconds) { live.reaction = name; live.reactionUntil = performance.now() + seconds * 1000; }
+function reactIf(name, seconds) { if ((live.look || {}).expressions !== false) react(name, seconds); }   // the newer ones (D-128)
 function sixSeven() {
   const now = performance.now();
   if (now - live.sixSevenAt < SIXSEVEN.every * 1000) return;
@@ -305,7 +328,7 @@ function eyePath(side, cx, cy, width, height) {
   const path = new Path2D(), edge = [];
   for (let i = 0; i <= 48; i++) {
     const u = Math.sin((i / 48 - .5) * Math.PI);           // -1 to 1 across the eye, closer together at the ends
-    const round = (1 - u ** 4) ** .25;
+    const p = eyes().p, round = (1 - Math.abs(u) ** p) ** (1 / p);
     // Worried: the outer corners droop. Focused: the inner corners do.
     const where = face.slant >= 0 ? (side * u + 1) / 2 : (1 - side * u) / 2;
     const top = Math.max(-b * round, -b + Math.abs(face.slant) * b * .8 * where);
@@ -336,7 +359,7 @@ function draw(now) {
   const scale = 1 + face.lean;
 
   const gazeX = (face.lookX + body.saccadeX) * u * .55, gazeY = (face.lookY + body.saccadeY) * u * .4;
-  const spread = u * 2.25 * scale, eyeW = u * 2.45 * face.w * scale, eyeH = u * 3.1 * face.h * scale;
+  const spread = u * 2.25 * scale, eyeW = u * 2.45 * face.w * scale * eyes().w, eyeH = u * 3.1 * face.h * scale * eyes().h;
   for (const side of [-1, 1]) {
     // Looking sideways, the far eye narrows a touch, which gives the flat face some depth.
     const narrow = 1 - Math.abs(face.lookX + body.saccadeX) * .1 * (side * (face.lookX + body.saccadeX) < 0 ? 1 : 0);
@@ -561,6 +584,8 @@ function drawSixSevenHands(t, cx, cy, u, rgb) {
 // dozes, "6" and "7" at six seven. Each glyph rises, grows and fades over a few seconds.
 const GLYPHS = {
   dozing:   { chars: "zZz", every: 1.9, swap: 1, side: () => 1 },                          // to one side, slowly
+  sleepy:   { chars: "zZz", every: 1.5, swap: 1, side: () => 1 },
+  confused: { chars: "?", every: 1.2, swap: 1, side: () => 1 },
   sixseven: { chars: "67", every: .6, swap: 2.5, side: (t) => Math.sign(Math.sin(t * 7.3)) || 1 },  // both sides, fast
 };
 const GLYPH_S = 4.5, MAX_GLYPHS = 12;
@@ -599,7 +624,7 @@ function step(now) {
 
   const target = { ...REST, ...FACES[state] };
   for (const key in REST) face[key] += (target[key] - face[key]) * ease(key === "happy" ? 9 : 6.5);
-  const rgb = hexRgb(COLORS[state] || COLORS[state.split(":")[0]] || COLORS.idle);   // a detail keeps its state's colour
+  const rgb = hexRgb(colorOf(state));   // a detail keeps its state's colour
   body.color = body.color.map((c, i) => c + (rgb[i] - c) * ease(4));
 
   // Blinks, sometimes twice, and small glances about.
@@ -659,7 +684,7 @@ const said = [];   // the conversation box's lines: {who: "room" | "you" | "pip"
 
 function showState() {
   const state = shown();
-  document.documentElement.style.setProperty("--state", COLORS[state] || COLORS.idle);
+  document.documentElement.style.setProperty("--state", colorOf(state));
   document.body.classList.toggle("ringing", state === "ringing");
   document.body.classList.toggle("offline", state === "lost");
   document.body.classList.toggle("resting", state === "dozing");
@@ -848,6 +873,8 @@ async function refresh() {
     else data.weather = r.weather || data.weather;
     loadBoxScripts(r.box_scripts);
     live.weather = data.weather;   // live.weather.wear dresses the face (wearing())
+    if (r.face) live.look = r.face;   // Settings → Face (D-128)
+    if (r.status) { live.status = r.status; showIcons(); }
     if (r.state) { live.state = r.state; setDetail(r.state_detail || {}); }
     if (r.layout) {   // the screen's layout (modules/screen, D-111)
       live.screen = r.layout;
@@ -857,6 +884,14 @@ async function refresh() {
     }
     showBanner(); redraw(); showState();
   } catch { /* the stream reconnects */ }
+}
+// The corner icons (D-128): from pip-core's face_status, refreshed every minute.
+// (Symbols from DejaVu Sans: the Pi has no emoji font.)
+const ICONS = { mic_off: "✕ Not listening", offline: "⚠ No internet", quiet_hours: "☾ Quiet hours",
+                claude_limited: "⌛ Claude's limit", stt_limited: "◔ Hearing on the Pi" };
+function showIcons() {
+  const st = live.status || {}, on = (live.look || {}).status_icons !== false;
+  $("icons").innerHTML = on ? Object.keys(ICONS).filter((k) => st[k]).map((k) => `<span>${ICONS[k]}</span>`).join("") : "";
 }
 async function refreshVitals() {
   if (!boxes("health").length) return;
@@ -889,6 +924,7 @@ function handle(kind, d) {
   if (kind === "state") {
     if (d.state !== "idle") live.activeAt = performance.now();
     if (live.state === "listening" && d.state === "thinking") react("perked", .6);
+    if (d.state === "interrupted" && live.state !== "interrupted") reactIf("surprised", 1.2);
     live.state = d.state;
     setDetail(d);
     showState();
@@ -900,6 +936,8 @@ function handle(kind, d) {
     showCaption(d.who, d.text, d.speaker);
     remember(d);
     if (d.who === "you" && /\b(thanks|thank you|good job|nice one|love you)\b/i.test(d.text)) react("pleased", 3);
+    else if (d.who === "you" && /\b(haha+|ha ha|lol|lmao|that's (so )?funny|hilarious)\b/i.test(d.text)) reactIf("amused", 3);
+    if (d.who === "pip" && /\b(didn't catch|couldn't make out|say (it|that) again)\b/i.test(d.text)) reactIf("confused", 3);
   } else if (kind === "line") {      // room talk: only sent while a conversation box shows it (D-111)
     remember(d);
   } else if (kind === "reaction") {   // a module asks for one (the six-seven freak-out); only known faces
@@ -958,7 +996,7 @@ new ResizeObserver(() => fitCanvas()).observe(canvas);
 setInterval(() => redraw("clock", "timers"), 1000);
 setInterval(() => redraw(...Object.keys(MODULE_BOXES), "conversation"), 60000);
 setInterval(refreshVitals, VITALS_S * 1000);
-setInterval(refresh, 15 * 60000);   // the weather, and anything missed
+setInterval(refresh, 60000);   // the corner icons, the weather (cached by pip-web) and anything missed
 setInterval(creep, 30000);
 setInterval(() => {  // a stream can hang without reporting an error; keep-alives come every 15 s
   if (live.connected && performance.now() - live.lastEvent > SILENCE_S * 1000) lost();
