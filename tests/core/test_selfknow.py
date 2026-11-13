@@ -56,3 +56,17 @@ async def test_claude_looking_up_why_gets_the_trace(tmp_path):
     assert second["looked_up"].startswith("What Pip heard and did in the last 10 minutes")
     assert "why didn't you answer" not in json.dumps(bus.trace.recent())   # (the words never reach the trace)
     await finish(bus, tasks)
+
+
+def test_his_own_docs_and_code_answer_how_he_works(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "PIP-SPEC.md").write_text("# Pip\n\n## Memory\nSaves things when you ask.\n\n## Timers\nRing.\n")
+    (tmp_path / "pip_assistant" / "core").mkdir(parents=True)
+    (tmp_path / "pip_assistant" / "core" / "memory.py").write_text('"""Memories: saved when asked."""\nx = 1\n')
+    (tmp_path / "pip_assistant" / "core" / "alarms.py").write_text('"""Alarms."""\n')
+    d = selfknow.docs_text("how does your memory work?", tmp_path)
+    assert "[PIP-SPEC.md: Memory] Saves things when you ask." in d and "Ring" not in d
+    c = selfknow.code_text("memory", tmp_path)
+    assert "core/memory.py: Memories: saved when asked." in c and "alarms" not in c
+    assert "Nothing" in selfknow.docs_text("bananas", tmp_path)
+    assert "docs" in selfknow.KINDS and selfknow.docs_text("memory").startswith("From your own docs")   # the real ones

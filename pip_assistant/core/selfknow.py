@@ -8,13 +8,23 @@ Claude asks for one of these like any other look-up (`ACTION {"do": "look", "kin
     settings     the conversation settings as they are now, for "how long do you wait before answering?"
     health       his programs, the internet, speech-to-text and today's Claude use, for "are you okay?"
     memory_why   where a memory came from (who, when, how), for "why do you remember that?" ("id": "#m1a2b3")
+    docs         the parts of his own docs (PIP-SPEC, HOW-PIP-WORKS) that match "query", for "how does your memory work?"
+    code         which of his own code files match "query" (file and what it's for), for "where's that in your code?"
+                 (read-only, from the version that's running; only pip_assistant/ and docs/, never ~/pip-data)
 
 The answers are plain sentences for Claude to read; Claude then answers out loud in its own words.
 """
+import ast
+import re
 import time
 from datetime import date
+from pathlib import Path
 
-KINDS = ("why", "settings", "health", "memory_why")
+KINDS = ("why", "settings", "health", "memory_why", "docs", "code")
+ROOT = Path(__file__).resolve().parents[2]      # the running release (~/pip-app/current) or ~/pip
+DOCS = ("docs/PIP-SPEC.md", "docs/HOW-PIP-WORKS.md")
+DOCS_CHARS = 1200
+STOP = {"how", "does", "your", "you", "the", "what", "work", "works", "where", "is", "are", "do", "and", "about", "pip"}
 WHY_SECONDS = 600
 WHY_LINES = 25
 
@@ -138,6 +148,78 @@ def memory_why(conv, a: dict, speaker) -> str:
             "It can be forgotten by asking, or on the dashboard's Memory page.")
 
 
+def _words(query: str) -> list[str]:
+    return [w for w in re.findall(r"[a-z0-9_]+", (query or "").lower()) if len(w) > 2 and w not in STOP]
+
+
+def sections(text: str) -> list[tuple[str, str]]:
+    """A markdown file as (heading, body) pieces, by ## and ### headings."""
+    out, head, body = [], "", []
+    for line in text.split("\n"):
+        if re.match(r"^#{2,3} ", line):
+            if body:
+                out.append((head, "\n".join(body).strip()))
+            head, body = line.lstrip("# ").strip(), []
+        else:
+            body.append(line)
+    if body:
+        out.append((head, "\n".join(body).strip()))
+    return out
+
+
+def docs_text(query: str, root: Path = ROOT) -> str:
+    """The best-matching sections of his own docs, plain and short."""
+    words = _words(query)
+    if not words:
+        return "Say what to look for in your docs (a few words)."
+    scored = []
+    for rel in DOCS:
+        f = root / rel
+        if not f.is_file():
+            continue
+        for head, body in sections(f.read_text(errors="replace")):
+            hay_head, hay = head.lower(), body.lower()
+            score = sum(3 * hay_head.count(w) + min(hay.count(w), 5) for w in words)
+            if score:
+                scored.append((score, rel, head, body))
+    if not scored:
+        return f"Nothing in your docs about \"{query}\"."
+    out, size = [], 0
+    for _, rel, head, body in sorted(scored, key=lambda x: -x[0])[:3]:
+        body = re.sub(r"[`*|]", "", re.sub(r"\s+", " ", body))
+        piece = f"[{rel.split('/')[-1]}: {head}] {body}"[:DOCS_CHARS - size]
+        out.append(piece)
+        size += len(piece)
+        if size >= DOCS_CHARS:
+            break
+    return "From your own docs (explain it simply, in a sentence or two): " + " … ".join(out)
+
+
+def code_text(query: str, root: Path = ROOT) -> str:
+    """Which of his code files match: path and the first line of what each says it does."""
+    words = _words(query)
+    if not words:
+        return "Say what to look for in your code (a few words)."
+    scored = []
+    for f in sorted((root / "pip_assistant").rglob("*.py")):
+        if "__pycache__" in f.parts or f.name.startswith("test_"):
+            continue
+        text = f.read_text(errors="replace")
+        try:
+            doc = (ast.get_docstring(ast.parse(text)) or "").strip().split("\n")[0]
+        except SyntaxError:
+            doc = ""
+        rel = str(f.relative_to(root / "pip_assistant"))
+        hay = text.lower()
+        score = sum(5 * (w in rel.lower()) + 3 * (w in doc.lower()) + min(hay.count(w), 10) for w in words)
+        if score:
+            scored.append((score, rel, doc))
+    if not scored:
+        return f"No code of yours matches \"{query}\"."
+    best = sorted(scored, key=lambda x: -x[0])[:4]
+    return "Your code that matches (file: what it's for): " + "; ".join(f"{r}: {d}" for _, r, d in best) + "."
+
+
 async def look(conv, a: dict, speaker) -> str:
     kind = a.get("kind")
     if kind == "why":
@@ -148,4 +230,8 @@ async def look(conv, a: dict, speaker) -> str:
         return health_text(conv)
     if kind == "memory_why":
         return memory_why(conv, a, speaker)
+    if kind == "docs":
+        return docs_text(str(a.get("query") or "")[:100])
+    if kind == "code":
+        return code_text(str(a.get("query") or "")[:100])
     raise KeyError(kind)
