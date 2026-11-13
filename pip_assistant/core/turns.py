@@ -91,6 +91,7 @@ class TurnTaking:
             self.pending = ""
             chime = chime or self.pending_how[3]
             data["kind"] = self.pending_how[2].get("kind") or data.get("kind")   # the turn is still who it was for
+            data["ask"] = self.pending_how[2].get("ask") or data.get("ask", "")
         if self.pending_task:
             self.pending_task.cancel()
             self.pending_task = None

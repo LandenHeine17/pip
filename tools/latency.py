@@ -53,7 +53,7 @@ def requests(rows: list) -> list[dict]:
     out = []
     for i, (ts, ty, d) in enumerate(rows):
         fast = ty == "turn.decision" and d.get("decision") == "fast_command"
-        asked = ty == "thinker.ask" and "answer_id" in d and d.get("kind") in ("direct", "mentioned")
+        asked = ty == "thinker.ask" and "answer_id" in d and d.get("kind") in ("direct", "mentioned", "follow_up_likely")
         if not (fast or asked):
             continue
         r = {"kind": "fast" if fast else d["kind"], "reason": d.get("reason", ""), "outcome": "other"}

@@ -174,6 +174,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self._state_timer = None       # re-checks the state when the next *_until deadline passes
         if schedule is not None:
             schedule.watchers.append(self.refresh_state)
+            schedule.watchers.append(self.ringing_changed)   # listening off: the mic comes on for an alarm (D-127)
         self.wait_after_name = c.get("wait_after_name_seconds", 5.0)
         self.unfinished_wait = c.get("unfinished_wait_seconds", 3.0)
         t = self.TURN_WAITS                                             # knowing when you're done (D-106)
@@ -188,6 +189,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.pending_why = ""        # what kind of turn it sounded like (turns.py turn_kind)
         self.turn_since_speech = 0.0 # end of their speech → the held turn answered (traced in turn.decision)
         self.mic_off_since = None    # for "mic was off for 12 s" on the feed
+        self.alarm_mic = False       # listening is off but pip-ears is on for a ringing alarm (D-127, micctl.py)
         self.max_sentences = c.get("max_sentences", 2)
         self.expect_until = 0.0     # Pip was just called: the next speech is for him, name or not
         self.pending = ""           # what they've said so far, held until they've finished their turn (D-106)
@@ -534,6 +536,9 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
                 await self.say(reply, "alarm answered")
                 await self._finish_pending()
                 return
+        if self.alarm_only:   # listening is off; the mic is on only for the alarm: nothing else is used (D-127)
+            await self._finish_pending()
+            return
         if not text.strip(" .?!,"):
             if reason == "wake":
                 await self.say(SAYINGS["not_caught"], "not caught")
@@ -541,13 +546,15 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             return
         text = self.fix_names(text)
         await self.told_off(text)
-        kind = "direct"
+        kind, ask = "direct", ""
         if reason == "follow_up" and not self.pending and not calls_pip(text) and self.in_follow_up():
             kind = self.follow_up_for(self.speaker)       # D-124: the same voice, or anyone after a question
             if kind == "room":
                 await self.decided("follow_up_other_voice", "room")
                 await self.room_talk(text, self.speaker, offline, time.time() - self.last_voice_at)
                 return
+            if kind == "likely":   # for him, as far as Pip can tell; Claude may still PASS (D-127)
+                kind, ask = "direct", "follow_up_likely"
         self.hear(text)
         await self.feed(text, "direct" if kind == "direct" else "mentioned", self.speaker, stt_s=stt_s, offline=offline,
                         reason=reason)
@@ -556,7 +563,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             await self._finish_pending()
             return
         await self.addressed(text, reason, stt_s=stt_s, offline=offline, heard_s=msg.data.get("seconds") or 0,
-                             ended_at=self.speech_ended(msg), kind=kind)
+                             ended_at=self.speech_ended(msg), kind=kind, ask=ask)
 
     async def told_off(self, text: str) -> None:
         """"Not now" / "we're talking", to him or the room, soon after he joined in: he stays out (CB-031)."""
@@ -582,16 +589,17 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         return self.follow is not None and time.monotonic() <= self.follow["until"] + 2.0
 
     def follow_up_for(self, speaker) -> str:
-        """Said without his name in the follow-up window (D-124, the owner, 2026-11-12): "direct" if it's the person
-        he just answered (by voice), or anyone when he'd asked a question; "room" if it's clearly someone else;
-        "follow_up" (Claude decides, as for a mention) when the voices can't tell. Before D-124 anyone counted,
-        and 1 in 5 of those were room talk Claude had to pass on."""
+        """Said without his name in the follow-up window (D-124, the owner, 2026-11-12): "likely" if it's the person
+        he just answered (by voice), or anyone when he'd asked a question: taken as for him, but Claude may still
+        PASS when it clearly isn't (D-127: "they're not supposed to have those chips" was said to the room, misheard
+        as "Pips"); "room" if it's clearly someone else; "follow_up" (Claude decides, as for a mention) when the
+        voices can't tell. Before D-124 anyone counted, and 1 in 5 of those were room talk Claude had to pass on."""
         f = self.follow
         if self.follow_anyone or f["question"]:
-            return "direct"
+            return "likely"
         a = f["asker"]
         if self.known_voice(a) and self.known_voice(speaker):
-            return "direct" if a.person_id == speaker.person_id else "room"
+            return "likely" if a.person_id == speaker.person_id else "room"
         return "follow_up"
 
     async def only_listening(self, text: str) -> bool:
@@ -650,7 +658,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             await self.note("offline_quiet")
             return
         await self.decided("answered", self.pending_why, **since)
-        await self.answer(text, reason, kind=data.get("kind") or "direct")
+        await self.answer(text, reason, kind=data.get("kind") or "direct", ask=data.get("ask") or "")
 
     async def on_room(self, msg: Message) -> None:
         """Room speech: everything is transcribed and kept in the room transcript, like Ziggletron (D-92).
@@ -677,6 +685,8 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             answered = reply is not None and (reply or not self.ringing)
             if answered:                       # "stop", "snooze", his name: the alarm is dealt with
                 await self.say(reply, "alarm answered")
+                return
+            if self.alarm_only:                # listening is off: nothing else said is kept (D-127)
                 return
             if reply is not None:
                 # Room talk over the alarm (it keeps ringing): only recorded, into the transcript and the feed (owner's
@@ -762,10 +772,12 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
 
     # ---------------------------------------------------------------- answering
     async def answer(self, text: str, reason: str, kind: str = "direct", mood: str = "", looked_up: str = "",
-                     asker: tuple | None = None) -> None:
+                     asker: tuple | None = None, ask: str = "") -> None:
         """Ask Claude. kind: "direct" (said to Pip), "mentioned" (his name came up: he may PASS), "follow_up" (right
         after his answer, but the voice can't tell whether it was for him: he may PASS, D-124) or "join"
         (nobody spoke to him: he may join in with "SAY: …" or PASS). Claude sees the room transcript.
+        `ask`: how Claude is asked, when not by kind: "follow_up_likely" (a direct answer that Claude may still PASS:
+        said without his name, right after he answered that person, D-127).
         `looked_up`: what Claude asked Pip to look up first (ACTION look), for the second round.
         `asker`: (speaker, audio) of who asked. It's kept with this answer, so if someone else talks while
         Claude works, the actions and look-ups are still done as the person who asked."""
@@ -786,7 +798,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         t0 = time.perf_counter()
         try:
             told = self.for_claude(asker[0] if kind != "join" else None, kind)   # core/context.py
-            reply = await self.bus_request("thinker", "thinker.ask", {"answer_id": aid, "reason": reason, "kind": kind},
+            reply = await self.bus_request("thinker", "thinker.ask", {"answer_id": aid, "reason": reason, "kind": ask or kind},
                                            {"text": text or "", "transcript": self.transcript.render(), "mood": mood,
                                             **told, "looked_up": looked_up}, timeout=60)
         except Exception as e:

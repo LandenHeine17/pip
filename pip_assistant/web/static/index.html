@@ -177,6 +177,8 @@ const EVENTS = {
   interrupted: () => "Pip was interrupted",
   joined: () => "Pip joined in",
   claps_trial: () => "Heard two claps (trial: the clap switch isn't on, so nothing changed)",
+  alarm_mic_on: () => "Mic on for the alarm (listening is off: only \"stop\" or \"snooze\" is heard)",
+  alarm_mic_off: () => "Alarm done: mic back off",
   mic_off: e => `Mic off${e.how==="claps"?" (two claps)":e.how==="dashboard"?" (dashboard)":""}`,
   mic_on: e => `Mic back on${e.how==="claps"?" (two claps)":e.how==="dashboard"?" (dashboard)":""} · was off for ${dur(e.off_for)}`,
   alert: e => `${({timer:"Timer",alarm:"Alarm",reminder:"Reminder",event:"Calendar heads-up"})[e.alert]||"Alarm"} ${e.what==="ringing"?"ringing":e.what==="snoozed"?`snoozed${e.minutes?` ${e.minutes} min`:""}`:"stopped"}`,

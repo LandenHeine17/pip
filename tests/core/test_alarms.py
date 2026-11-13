@@ -232,3 +232,35 @@ async def test_room_talk_over_an_alarm_is_recorded_but_never_answered(tmp_path):
     assert sched.ringing and not [x for x in got if x[0] == "thinker.ask"]
     assert "can you tell me the weather" in "\n".join(conv.transcript.render())
     await finish(bus, tasks)
+
+
+async def test_listening_off_the_mic_comes_on_only_for_the_alarm(tmp_path):
+    """Feedback #8 (owner, 2026-11-12, D-127): with listening off nobody could stop the alarm by voice."""
+    from pip_assistant.core.mic import MicSwitch
+    clock = Clock()
+    stt = FakeSTT("did you see the game last night")
+    bus, sched, conv, ears, got, tasks = await setup_bus(tmp_path, clock, stt)
+    modes = []
+
+    async def mic(msg):
+        modes.append(msg.data["mode"])
+    ears.on("ears.mic", mic)
+    conv.mic = MicSwitch(tmp_path / "pip.db")
+    conv.mic.set_dashboard(False)
+    await conv.apply_mic()
+    await asyncio.sleep(0.1)
+    assert modes[-1] == "off"
+    sched.add("timer", "pasta", clock() + 60, length=60)
+    clock.t += 61
+    await asyncio.sleep(0.4)
+    assert modes[-1] == "on" and conv.alarm_only
+    d, p = utt("room")                                          # room talk: not kept, not answered
+    await ears.emit("heard.utterance", d, private=p)
+    await asyncio.sleep(0.2)
+    assert sched.ringing and "game" not in "\n".join(conv.transcript.render())
+    assert not [k for k, _, _ in got if k == "thinker.ask"]
+    stt.text = "stop"
+    await ears.emit("heard.utterance", d, private=p)
+    await asyncio.sleep(0.3)
+    assert not sched.ringing and modes[-1] == "off" and not conv.mic.listening and not conv.mic.dashboard
+    await finish(bus, tasks)

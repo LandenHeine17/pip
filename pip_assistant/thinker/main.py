@@ -131,7 +131,7 @@ class Thinker:
     name = "Pip"   # fills {name} in the personality; settings ([pip] name) override it in __init__
     usage = None
     paused_until = 0.0
-    KIND = {"direct": "answer", "follow_up": "answer", "mentioned": "mention", "join": "join", "preview": "preview"}
+    KIND = {"direct": "answer", "follow_up": "answer", "follow_up_likely": "answer", "mentioned": "mention", "join": "join", "preview": "preview"}
 
     # ---------------------------------------------------------------- the usage meter (D-69, PIP-NEW-089)
     def show_usage(self) -> None:
@@ -236,6 +236,10 @@ class Thinker:
                       "from what you said, answers your question, or asks you something. If it's for someone else, "
                       "or you're not sure, reply with just PASS and nothing else. Otherwise reply with exactly what "
                       "you'll say."),
+        "follow_up_likely": ("The last line came right after you answered, from the person you answered (or after "
+                             "you asked a question), without your name. It's most likely for you: answer it. But if "
+                             "it's clearly said to someone else in the room, or doesn't make sense as something said "
+                             "to you (it may be misheard), reply with just PASS and nothing else."),
         "join": ("Nobody spoke to you directly, and there's a pause in the conversation. Would you say something "
                  "right now? Go by your own sense of when to join in. {mood}\n\nIf you'll stay quiet, reply with "
                  "just PASS. If you'll speak, reply with SAY: followed by exactly the words you'd say out loud - "

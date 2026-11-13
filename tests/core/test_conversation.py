@@ -307,15 +307,15 @@ def test_who_a_follow_up_is_for(tmp_path):
     alex, sam = Match("a", "Alex", "sure", 0.8), Match("s", "Sam", "sure", 0.8)
     c.follow = {"asker": alex, "question": False, "until": time.monotonic() + 5}
     assert c.in_follow_up()
-    assert c.follow_up_for(Match("a", "Alex", "probably", 0.4)) == "direct"     # the same voice
+    assert c.follow_up_for(Match("a", "Alex", "probably", 0.4)) == "likely"     # the same voice (D-127: Claude may PASS)
     assert c.follow_up_for(sam) == "room"                                       # clearly someone else
     assert c.follow_up_for(Match()) == "follow_up"                              # can't tell: Claude decides
     c.follow["asker"] = None
     assert c.follow_up_for(alex) == "follow_up"
     c.follow["question"] = True                                                  # he asked: anyone may answer
-    assert c.follow_up_for(sam) == "direct"
+    assert c.follow_up_for(sam) == "likely"
     c.follow["question"], c.follow_anyone = False, True                          # the setting: anyone, as before
-    assert c.follow_up_for(sam) == "direct"
+    assert c.follow_up_for(sam) == "likely"
 
 
 async def answered_then(tmp_path, monkeypatch, then_voice, asker):
@@ -342,7 +342,9 @@ async def test_the_same_voice_carries_on_without_his_name(tmp_path, monkeypatch)
     from pip_assistant.core.people import Match
     alex = Match("a", "Alex", "sure", 0.8)
     bus, conv, asks, tasks = await answered_then(tmp_path, monkeypatch, alex, alex)
-    assert [k for k, _ in asks] == ["direct", "direct"]
+    assert [k for k, _ in asks] == ["direct", "follow_up_likely"]     # D-127: for him, but Claude may PASS
+    await asyncio.sleep(0.2)                                          # (the fake Claude PASSes: he stays quiet)
+    assert any(r["type"] == "answer.passed" for r in bus.trace.recent()) and conv.follow is None
     await finish(bus, tasks)
 
 

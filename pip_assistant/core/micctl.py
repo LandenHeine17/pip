@@ -4,7 +4,12 @@ Part of the conversation (core/conversation.py): `Conversation` takes these meth
 they read and set its fields like its own. The switches themselves (dashboard and two claps) are in
 core/mic.py and the preferences in core/prefs.py; this is what Pip does when they change: tell pip-ears what
 to listen for, put a bar on the conversation feed, and update the face (refresh_state()).
+
+While an alarm, timer or reminder is ringing, pip-ears listens even if listening is switched off, so "stop" or
+"snooze" works (owner's feedback, 2026-11-12, D-127). The switches themselves don't change: when it stops
+ringing, he's off again. What's heard meanwhile is only used for the alarm (conversation.py `alarm_only`).
 """
+import asyncio
 import time
 
 from ..common.messages import Message
@@ -28,11 +33,41 @@ class MicControl:
             self.expect_until = self.listen_until = 0.0
             if self.enrolling:
                 self.cancel_enrolment()
-        await self.command("ears", "ears.mic", {"mode": self.mic.mode})
+        self.alarm_mic = self.ears_mode() != self.mic.mode
+        await self.command("ears", "ears.mic", {"mode": self.ears_mode()})
         if tone:
             await self.command("ears", "ears.tone", {"name": tone})
         await self.bus.publish(Message("event", "mic.changed", data=self.mic.snapshot()))
         self.refresh_state()
+
+    def ears_mode(self) -> str:
+        """What pip-ears listens for: the switches' mode, but "on" while something is ringing (D-127)."""
+        if self.mic is None:
+            return "on"
+        return "on" if self.ringing and not self.mic.listening else self.mic.mode
+
+    @property
+    def alarm_only(self) -> bool:
+        """Listening is switched off and only on because something's ringing: only stop / snooze count (D-127)."""
+        return self.mic is not None and not self.mic.listening and self.ringing
+
+    def ringing_changed(self) -> None:
+        """schedule.watchers: an alarm started or stopped ringing. If listening is off, pip-ears is switched on
+        for it, and back off afterwards."""
+        if self.mic is None or self.mic.listening:
+            return
+        want = self.ringing
+        if want != getattr(self, "alarm_mic", False):
+            self.alarm_mic = want
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return
+            asyncio.ensure_future(self._alarm_mic(want))
+
+    async def _alarm_mic(self, on: bool) -> None:
+        await self.command("ears", "ears.mic", {"mode": self.ears_mode()})
+        await self.note("alarm_mic_on" if on else "alarm_mic_off")
 
     async def on_clapped_trial(self, msg: Message) -> None:
         """Two claps heard while the clap switch isn't ticked: only shown on the feed, to try it out (D-91)."""
