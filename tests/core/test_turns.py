@@ -117,6 +117,15 @@ def test_backchannels_are_only_listening():
     assert not any(is_backchannel(t) for t in ("Yeah, but what about tomorrow?", "No, fifteen.", "stop", "wait"))
 
 
+def test_laughing_over_pip_is_only_listening():
+    from pip_assistant.core.turns import listening_only
+    for t in ("Hahaha!", "Ha ha ha.", "Ha, ha.", "hehe", "lol", "(laughs)", "[Laughter]", "*chuckles*", "Thank you.", "Ha-ha"):
+        assert listening_only(t) == "laugh", t
+    assert listening_only("Haha, yeah.") == "backchannel" and listening_only("(laughs) okay") == "backchannel"
+    for t in ("Haha, wait, what time?", "He said no.", "Hi Pip", "Thank you, but stop.", "ha ha no stop"):
+        assert listening_only(t) == "", t
+
+
 # ---------------------------------------------------------------- timer names
 def test_timer_names_are_names():
     assert timer_name("10 minute timer") == "" and timer_name("timer") == "" and timer_name("Pasta timer") == "pasta"
@@ -364,6 +373,32 @@ async def test_a_yeah_over_pip_and_he_carries_on(tmp_path):
     await finish(bus, tasks)
 
 
+async def test_a_laugh_over_pip_and_he_carries_on(tmp_path):
+    # Whisper writes a laugh as "Ha ha ha." or its phantom "Thank you." (owner, 2026-11-12: cut off by laughter)
+    for i, heard in enumerate(("Ha ha ha.", "Thank you.", "(laughing)")):
+        (tmp_path / str(i)).mkdir()
+        bus, conv, ears, got, asks, tasks = await talked_over_mid_answer(tmp_path / str(i), heard)
+        await ears.emit("heard.utterance", *barge_in())
+        await asyncio.sleep(0.2)
+        assert says(got) == ["Then another at half past."] and not asks and conv.paused is None, heard
+        [d] = [r["data"] for r in bus.trace.recent() if r["type"] == "turn.decision"]
+        assert d == {"decision": "resumed_after_backchannel", "why": "laugh"}
+        await finish(bus, tasks)
+
+
+async def test_a_long_laugh_still_carries_on(tmp_path, monkeypatch):
+    from pip_assistant.core import conversation
+    monkeypatch.setattr(conversation, "RESUME_WITHIN_S", 0.1)
+    bus, conv, ears, got, asks, tasks = await talked_over_mid_answer(tmp_path, "Hahahaha.")
+    conv.max_utterance = 0.4
+    await asyncio.sleep(0.3)                     # laughing longer than RESUME_WITHIN_S: still paused, not dropped
+    assert conv.paused
+    await ears.emit("heard.utterance", *barge_in())
+    await asyncio.sleep(0.15)
+    assert says(got) == ["Then another at half past."] and not asks
+    await finish(bus, tasks)
+
+
 async def test_real_words_over_pip_take_the_turn(tmp_path):
     bus, conv, ears, got, asks, tasks = await talked_over_mid_answer(tmp_path, "No, I meant the one tomorrow.")
     await ears.emit("heard.utterance", *barge_in())
@@ -380,9 +415,10 @@ async def test_talked_over_by_nothing_he_carries_on_and_a_long_talk_cancels(tmp_
     assert says(got) == ["Then another at half past."]
     from pip_assistant.core import conversation
     monkeypatch.setattr(conversation, "RESUME_WITHIN_S", 0.2)
+    conv.max_utterance = 0.0
     got.clear()
     conv.say_reason = "answer"
     await ears.emit("speech.interrupted", {"level_dbfs": -25, "said": 0})
-    await asyncio.sleep(0.4)                                    # still talking after the wait: it's their turn
+    await asyncio.sleep(0.4)                                    # nothing ever came back from speech-to-text: given up
     assert conv.paused is None and says(got) == [] and conv.transcript.last_ours()["cut"]
     await finish(bus, tasks)
