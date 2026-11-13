@@ -212,6 +212,35 @@ class Thinker:
                       "memories": len(p.get("memories", "")), "looked up": len(p.get("looked_up", ""))},
             "tokens": info.get("usage") or {}, "cost_usd": info.get("cost_usd"), "searched": bool(info.get("searched"))})
 
+    SUMMARY_SYSTEM = (
+        "You write Pip's short private notes of what was talked about in a household room, so he can remember "
+        "it later (D-128). Write 1 to 4 short lines: the topics, anything decided or planned, and who took part "
+        "(names as given; \"Someone\" is a voice he doesn't know, \"Name?\" is probably them). Never quote "
+        "anyone. Leave out anything secret (codes, passwords, card or phone numbers) and the details of health, "
+        "money or relationships: just the topic (\"talked about a doctor's visit\"). If nothing in it is worth "
+        "remembering (small talk, noise, only commands to Pip), reply with just NOTHING.")
+
+    async def on_summarize(self, msg: Message) -> Message:
+        """A module's ctx.summarize(lines) (core/modules.py): Claude's short summary of a conversation, for the
+        recall module (D-128). The words travel only in `private` and aren't kept here."""
+        lines = [str(x)[:500] for x in (msg.private.get("lines") or [])][:120]
+        if not lines:
+            return msg.reply({"chars": 0}, private={"text": ""}, source="thinker")
+
+        async def nothing(*_):
+            pass
+        user = "The conversation, oldest first:\n" + "\n".join(lines) + "\n\nYour notes:"
+        try:
+            text, info = await self._ask(self.preview_claude, "summary", msg.data.get("answer_id", ""),
+                                         self.SUMMARY_SYSTEM, user, nothing, nothing)
+        except Exception as e:
+            log.warning("summary failed: %s", e)
+            return msg.reply({"error": type(e).__name__}, source="thinker")
+        text = (text or "").strip()
+        if info.get("action") or info.get("passed") or text.upper().startswith("NOTHING"):
+            text = ""
+        return msg.reply({"chars": len(text)}, private={"text": text[:1200]}, source="thinker")
+
     async def on_prompt(self, msg: Message) -> Message:
         """The dashboard's "What Pip sends" page: the fixed text in full, and the last requests' sizes and tokens."""
         parts = await self.prompt_parts()
@@ -368,6 +397,7 @@ async def main() -> None:
     bus.on("thinker.ask", th.on_ask)
     bus.on("thinker.cancel", th.on_cancel)
     bus.on("thinker.prompt", th.on_prompt)   # the dashboard's "What Pip sends" page
+    bus.on("thinker.summarize", th.on_summarize)   # a module's ctx.summarize (the recall module, D-128)
     bus.status["stage"] = "Claude via Claude Code (Pro plan)"
     await serve(bus, th.keep_warm)
 

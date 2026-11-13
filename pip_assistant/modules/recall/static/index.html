@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Conversations</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+.day{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:16px 0 4px}
+.note{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:var(--soft);margin-bottom:6px}
+.note .when{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.86rem;min-width:7.5em}
+.note .text{flex:1;white-space:pre-wrap}
+.note .who{color:var(--muted);font-size:.84rem}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+    <div><h1>Conversations</h1><div class="sub">Pip's short notes of what was talked about (never the words), kept <span id="days">30</span> days (D-128)</div></div></div>
+</header>
+<section>
+  <div class="sub">After the room has been quiet a while, Claude writes a few lines about the conversation: the topics, plans, who was there.
+    Pip reads the last day's notes with every request, and looks older ones up when you ask ("what were we talking about last week?").
+    Nothing is noted while listening is off. Delete any you don't want kept.</div>
+  <div id="waiting" class="sub" style="margin-top:6px"></div>
+  <div id="list"><div class="empty">Loading…</div></div>
+  <div style="margin-top:14px"><button class="ghost" id="all">Delete all notes</button></div>
+</section>
+</main>
+<script src="/pip.js"></script>
+<script>
+async function load(){
+  const r = await pip.act(pip.get("list"));
+  if (!r) return;
+  $("days").textContent = r.keep_days;
+  $("waiting").textContent = r.waiting ? `${r.waiting} line${r.waiting === 1 ? "" : "s"} of the conversation going on now (not noted yet).` : "";
+  let html = "", last = "";
+  for (const n of r.notes) {
+    const a = new Date(n.start * 1000), b = new Date(n.end * 1000);
+    const day = a.toLocaleDateString(undefined, {weekday: "long", month: "long", day: "numeric"});
+    if (day !== last) { html += `<div class="day">${esc(day)}</div>`; last = day; }
+    const t = d => d.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+    html += `<div class="note"><span class="when">${esc(t(a))}–${esc(t(b))}</span>
+      <span class="text">${esc(n.notes)}${n.people ? `<div class="who">${esc(n.people)}</div>` : ""}</span>
+      <button class="ghost" data-del="${esc(n.id)}" title="Delete this note">Delete</button></div>`;
+  }
+  $("list").innerHTML = html || `<div class="empty">No notes yet. They appear after a conversation, once the room goes quiet.</div>`;
+}
+document.addEventListener("click", async ev => {
+  const b = ev.target.closest("[data-del]"); if (!b) return;
+  if (await pip.act(pip.post("delete", {id: +b.dataset.del}))) load();
+});
+$("all").onclick = async () => {
+  if (!confirm("Delete every conversation note? Pip forgets what was talked about (memories he was asked to keep stay).")) return;
+  if (await pip.act(pip.post("delete_all", {}))) load();
+};
+pip.live(load);
+load();
+</script>
+</body>
+</html>

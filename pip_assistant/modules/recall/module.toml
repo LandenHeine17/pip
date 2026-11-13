@@ -1,0 +1,34 @@
+# Conversation memory (M2, D-128): short notes of what was talked about, kept 30 days.
+
+name = "recall"
+kind = "skill"
+summary = "Remembers what was talked about in the room (short notes, kept a month)."
+says_examples = ["Pip, what were we talking about earlier?", "what did Caleb say about the trip on Tuesday?"]
+offline = false
+permissions = ["claude:summarize"]   # asks Claude (through pip-thinker) to write each conversation's notes
+needs = []
+
+[settings.keep_days]
+default = 30
+explain = "How many days the notes of each conversation are kept (owner, D-128). They're deleted after that."
+
+[settings.quiet_minutes]
+default = 10
+explain = "A conversation is over (and its notes are written) after the room has been quiet this many minutes."
+
+[settings.max_lines]
+default = 60
+explain = "…or once this many lines have been said, so a long evening gets several notes."
+
+[claude]
+instructions = """
+Earlier conversations: notes of the last day's conversations come with each message ("Earlier conversations").
+For older ones ("what were we talking about last week?", "what did Caleb say about the trip on Tuesday?") reply
+with ONLY: ACTION {"do": "look", "kind": "recall", "query": "trip"} (a few words to search for), or
+{"do": "look", "kind": "recall", "day": "2026-11-10"}. They're your notes, not quotes: say what was talked
+about, never claim exact words.
+"""
+
+[dashboard]
+page = "index.html"
+label = "Conversations"

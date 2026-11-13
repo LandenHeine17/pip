@@ -269,6 +269,16 @@ class ModuleContext:
         kw.setdefault("timeout", 15)
         return httpx.AsyncClient(transport=self._transport, event_hooks={"request": [check]}, **kw)
 
+    async def summarize(self, lines: list[str]) -> str:
+        """Claude's short summary of these transcript lines ("" if nothing's worth keeping). Only for a module whose
+        module.toml permits "claude:summarize" (D-128). The lines and the summary travel privately; never log them."""
+        if "claude:summarize" not in self.info.permissions:
+            raise PermissionError(f"module {self.name} may not ask Claude for summaries")
+        if self.bus is None:
+            return ""
+        r = await self.bus.request("thinker", "thinker.summarize", {}, {"lines": list(lines)}, timeout=90)
+        return "" if r.data.get("error") else str(r.private.get("text") or "")
+
     async def publish(self, kind: str, data: dict | None = None, private: dict | None = None) -> None:
         if self.bus is not None:
             await self.bus.publish(Message("event", f"module.{self.name}.{kind}", source="core",
