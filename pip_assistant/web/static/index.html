@@ -51,7 +51,8 @@
   <div id="inbox"></div>
   <form id="memsearch" style="margin-top:0"><input id="memq" placeholder="Search memories" style="flex:1;min-width:10em">
     <select id="memcat"><option value="">All kinds</option></select>
-    <label class="sub" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="memarch" style="width:auto">archived</label></form>
+    <label class="sub" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="memarch" style="width:auto">archived</label>
+    <label class="sub" style="display:flex;align-items:center;gap:4px" title="Possible contradictions, and memories over 6 months old"><input type="checkbox" id="memrev" style="width:auto">to review</label></form>
   <div class="items" id="memories" style="margin-top:10px;max-height:460px;overflow:auto"></div>
   <form id="memadd"><input id="mtext" placeholder="Add a memory, e.g. The bins go out Tuesday night" style="flex:1;min-width:14em" maxlength="300" required>
     <select id="mcat"></select><input id="mabout" placeholder="About (names, optional)" style="width:11em">
@@ -278,17 +279,22 @@ function renderMemory(){
     <div class="item" style="background:var(--warnbg)"><div><b>${esc(m.text)}</b><div class="sub">${esc(m.why_pending||"")}${m.source?" · "+esc(m.source):""}</div></div>
     <span style="display:flex;gap:6px"><button class="primary" onclick="memAct({action:'approve',id:${js(m.id)}})">Approve</button>
     <button onclick="memEdit(${js(m.id)})">Edit</button><button class="ghost" onclick="memAct({action:'reject',id:${js(m.id)}})">Reject</button></span></div>`).join("")}</div>` : "";
+  const rev = $("memrev").checked, old = Date.now() / 1000 - 182 * 86400;
   const rows = mem.memories.filter(m => m.status !== "pending" && (arch ? m.status === "archived" : m.status === "active")
-    && (!cat || m.category === cat) && (!q || m.text.toLowerCase().includes(q)));
+    && (!cat || m.category === cat) && (!q || m.text.toLowerCase().includes(q)) && (!rev || m.review || m.created < old));
   $("memories").innerHTML = rows.map(m => `<div class="item"><div style="min-width:0"><span class="tag">${esc(mem.categories[m.category]||m.category)}</span><b>${esc(m.text)}</b>
-      <div class="sub">${VIS(m.visibility)}${m.owner_name?" · "+esc(m.owner_name)+"'s":""}${m.about_names.length?" · about "+esc(m.about_names.join(", ")):""}${m.source?" · "+esc(m.source):""} · ${new Date(m.created*1000).toLocaleDateString()}</div></div>
+      <div class="sub">${VIS(m.visibility)}${m.owner_name?" · "+esc(m.owner_name)+"'s":""}${m.about_names.length?" · about "+esc(m.about_names.join(", ")):""} · <span title="Why Pip remembers this">from ${esc(m.source||"unknown")}, ${new Date(m.created*1000).toLocaleDateString()}</span></div>
+      ${m.review ? `<div style="margin-top:6px;padding:6px 10px;border-radius:10px;background:var(--warnbg)"><span class="sub">${esc(m.review)}</span>
+        <span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px"><button onclick="memAct({action:'keep_new',id:${js(m.id)}})">Keep this one</button>
+        <button onclick="memAct({action:'keep_old',id:${js(m.id)}})">Keep the old one</button><button class="ghost" onclick="memAct({action:'keep_both',id:${js(m.id)}})">Both are right</button></span></div>` : ""}</div>
       <span style="display:flex;gap:4px;flex-shrink:0"><button class="ghost" title="Edit" onclick="memEdit(${js(m.id)})">Edit</button>
       <button class="ghost" title="${m.visibility==='private'?'Make household':'Make private'}" onclick="memAct({action:'visibility',id:${js(m.id)},value:'${m.visibility==='private'?'household':'private'}'})">${m.visibility==='private'?'Share':'Private'}</button>
       ${m.status==="archived"?`<button class="ghost" title="Restore" onclick="memAct({action:'restore',id:${js(m.id)}})">Restore</button>`:`<button class="ghost" title="Archive (kept, not used)" onclick="memAct({action:'archive',id:${js(m.id)}})">Archive</button>`}
       <button class="ghost" title="Delete" onclick="if(confirm('Delete this memory for good?')) memAct({action:'delete',id:${js(m.id)}})">✕</button></span></div>`).join("")
     || `<div class="empty">${arch ? "Nothing archived." : "Nothing remembered yet. Say \"Pip, remember…\""}</div>`;
   const n = mem.memories.filter(m => m.status === "active").length;
-  $("memsum").textContent = `${n} remembered${pend.length ? ` · ${pend.length} waiting` : ""}`;
+  const flagged = mem.memories.filter(m => m.status === "active" && m.review).length;
+  $("memsum").textContent = `${n} remembered${pend.length ? ` · ${pend.length} waiting` : ""}${flagged ? ` · ${flagged} to check` : ""}`;
 }
 async function loadMemory(){
   try{ const r = await (await fetch("/api/memory",{cache:"no-store"})).json(); if(!r.memories) return;
@@ -299,7 +305,7 @@ async function loadMemory(){
 }
 async function memAct(body){ try{ const r = await (await fetch("/api/memory/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})).json(); if(r.error) alert(r.error); return r; }catch(e){ alert("Couldn't reach Pip"); } finally { loadMemory(); } }
 function memEdit(id){ const m = mem.memories.find(x => x.id === id); const t = prompt("Edit memory", m.text); if (t && t !== m.text) memAct({action:"edit", id, text:t}); }
-$("memq").oninput = renderMemory; $("memcat").onchange = renderMemory; $("memarch").onchange = renderMemory; $("memsearch").onsubmit = ev => ev.preventDefault();
+$("memq").oninput = renderMemory; $("memcat").onchange = renderMemory; $("memarch").onchange = renderMemory; $("memrev").onchange = renderMemory; $("memsearch").onsubmit = ev => ev.preventDefault();
 $("memadd").onsubmit = async ev => { ev.preventDefault(); const r = await memAct({action:"add", text:$("mtext").value, category:$("mcat").value, about:$("mabout").value, private:$("mpriv").checked});
   if (r && r.ok) { $("mtext").value = ""; $("mabout").value = ""; $("mpriv").checked = false; if (r.outcome === "duplicate") alert("Pip already remembers that."); } };
 

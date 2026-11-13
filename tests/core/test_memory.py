@@ -141,3 +141,26 @@ def test_a_memory_about_someone_pip_does_not_know_is_saved(ctx, mem):
                         '"about":["Alex","Jordan"],"sensitive":true}', c)
     assert {r["text"]: r["status"] for r in mem.items()} == {
         "Jordan hates mushrooms": "active", "Alex is dating Jordan": "active"}
+
+
+# ---------------------------------------------------------------- M2 (D-128): a memory that may contradict another
+def test_a_memory_that_may_contradict_another_is_flagged_and_settled(tmp_path):
+    from pip_assistant.common.messages import Message
+    from pip_assistant.core.dashapi import memory_action
+    from pip_assistant.core.memory import Memory
+    from pip_assistant.core.people import People
+    from helpers import OneVoice
+    mem = Memory(tmp_path / "pip.db")
+    people = People(tmp_path / "pip.db", embedder=OneVoice())
+    sam = people.add_person("Sam")
+    a, _ = mem.add("Sam's birthday is May 3", "personal", [sam["id"]])
+    b, _ = mem.add("Sam's birthday is June 3", "personal", [sam["id"]])
+    assert not a["review"] and "May 3" in b["review"] and Memory.short(a["id"]) in b["review"]
+    c, _ = mem.add("The bins go out Tuesday night", "household")
+    assert not c["review"]                                          # nothing like it
+    act = lambda action, mid: memory_action(mem, people, Message("request", "core.memory", data={"action": action, "id": mid}))
+    assert act("keep_new", b["id"]) == {"ok": True}
+    assert mem.get(a["id"])["status"] == "archived" and not mem.get(b["id"])["review"]
+    d, _ = mem.add("Sam's birthday is May 4", "personal", [sam["id"]])
+    act("keep_old", d["id"])
+    assert mem.get(d["id"])["status"] == "archived" and mem.get(b["id"])["status"] == "active"

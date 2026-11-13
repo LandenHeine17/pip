@@ -29,6 +29,9 @@ from pathlib import Path
 from ..common.messages import new_id
 from ..common.db import connect
 
+# Words that don't say what a memory is about (for similar_to)
+STOPWORDS = {"the", "and", "his", "her", "their", "has", "have", "likes", "like", "with", "for", "from", "that", "this",
+             "are", "was", "were", "who", "but", "not", "should", "always", "never", "every", "they", "she", "him"}
 CATEGORIES = {"preference": "Preferences", "household": "Household facts", "rule": "Rules for Pip",
               "personal": "About people", "device": "Devices and places"}
 
@@ -68,6 +71,9 @@ class Memory:
     def __init__(self, path: Path, clock=time.time):
         self.db = connect(path)
         self.db.executescript(SCHEMA)
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(memories)")}
+        if "review" not in cols:   # added for M2 (D-128): a new memory that may contradict or repeat another
+            self.db.execute("ALTER TABLE memories ADD COLUMN review TEXT NOT NULL DEFAULT ''")
         self.db.commit()
         self.clock = clock
 
@@ -111,6 +117,29 @@ class Memory:
                 return r
         return None
 
+    @staticmethod
+    def _words(text: str) -> set[str]:
+        return {w for w in re.findall(r"[a-z0-9']+", text.lower()) if len(w) > 2 and w not in STOPWORDS}
+
+    def similar_to(self, text: str, category: str, about: list[str] | None) -> dict | None:
+        """An active memory this one may contradict or repeat (M2, D-128): the same kind, about the same people,
+        sharing most of its words ("Sam's birthday is May 3" / "Sam's birthday is June 3"). Not an exact repeat:
+        duplicate_of catches those."""
+        mine, about = self._words(text), set(about or [])
+        if len(mine) < 2:
+            return None
+        best, score = None, 0.0
+        for r in self.items("active"):
+            if r["category"] != category or set(r["about"]) != about:
+                continue
+            theirs = self._words(r["text"])
+            if not theirs:
+                continue
+            j = len(mine & theirs) / len(mine | theirs)
+            if j > score:
+                best, score = r, j
+        return best if score >= 0.5 else None
+
     # ---------------------------------------------------------------- changing memories
     def add(self, text: str, category: str = "household", about: list[str] | None = None, owner: str = "",
             private: bool = False, sensitive: bool = False, pending_because: str = "", source: str = "",
@@ -128,13 +157,15 @@ class Memory:
             return dup, "waiting" if dup["status"] == "pending" else "duplicate"
         category = category if category in CATEGORIES else "household"
         status = "pending" if pending_because else "active"
+        other = self.similar_to(text, category, about) if status == "active" else None
+        review = f"May contradict or repeat: \"{other['text']}\" ({self.short(other['id'])})" if other else ""
         now = self.clock()
         mid = new_id()
         self.db.execute("INSERT INTO memories (id, text, category, about, owner, visibility, status, confirmed, sensitive, "
-                        "source, why_pending, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        "source, why_pending, review, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (mid, text, category, json.dumps(about or []), owner,
                          "private" if private else "household", status, int(confirmed), int(sensitive),
-                         source[:80], pending_because, now, now))
+                         source[:80], pending_because, review, now, now))
         self.db.commit()
         row = self.get(mid)
         if not row:
@@ -165,7 +196,8 @@ class Memory:
         return None
 
     def update(self, mid: str, **fields) -> dict:
-        allowed = {k: v for k, v in fields.items() if k in ("text", "category", "visibility", "status", "about", "owner")}
+        allowed = {k: v for k, v in fields.items()
+                   if k in ("text", "category", "visibility", "status", "about", "owner", "review")}
         if "text" in allowed:
             allowed["text"] = re.sub(r"\s+", " ", allowed["text"]).strip()[:300]
             if CREDENTIAL.search(allowed["text"]):

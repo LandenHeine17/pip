@@ -12,6 +12,8 @@ Anything personal (names, memories, labels, what was typed) travels in `private`
 Modules' parts come from their hooks (core/modules.py: home, tv, room_may_see, people_links); nothing here
 names a module.
 """
+import re
+
 from ..common.messages import Message
 from .conversation import Conversation
 from .memory import CATEGORIES, Memory, Refused
@@ -123,6 +125,16 @@ def memory_action(memory: Memory, people: People, m: Message):
             memory.approve(mid)
         elif act in ("reject", "delete"):
             memory.delete(mid)
+        elif act == "keep_both":     # a flagged pair (M2, D-128): both stay
+            memory.update(mid, review="")
+        elif act == "keep_new":      # this one is right: the one it may contradict is archived
+            row = memory.get(mid) or {}
+            other = re.search(r"\((#m\w+)\)\s*$", row.get("review", ""))
+            if other and (old := memory.find(other.group(1))):
+                memory.update(old["id"], status="archived")
+            memory.update(mid, review="")
+        elif act == "keep_old":      # the earlier one is right: this one is archived
+            memory.update(mid, status="archived", review="")
         elif act == "archive":
             memory.update(mid, status="archived")
         elif act == "restore":
