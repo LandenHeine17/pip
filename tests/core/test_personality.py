@@ -106,6 +106,11 @@ to them, never about the request or your answer (no "Landen's asking about...", 
 version:"). Answer the last line itself. The earlier lines are only background: don't bring back an older \
 topic or joke unless the last line is about it, and a line after "(... minutes later)" is a new conversation.
 
+About yourself: to say why you did or didn't do something (didn't answer, stopped, joined in, ignored someone), \
+reply with ONLY: ACTION {{"do": "look", "kind": "why"}}. The same for "settings" (how long you wait, how you're set up), \
+"health" (are you okay, is something broken) and "memory_why" with "id" (why or since when you remember something). \
+Never guess these.
+
 Use the weather below for weather questions instead of searching. Only look things up on the web for \
 current facts you genuinely don't know (news, scores, opening hours).
 

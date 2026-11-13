@@ -158,7 +158,7 @@ class Acting:
     async def look_up(self, looks: list[dict], again: tuple | None, t0: float, asker: tuple | None = None) -> None:
         """Claude asked to see more first (the calendar for next Friday, the web, …): fetch it and ask again.
         A module's look-up may be async (a web search, D-125); if it takes over a second, Pip says so."""
-        from . import actions
+        from . import actions, selfknow
         found = []
         asker = asker or (self.speaker, self.last_pcm)
         started = time.perf_counter()
@@ -167,6 +167,12 @@ class Acting:
             if again is not None:
                 ctx = self._action_ctx(asker[0])
                 for a in looks[:3]:
+                    if a.get("kind") in selfknow.KINDS:   # about Pip himself (D-128): answered by pip-core
+                        try:
+                            found.append(await selfknow.look(self, a, asker[0]))
+                        except Exception as e:
+                            log.warning("self look-up failed: %s", type(e).__name__)
+                        continue
                     try:
                         _, act, plan, call = actions.check_module_action(f"look:{a.get('kind')}", a, ctx, ctx["call"].now)
                         got = act.do(plan, call)

@@ -22,7 +22,7 @@ import logging
 import time
 from datetime import datetime, timedelta
 
-from ..common import personality
+from ..common import capabilities, personality
 from ..common.messages import Message
 from ..common.modules import enabled
 from ..common.program import make_bus, serve, start
@@ -87,6 +87,11 @@ to undo or take back a change, tell them to press Undo on the Changes page; you 
 
 Talking: a line of yours marked "(cut off)" was heard only up to where someone talked over you; pick up from what they said rather than repeating it. When they correct you ("no, I said fifteen"), just fix it, no long apology. Say "you're right" only when you actually agree. Opinions are fine, but never make up things you did or saw (you don't eat, go places or watch games). Everything you write is said out loud, word for word: talk to them, never about the request or your answer (no "Landen's asking about...", "Honest answer:", "Short version:"). Answer the last line itself. The earlier lines are only background: don't bring back an older topic or joke unless the last line is about it, and a line after "(... minutes later)" is a new conversation.
 
+About yourself: to say why you did or didn't do something (didn't answer, stopped, joined in, ignored someone), \
+reply with ONLY: ACTION {{"do": "look", "kind": "why"}}. The same for "settings" (how long you wait, how you're set up), \
+"health" (are you okay, is something broken) and "memory_why" with "id" (why or since when you remember something). \
+Never guess these.
+
 Use the weather below for weather questions instead of searching. Only look things up on the web for \
 current facts you genuinely don't know (news, scores, opening hours).
 
@@ -114,6 +119,7 @@ class Thinker:
         # What each plugged-in module adds (modules/<name>/module.toml [claude]): calendar events, to-dos, …
         self.module_texts = {m.name: m.claude for m in enabled(cfg) if m.claude}
         self.module_text = "\n\n".join(self.module_texts.values())
+        self.capabilities = capabilities.text(enabled(cfg))   # "what can you do?" (D-128)
         self.recent: deque = deque(maxlen=20)   # the last requests' sizes and tokens (RAM only; never the words)
         self.claude = ClaudeCLI(t["model"], t["web_search"], t["timeout_seconds"], t["effort"])
         self.preview_claude = OneOffCLI(t["model"], t["web_search"], t["timeout_seconds"], t["effort"])
@@ -218,7 +224,8 @@ class Thinker:
         persona = personality.read()[0] if persona is None else persona
         base = personality.render(persona, self.name, self.location) + "\n\n" + \
             RULES.format(weather=await self.weather.text() or "not available")
-        return base + ("\n\n" + self.module_text if self.module_text else "")
+        caps = getattr(self, "capabilities", "")
+        return base + ("\n\n" + caps if caps else "") + ("\n\n" + self.module_text if self.module_text else "")
 
     ASK = {
         "direct": ("The last line was said to you. Reply with exactly what you'll say. If it doesn't need a reply, "
