@@ -128,6 +128,28 @@ async def test_claude_looks_the_calendar_up_then_answers(tmp_path):
     await finish(bus, tasks)
 
 
+async def test_a_long_answer_is_said_in_full_and_put_on_the_screen_quietly(tmp_path):
+    """D-130: a spoken answer may end with an ACTION line (a recipe in a notes box): he says it all, then does
+    it without "Added the notes box"; only a failure would be said."""
+    from helpers import registry
+
+    sched = Schedule(tmp_path / "pip.db")
+    reg = registry(tmp_path, schedule=sched, names=("screen",))
+    recipe = ("Mix a cup of flour, an egg and a cup of milk, then fry ladlefuls in butter until golden."
+              '\nACTION {"do": "add_box", "type": "notes", "title": "Pancakes", "lines": ["1 cup flour, 1 egg, 1 cup milk",'
+              ' "Fry in butter until golden"]}')
+    bus, conv, ears, got, asks, tasks = await setup(
+        tmp_path, "Pip, how do I make pancakes?", social={"join_in": False}, schedule=sched, modules=reg,
+        replies={"direct": recipe})
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.6)
+    assert says(got) == [recipe.split("\n")[0]]
+    [notes] = [b for b in reg.module("screen").screen.view["sections"] if b["type"] == "notes"]
+    assert notes["title"] == "Pancakes" and notes["lines"][1] == "Fry in butter until golden"
+    assert "ACTION" not in conv.transcript.last_ours()["text"]
+    await finish(bus, tasks)
+
+
 async def test_a_slow_web_look_up_is_awaited_and_pip_says_so(tmp_path, monkeypatch):
     """D-125: a module's look-up may be async (the websearch module asks Brave). It's awaited, Claude is asked
     again with what it found, and if it takes over a second Pip says "Let me look that up." first."""

@@ -69,15 +69,9 @@ async def test_paused_mid_sentence_waits_and_joins_the_rest(tmp_path):
     await finish(bus, tasks)
 
 
-async def test_answers_are_cut_after_two_sentences_unless_detail_asked(tmp_path):
-    long = ("One.", "Two.", "Three.", "Four.")
+async def test_every_sentence_claude_wrote_is_said(tmp_path):
+    long = ("One.", "Two.", "Three.", "Four.")   # never cut short (D-130): keeping it short is Claude's job
     bus, conv, ears, got, tasks = await setup(tmp_path, "Pip, what's up?", sentences=long)
-    await ears.emit("heard.utterance", {"reason": "wake", "had_speech": True, "seconds": 1.5},
-                    private={"audio_b64": audio_b64()})
-    await asyncio.sleep(0.3)
-    assert [t for k, t, _ in got if k == "ears.say"] == ["One.", "Two.", "Want the rest?"]   # (D-128)
-    got.clear()
-    conv.stt.text = "Pip, tell me a story"
     await ears.emit("heard.utterance", {"reason": "wake", "had_speech": True, "seconds": 1.5},
                     private={"audio_b64": audio_b64()})
     await asyncio.sleep(0.3)

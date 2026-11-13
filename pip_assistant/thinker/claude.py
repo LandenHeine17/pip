@@ -47,8 +47,18 @@ def speakable(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+# An ACTION line after a spoken answer (D-130): the answer is said, the ACTION is for pip-core, never spoken
+TRAILING_ACTION = re.compile(r"(?:^|\s)`*(ACTION\s*[{\[][\s\S]*)")
+
+
+def trailing_action(text: str) -> str:
+    """The ACTION line at the end of a spoken answer, or ""."""
+    m = TRAILING_ACTION.search(text)
+    return m.group(1).strip().rstrip("`").strip() if m else ""
+
+
 class SentenceSplitter:
-    """Feed text pieces; get back complete sentences. Stops at a trailing 'Sources:' block.
+    """Feed text pieces; get back complete sentences. Stops at a trailing 'Sources:' block or ACTION line.
     A long stretch with no sentence end is cut at its last comma: after `first_after` characters for the first
     piece (so his voice starts sooner, D-122), `long_after` for the rest."""
 
@@ -63,7 +73,7 @@ class SentenceSplitter:
         if self.stopped:
             return []
         self.buf += piece
-        m = re.search(r"\n\s*\**sources?\**\s*:", self.buf, re.I)
+        m = re.search(r"\n\s*\**sources?\**\s*:", self.buf, re.I) or TRAILING_ACTION.search(self.buf)
         if m:
             self.buf = self.buf[:m.start()]
             self.stopped = True
@@ -233,6 +243,8 @@ class ClaudeCLI:
                     await speak(rest)
             if mode == "action":
                 info["action"] = "".join(pieces)
+            elif mode == "speak" and (after := trailing_action("".join(pieces))):
+                info["action"] = after   # said in full first; pip-core does it afterwards (D-130)
             info["passed"] = mode == "pass"
             for s in split.flush():
                 full.append(s)

@@ -70,11 +70,14 @@ class Acting:
         await self.speak_reply(reply, "command")
         return True
 
-    async def claude_action(self, raw: str, t0: float, again: tuple | None = None, asker: tuple | None = None) -> None:
+    async def claude_action(self, raw: str, t0: float, again: tuple | None = None, asker: tuple | None = None,
+                            quiet: bool = False) -> None:
         """Claude turned a request into actions; Pip checks them, does them and confirms (D-84, D-94).
         Ringing alarms and voice learning are handled here (they need the alarm and the audio);
         the rest by core/actions.py. Anything invalid means nothing at all is done.
-        A look-up ("look", D-102) isn't a change: Pip fetches it and asks Claude again, once (`again`)."""
+        A look-up ("look", D-102) isn't a change: Pip fetches it and asks Claude again, once (`again`).
+        quiet=True: the ACTION line came after an answer he already said (D-130): no look-ups, and the
+        confirmation is said only if nothing could be done."""
         from . import actions
         from .peoplecmds import StartLearning
         asker = asker or (self.speaker, self.last_pcm)
@@ -83,6 +86,11 @@ class Acting:
         try:
             items = actions.parse(raw)
             looks = [a for a in items if a.get("do") == "look"]
+            if quiet:   # after a spoken answer it's too late to look anything up
+                items = [a for a in items if a.get("do") != "look"]
+                looks = []
+                if not items:
+                    return
             if looks:
                 return await self.look_up(looks, again, t0, asker)
 
@@ -125,7 +133,7 @@ class Acting:
             said, done, learning = [actions.FAILED], 0, None
         await self.bus.publish(Message("event", "action.done", data={"count": done, "ok": bool(done)}))
         text = " ".join(s for s in said if s)
-        if text:
+        if text and not (quiet and done):
             await self.speak_reply(text, "command", t0)
         if learning:
             await self.start_learning(learning, pcm)

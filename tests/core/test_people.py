@@ -153,7 +153,7 @@ async def test_introducing_yourself_out_loud_learns_your_voice(tmp_path):
     bus, people, memory, conv, ears, got, tasks = await setup_bus(tmp_path, clock, stt,
                                                                   'ACTION {"do": "learn_voice", "name": "Alex"}')
     conv.enrol_speech_wait = 0.05
-    alex = people.add_person("Alex", "admin")
+    people.add_person("Alex", "admin")
     await ears.emit("heard.utterance", *utt("wake", voice("alex", 2.0)))
     await asyncio.sleep(0.2)
     assert conv.enrol_status()["name"] == "Alex"

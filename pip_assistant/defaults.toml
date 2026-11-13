@@ -91,8 +91,6 @@ turn_wait_short_seconds = 1.0      # …after a question or a short request.
 turn_wait_statement_seconds = 1.6  # …after something longer that ends like a statement.
 turn_wait_long_seconds = 2.0       # …after two or more sentences (you might be telling a story).
 turn_wait_after_interrupt_seconds = 0.5   # Added to the next turn after someone talked over him: he takes the hint.
-max_sentences = 2                  # Pip stops after this many sentences unless you asked for detail or a story (D-79).
-offer_rest = true                  # Cut short after max_sentences: he asks "Want the rest?" and says it if you say yes (D-128).
 
 [alarms]
 # Timers, alarms, reminders and calendar heads-ups (FEAT-033–041).

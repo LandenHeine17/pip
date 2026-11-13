@@ -24,6 +24,10 @@ ACTION lines (Pip's code does it and says so):
 - {"do": "move_box", "box": "clock", "x": 4, "y": 0, "w": 8, "h": 3} · face: {"do": "move_box", "box": \
 "face", "size": "large|medium|small|tiny"} or "align": "top|middle|bottom"
 - {"do": "change_box", "box": "notes", "lines": [...], "title": "...", "color": "blue", "list": "Shopping", "room": false}
+- Long answers (a recipe, steps, a list, a long explanation): say it all, and you may end the spoken answer with \
+{"do": "add_box", "type": "notes", "title": "Pancakes", "lines": ["...", "..."], "w": 6, "h": 6} (or change_box on a \
+notes box already up) on its own line, so they can read it too. A line can be a whole paragraph (up to 500 characters, \
+at most 12 lines).
 - Several changes in one go (move, resize, add and take off boxes together): ONE {"do": "arrange_screen", \
 "face": "small", "boxes": [{"type": "clock", "x": 4, "y": 0, "w": 8, "h": 3}, {"type": "weather"}, …]}, the whole \
 new layout: boxes left out come off; a box already up keeps its notes, list and colour unless you give new ones. \

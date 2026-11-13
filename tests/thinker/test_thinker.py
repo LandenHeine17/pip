@@ -35,6 +35,18 @@ def test_a_long_first_clause_is_spoken_at_its_comma():
     assert SentenceSplitter().feed("No commas at all in this one that is longer than sixty letters so far") == []
 
 
+def test_an_action_line_after_the_answer_is_not_said():
+    """D-130: the answer is said in full; an ACTION line after it is for pip-core."""
+    from pip_assistant.thinker.claude import trailing_action
+    sp, out = SentenceSplitter(), []
+    reply = 'Mix the flour and eggs, then fry them.\nACTION {"do": "add_box", "type": "notes", "lines": ["Mix. Fry."]}'
+    for i in range(0, len(reply), 7):
+        out += sp.feed(reply[i:i + 7])
+    out += sp.flush()
+    assert out == ["Mix the flour and eggs, then fry them."]
+    assert trailing_action(reply).startswith('ACTION {"do": "add_box"') and trailing_action("Just words.") == ""
+
+
 def test_speakable_removes_links_and_markdown():
     assert speakable("# Hi *there* https://example.com now") == "Hi there now"
 

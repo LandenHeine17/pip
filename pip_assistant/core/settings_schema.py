@@ -129,10 +129,6 @@ SCHEMA = {
                                    ["core"], min=0, max=240),
     "social.welcome_back_minutes": _s(C, "Welcome back after", "\"Hey Landen, welcome back\" after the room was "
                                       "quiet this many minutes (0 = never).", "int", ["core"], min=0, max=600),
-    "conversation.max_sentences": _s(C, "Short answers", "Pip stops after this many sentences unless you asked for "
-                                     "detail or a story (D-79).", "int", ["core"], min=1, max=10),
-    "conversation.offer_rest": _s(C, "Offer the rest", "When an answer is cut short, he asks \"Want the rest?\" and "
-                                  "says it if you say yes (D-128). Off: the rest is dropped.", "bool", ["core"]),
     "thinker.thinking_tone": _s(C, "Thinking tone", "A soft tone when Pip starts thinking (D-86): always, slow "
                                 "(only if the answer is slow) or off.", "str", ["core"],
                                 choices=["always", "slow", "off"]),

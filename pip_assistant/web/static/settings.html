@@ -81,8 +81,6 @@ input[type=checkbox].switch:checked::after{left:21px}
 .strip .shade{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--accent) 30%,transparent);transition:left .35s,width .35s}
 .strip .now{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--bad)}
 .hours{display:flex;justify-content:space-between;font-size:.7rem;color:var(--muted)}
-.sent{transition:opacity .3s}
-.sent.cut{opacity:.35;text-decoration:line-through}
 @media (max-width:640px){.tl{grid-template-columns:1fr 3.6em}.tl .say{grid-column:1 / -1}.tl .axis{grid-column:1}.slide input[type=range]{width:8em}}
 details.adv>summary h2::before{content:"▸ ";color:var(--muted)}
 details.adv[open]>summary h2::before{content:"▾ "}
@@ -533,13 +531,6 @@ const PREVIEW = {
     return `<div class="strip">${a <= b ? shade(a, b) : shade(a, 1440) + shade(0, b)}<div class="now" style="left:${(100 * now / 1440).toFixed(2)}%"></div></div>
       <div class="hours"><span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
       <div style="margin-top:4px">Shaded: he never joins in. Right now (red line) he ${quiet ? "<b>is in quiet hours</b>" : "may join in"}.</div>`;
-  },
-  "conversation.max_sentences": () => {
-    const k = n("conversation.max_sentences");
-    const s = ["Rainy, around fifty.", "Grab a jacket.", "It clears up by Friday.", "The weekend looks sunny.", "Next week cools off again."];
-    const offer = on("conversation.offer_rest") && k < s.length;
-    return `<div style="margin-bottom:4px">An answer Claude wrote at length, as Pip says it:</div>${s.map((x, i) => `<span class="sent ${i >= k ? "cut" : ""}">${esc(x)}</span>`).join(" ")}${offer ? ` <b>Want the rest?</b>` : ""}
-      <div style="margin-top:4px">${offer ? "Say \"yes\" and he says the crossed-out part. " : ""}Asking for detail or a story lifts the limit.</div>`;
   },
   "thinker.thinking_tone": () => ({always: "A soft tone every time he starts thinking.",
     slow: `A soft tone only if his answer hasn't started after ${secs(n("thinker.thinking_tone_after_seconds"))}.`,

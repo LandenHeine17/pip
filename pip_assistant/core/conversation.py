@@ -58,7 +58,6 @@ import asyncio
 import base64
 import collections
 import logging
-import re
 import time
 
 from ..common.messages import Message, new_id
@@ -76,18 +75,13 @@ from .commands import sure as sure_command
 from . import states
 from .states import DETAILS, situation
 from .transcript import Transcript
-from .turns import (HOLD_S, RESUME_WITHIN_S, YES_REST, TurnTaking, is_phantom, listening_only,  # noqa: F401
+from .turns import (HOLD_S, RESUME_WITHIN_S, TurnTaking, is_phantom, listening_only,  # noqa: F401
                     looks_unfinished, pause_word, plain)   # (tests import looks_unfinished from here)  # noqa: F401  (tests import looks_unfinished)
 
 log = logging.getLogger(__name__)
 
-WANTS_DETAIL = re.compile(r"\b(story|explain|details?|in depth|describe|tell me (more|everything|all)|"
-                          r"step by step|steps|recipe|list|longer)\b", re.I)
-
-REST_MAX = 8   # at most this many sentences are kept for "Want the rest?" (then Claude is stopped)
 SAYINGS = {
     "not_caught": "Sorry, I didn't catch that. Could you say it again?",
-    "want_rest": "Want the rest?",
     "stt_failed": "Sorry, I couldn't make out what you said. My hearing service isn't answering.",
     "thinker_failed": "Sorry, my brain isn't answering right now. Try me again in a moment.",
     "no_speech": "",  # wake word but then nothing: stay quiet
@@ -193,19 +187,12 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.turn_since_speech = 0.0 # end of their speech → the held turn answered (traced in turn.decision)
         self.mic_off_since = None    # for "mic was off for 12 s" on the feed
         self.alarm_mic = False       # listening is off but pip-ears is on for a ringing alarm (D-127, micctl.py)
-        self.max_sentences = c.get("max_sentences", 2)
-        self.offer_rest = c.get("offer_rest", True)   # cut short: "Want the rest?" (D-128)
-        self.rest: list[str] = []          # the current answer's sentences past max_sentences, not said
-        self.rest_offer: list[str] = []    # …offered with "Want the rest?", said if the answer is yes
-        self.trim_cancelled = False
         self.expect_until = 0.0     # Pip was just called: the next speech is for him, name or not
         self.pending = ""           # what they've said so far, held until they've finished their turn (D-106)
         self.pending_task = None    # answers it once the wait is over
         self.pending_how = ("direct", False, {}, False)   # (reason, offline, data, chime) for the held turn
         self.sentences = 0
         self.spoken: list[str] = []  # sentences of the current answer actually sent to be spoken
-        self.trimmed = False         # the current answer was cut short after max_sentences
-        self.long_ok = False
         self.stt = stt
         self.stt_limited = False     # Groq's daily limit is used up (D-115): not offline, just heard on the Pi
         self.answer_id = None
@@ -432,18 +419,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             self.join_spoke = True
             self.joining.joined()
             await self.note("joined")
-        self.sentences += 1
-        if self.sentences > self.max_sentences and not self.long_ok:
-            self.trimmed = True
-            keep = self.offer_rest and self.answer_kind == "direct" and len(self.rest) < REST_MAX
-            if keep:   # kept unsaid, for "Want the rest?" (D-128)
-                self.rest.append(text)
-            if self.sentences == self.max_sentences + 1:
-                await self.bus.publish(Message("event", "answer.trimmed", data={"after": self.max_sentences}))
-            if not keep and not self.trim_cancelled:
-                self.trim_cancelled = True
-                await self.command("thinker", "thinker.cancel", {"answer_id": self.answer_id})
-            return  # roommates don't give speeches (D-79)
+        self.sentences += 1   # every sentence Claude wrote is said (D-130); "short" is Claude's job (RULES, D-79)
         self.speech_done.clear()
         self.spoken.append(text)
         if self.paused and self.paused["aid"] == msg.data.get("answer_id"):
@@ -576,10 +552,6 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             await self._finish_pending()   # it was only a breath or an "um": a held turn is answered now
             return
         text = self.fix_names(text)
-        if self.rest_offer:                # he'd asked "Want the rest?" (D-128); only a reply in the window counts
-            rest, self.rest_offer = self.rest_offer, []
-            if self.in_follow_up() and YES_REST.match(plain(text)):
-                return await self.say_rest(text, rest)
         await self.told_off(text)
         kind, ask = "direct", ""
         if reason == "follow_up" and not self.pending and not calls_pip(text) and self.in_follow_up():
@@ -599,17 +571,6 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             return
         await self.addressed(text, reason, stt_s=stt_s, offline=offline, heard_s=msg.data.get("seconds") or 0,
                              ended_at=self.speech_ended(msg), kind=kind, ask=ask)
-
-    async def say_rest(self, text: str, rest: list[str]) -> None:
-        """They said yes to "Want the rest?": the sentences he'd kept back, without asking Claude again."""
-        self.hear(text)
-        await self.feed(text, "direct", self.speaker)
-        self.voice_kind = "direct"
-        for s in rest:
-            await self.say(s, "answer")
-        self.said(" ".join(rest))
-        await self.show("pip", " ".join(rest), kind="direct")
-        await self.decided("said_the_rest", "asked")
 
     async def told_off(self, text: str) -> None:
         """"Not now" / "we're talking", to him or the room, soon after he joined in: he stays out (CB-031)."""
@@ -841,9 +802,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.answer_id, self.answer_kind, self.join_spoke = aid, kind, False
         self.join_count = self.transcript.count
         self.join_asked_at = time.monotonic()
-        self.sentences, self.spoken, self.trimmed = 0, [], False   # this answer's sentences actually said
-        self.rest, self.rest_offer, self.trim_cancelled = [], [], False
-        self.long_ok = bool(WANTS_DETAIL.search(text or ""))
+        self.sentences, self.spoken = 0, []   # this answer's sentences actually said
         self.filler_said = None
         self.looking_up = bool(looked_up)
         self.refresh_state()  # thinking (direct answers only)
@@ -874,15 +833,13 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         if reply.private.get("action") and self.commands:
             if kind == "join":
                 return  # joining in never acts on anything (nothing overheard is acted on)
-            return await self.claude_action(reply.private["action"], t0,
-                                            again=None if looked_up else (text, reason, kind, mood), asker=asker)
+            if not reply.private.get("text"):
+                return await self.claude_action(reply.private["action"], t0,
+                                                again=None if looked_up else (text, reason, kind, mood), asker=asker)
+        # An answer he said in full can end with an ACTION line (D-130), e.g. a recipe also put in a notes box
+        # on the monitor: it's done after the answer, quietly unless it fails.
+        after = reply.private.get("action") if self.commands and kind != "join" else None
         answer = reply.private.get("text", "")
-        if self.trimmed:   # cut short (D-79): the transcript and the dashboard get only what he really said
-            answer = " ".join(self.spoken)
-            if self.rest and kind == "direct" and not self.paused and answer:
-                self.rest_offer = list(self.rest)          # "yes" in the follow-up window says them (D-128)
-                await self.say(SAYINGS["want_rest"], "answer")
-                answer += " " + SAYINGS["want_rest"]
         if not answer:  # PASS: he decided it wasn't for him / nothing to add
             await self.bus.publish(Message("event", "answer.passed", data={"kind": kind}))
             if kind in ("direct", "mentioned", "follow_up"):
@@ -893,6 +850,8 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.said(answer)
         await self.show("pip", answer, total_s=round(time.perf_counter() - t0, 2),
                         first_s=reply.data.get("first_sentence_s"), kind=kind)
+        if after:
+            await self.claude_action(after, t0, asker=asker, quiet=True)
         if self.speech_done.is_set():
             await self._maybe_follow_up()
 

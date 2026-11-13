@@ -74,7 +74,7 @@ async def test_two_way_sync_with_google(env):
     fake.add_event("landen@example.com", summary="Doctor", visibility="private",
                    start={"dateTime": "2026-11-10T09:00:00-06:00"}, end={"dateTime": "2026-11-10T09:30:00-06:00"})
     say(reg, "add:event", {"title": "pizza night", "at": "2026-11-08T19:00"})      # on Pip's own calendar first
-    acc = await connect(reg.modules["google"], fake, landen["id"], "landen@example.com")
+    await connect(reg.modules["google"], fake, landen["id"], "landen@example.com")
     await cal.sync.run_once()
     titles = {e["title"]: e for e in cal.store.all_events()}
     assert {"Chem lab", "Doctor", "pizza night"} <= set(titles)

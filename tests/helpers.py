@@ -179,9 +179,11 @@ async def room_setup(tmp_path, stt_text="", replies=None, social=None, people=No
             text = text.pop(0)
         if text.startswith("ACTION"):
             return msg.reply({"action": True}, private={"text": "", "action": text}, source="thinker")
+        text, _, after = text.partition("\nACTION")      # said, then an ACTION line (D-130)
         if text:
             await thinker.emit("answer.sentence", {"answer_id": msg.data["answer_id"]}, private={"text": text})
-        return msg.reply({"passed": not text}, private={"text": text}, source="thinker")
+        private = {"text": text} | ({"action": "ACTION" + after} if after else {})
+        return msg.reply({"passed": not text, "action": bool(after)}, private=private, source="thinker")
 
     thinker.on("thinker.ask", ask)
     thinker.on("thinker.cancel", record)

@@ -81,7 +81,7 @@ async def test_unticked_permissions_are_shown_not_hidden(setup):
     await mod.dashboard("save_client", {"client_id": "123-abc.apps.googleusercontent.com", "client_secret": "GOCSPX-secret-1"})
     p = people.add_person("Landen", "admin")
     fake.only_email = True
-    a = await connect(mod, g, fake, p["id"], "landen@example.com")
+    await connect(mod, g, fake, p["id"], "landen@example.com")
     acc = g.accounts()[0]
     assert acc["status"] == "missing" and "Select all" in acc["error"]
     assert g.household_accounts() == []                 # the calendar and to-dos leave it alone

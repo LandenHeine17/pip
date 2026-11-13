@@ -46,9 +46,6 @@ HOLD = re.compile(r"^(hold on|hang on|hold up|wait|wait up|wait a (sec|second|mi
 GO_ON = re.compile(r"^(go on|go ahead|carry on|continue|keep going|(ok|okay|alright|sorry) (go on|go ahead|carry on|"
                    r"continue)|you can go on|go)( pip)?$")
 HOLD_S = 30.0
-# "Want the rest?" answered yes (D-128, PIP-NEW-017)
-YES_REST = re.compile(r"^(yes|yeah|yep|yup|sure|ok|okay|please|yes please|go on|go ahead|tell me|go for it|"
-                      r"keep going|sure go ahead|yeah go on|yeah sure)( please| pip)?$")
 
 
 def plain(text: str) -> str:

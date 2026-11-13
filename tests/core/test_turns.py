@@ -247,7 +247,7 @@ async def test_ears_hears_claps_only_on_the_clap_microphone(monkeypatch):
 def test_what_the_owner_saw_one_memory_not_two(tmp_path):
     """Test 8: Landen's wording "Landen says Sam is…" (no 'about'), then Sam saying it himself."""
     people = People(tmp_path / "pip.db", embedder=FakeEmbedder())
-    landen, sam = people.add_person("Landen", "admin"), people.add_person("Sam")
+    _, sam = people.add_person("Landen", "admin"), people.add_person("Sam")
     mem = Memory(tmp_path / "pip.db")
 
     class Cmds:
@@ -268,7 +268,7 @@ def test_what_the_owner_saw_one_memory_not_two(tmp_path):
 def test_every_memory_is_saved_straight_away(tmp_path):
     """D-119 (owner, 2026-11-10): about yourself, someone else, or from a voice Pip isn't sure of: all saved."""
     people = People(tmp_path / "pip.db", embedder=FakeEmbedder())
-    landen, sam = people.add_person("Landen", "admin"), people.add_person("Sam")
+    landen, _ = people.add_person("Landen", "admin"), people.add_person("Sam")
     mem = Memory(tmp_path / "pip.db")
 
     class Cmds:
@@ -463,7 +463,7 @@ async def test_the_settings_switch_these_off(tmp_path):
     await finish(bus, tasks)
 
 
-# ---------------------------------------------------------------- M2 polish (D-128): "hold on", "Want the rest?"
+# ---------------------------------------------------------------- M2 polish (D-128): "hold on"
 def test_hold_and_go_on_words():
     from pip_assistant.core.turns import pause_word
     assert all(pause_word(t) == "hold" for t in ("Hold on.", "Pip, one sec", "wait a second", "Hang on!"))
@@ -483,28 +483,3 @@ async def test_hold_on_then_go_on(tmp_path):
     assert says(got) == ["Then another at half past."] and not asks and conv.paused is None
     await finish(bus, tasks)
 
-
-async def test_cut_short_he_offers_the_rest(tmp_path, monkeypatch):
-    from pip_assistant.common.messages import Message
-    bus, conv, ears, got, asks, tasks = await setup(tmp_path, "Yes please.", social={"join_in": False},
-                                                    conversation={"max_sentences": 2, "follow_up_seconds": 5.0})
-    sents = ["The 12 comes at ten.", "Then the 14.", "After that the 12 again.", "Last one's at midnight."]
-
-    async def claude(target, kind, data, private, timeout):
-        for x in sents:
-            await conv.on_sentence(Message("event", "answer.sentence", data={"answer_id": data["answer_id"]},
-                                           private={"text": x}))
-        return Message("reply", kind, data={}, private={"text": " ".join(sents)})
-    monkeypatch.setattr(conv, "bus_request", claude)
-    await conv.answer("when do the buses come", "wake")
-    await asyncio.sleep(0.1)
-    assert says(got) == sents[:2] + ["Want the rest?"] and conv.rest_offer == sents[2:]
-    assert conv.transcript.last_ours()["text"].endswith("Want the rest?")
-    await ears.emit("speech.started", {})
-    await ears.emit("speech.finished", {"interrupted": False, "spoken": True})
-    await asyncio.sleep(0.1)
-    got.clear()
-    await ears.emit("heard.utterance", {**room()[0], "reason": "follow_up"}, private=room()[1])
-    await asyncio.sleep(0.3)
-    assert says(got) == sents[2:] and conv.rest_offer == []
-    await finish(bus, tasks)
