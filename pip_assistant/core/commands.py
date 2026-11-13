@@ -1,8 +1,8 @@
-"""Pip's own commands: understood on the Pi, without Claude. **For speech, used only offline** (D-94).
+"""Pip's own commands: understood on the Pi, without Claude.
 
-Online, everything people say goes to Claude in natural language, and Claude acts through ACTION
-lines (core/actions.py). These rules are the fallback when the internet is down (PIP-NEW-044,
-D-83): timers, alarms, reminders, "what time is it", "stop", and what modules add (the calendar). What they still do
+Online, a clearly worded command ("timer ten minutes", "stop") is done here straight away (`sure`, D-123);
+anything else goes to Claude in natural language, and Claude acts through ACTION lines (core/actions.py).
+Offline these rules do everything (PIP-NEW-044, D-83): timers, alarms, reminders, "what time is it", "stop", and what modules add (the calendar). What they still do
 online: `while_ringing` (the obvious "stop", "okay", "snooze" or his name silence a ringing alarm
 instantly; anything else said to Pip while it rings goes to Claude) and the dashboard's box for typing
 a command. Replies are short (D-79). If a cancel matches nothing he says so; if it could mean

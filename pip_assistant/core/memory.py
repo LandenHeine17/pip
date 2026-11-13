@@ -4,14 +4,16 @@ Claude asks for changes with memory ACTIONs (core/actions.py); the dashboard's M
 changes them through core/dashapi.py. Claude sees the memories it may use with each request (for_claude).
 
     "Pip, remember the bins go out Tuesday night"   → saved now, confirmed with the exact wording
-    "Pip, remember Sam is allergic to peanuts"      → about someone else, and health: waits in the
-                                                       memory inbox on the dashboard for approval
+    "Pip, remember Sam is allergic to peanuts"      → saved now too (D-119: everything asked is saved at
+                                                       once; the inbox only held Ziggletron's import)
     "Pip, forget that I like mushrooms"             → that exact memory is deleted, and Pip says which
 
 Rules (from the memory policy, docs/archive/.../06-MEMORY-AND-DATA-POLICY.md):
 - Only things someone **asked** Pip to remember are saved. Nothing overheard is ever saved.
 - **Sensitive** kinds (health, money, relationships, religion or politics, someone's whereabouts or
-  schedule, anything about a child) and things **about another person** wait for approval.
+  schedule, anything about a child) are marked sensitive but saved straight away, like the rest (D-119).
+- A new memory very like another about the same person and category is flagged for **review** on the
+  Memory page (`similar_to`, D-128): keep both, keep the new one or keep the old one.
 - Visible to the **household** by default (D-16); a memory can be marked private, and then it's only
   used when its owner is recognised "sure".
 - **No silent loss**: no limit on how many; nothing is deleted unless someone deletes it. Archived

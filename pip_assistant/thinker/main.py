@@ -14,7 +14,7 @@ Usage:  every request is counted by kind in the usage table (common/usage.py); t
 System prompt = the personality (common/personality.py: ~/pip-data/personality.md, re-read when it changes)
 + RULES (fixed here) + each module's [claude] instructions (module.toml).
 Offline, Pip's own commands (timers, alarms, reminders, calendar) still work in pip-core; the
-offline Qwen fallback for chat (D-75, PIP-NEW-081) is planned for M2.
+offline Qwen fallback for chat (D-75, PIP-NEW-081) isn't built (not now, D-128).
 """
 import asyncio
 from collections import deque

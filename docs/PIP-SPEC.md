@@ -4,7 +4,7 @@ The short, living description of Pip 2.0. Read this first.
 
 **How the docs fit together (for building):** this page says *what* Pip does → [REQUIREMENTS.md](REQUIREMENTS.md) lists every requirement, and its **Detail** link opens the exact behaviour rules in the archived proposal ([archive/pip-v2-proposals-2026-11/](archive/pip-v2-proposals-2026-11/README.md)) → [DECISIONS.md](DECISIONS.md) (`D-nn`) **overrides** anything older, and REQUIREMENTS §0 lists the archived passages that have been overridden. What Ziggletron did (for parity) is in [archive/ziggletron-discovery/](archive/ziggletron-discovery/PRODUCT-OVERVIEW.md).
 
-*Last updated 2026-11-12 · Phase: M1b built. M1a is done (steps 1–8, installed): hearing, answers, timers/alarms, memory, people and voices, listening to the room like Ziggletron, everything in natural language, the calendar / to-dos / Google modules, the face on the monitor and the screen by voice, the Settings page and an editable personality (D-110–D-117). M1b built 2026-11-09 (D-118): Pip changing his own code with your approval twice, versioned installs that roll back by themselves, and the usage meter; it goes live when the owner runs `sh deploy/install.sh`. Next: M2. How the code works: [HOW-PIP-WORKS.md](HOW-PIP-WORKS.md). Dashboard: `http://<pi-tailscale-ip>:8790`.*
+*Last updated 2026-11-13 · Phase: M2 built (D-128–D-130: explaining himself, conversation notes kept 30 days, smarter memory, conversation polish, a richer face, your data). Earlier: M1b built. M1a is done (steps 1–8, installed): hearing, answers, timers/alarms, memory, people and voices, listening to the room like Ziggletron, everything in natural language, the calendar / to-dos / Google modules, the face on the monitor and the screen by voice, the Settings page and an editable personality (D-110–D-117). M1b built 2026-11-09 (D-118): Pip changing his own code with your approval twice, versioned installs that roll back by themselves, and the usage meter; installed 2026-11-10. Next: M3 (smart home). How the code works: [HOW-PIP-WORKS.md](HOW-PIP-WORKS.md). Dashboard: `http://<pi-tailscale-ip>:8790`.*
 
 ## 1. In one paragraph
 
@@ -51,7 +51,7 @@ Live results are on the dashboard (`http://<pi-tailscale-ip>:8780`).
 - **He waits until you're done** (D-106, D-122), counted from when you stop talking: 1.0 s after a question or short request, 1.6 s after a statement, 2.0 s after a few sentences, 3.0 s if you stopped mid-sentence ("remind me to…"), half a second more on the next turn after being talked over. If you carry on, he keeps waiting and takes it all as one; only then does he chime and answer.
 - **Clear commands are instant** (D-123): "stop", "never mind", "snooze", "what time is it", "set a pasta timer for 10 minutes", "cancel the timer", "how long is left" are done on the Pi without Claude when that's the whole sentence; anything more goes to Claude.
 - **"Stop", "shut up", "enough", "never mind"** (D-105): he goes silent (no "okay, stopping"), stops listening for a follow-up and goes back to idle. The chime can be switched off on the dashboard (Listening & sounds).
-- **Interruptions:** talking over him stops him, if it's a voice (a knock or clap doesn't, D-122). Since D-128 a voice first only makes him quieter: if you keep talking (about half a second) he stops; a short laugh or "yeah" and he comes back up without stopping. "Hold on" makes him wait (up to 30 s) until "go on". Cut short after two sentences, he asks "Want the rest?"; he then hears what you said and decides whether it needs an answer ("never mind" gets silence). If it was only "yeah", "mhm", a laugh or nothing, he carries on from where he was cut off. "Actually…" corrects your last request instead of making a new one (D-54, D-92).
+- **Interruptions:** talking over him stops him, if it's a voice (a knock or clap doesn't, D-122). Since D-128 a voice first only makes him quieter: if you keep talking (about half a second) he stops; a short laugh or "yeah" and he comes back up without stopping. "Hold on" makes him wait (up to 30 s) until "go on". He says the whole answer (D-130): keeping it short is Claude's job, and a long one (a recipe, steps) can also go up in a notes box on the monitor. He then hears what you said and decides whether it needs an answer ("never mind" gets silence). If it was only "yeah", "mhm", a laugh or nothing, he carries on from where he was cut off. "Actually…" corrects your last request instead of making a new one (D-54, D-92).
 - Long silence from the speakerphone means "muted or very quiet", shown as a status, never an error (D-38).
 
 ### Listening modes and privacy
@@ -127,7 +127,7 @@ flowchart LR
 
 ### Timers, reminders, calendar, lists
 - Everything Ziggletron did (timers, repeating and person-targeted reminders, calendar, alarms that keep ringing until answered, "earned" alarms), plus voice snooze and dashboard creation.
-- **Any wording** (D-94): there are no phrasings you have to learn. What you say goes to Claude, which turns it into an action; **Pip's own code checks it, does it and confirms**, so he only says "Timer's on" once it's really saved (PIP-NEW-039, D-84). It takes about 2 s (the thinking tone plays). If it's unclear, he asks.
+- **Any wording** (D-94): there are no phrasings you have to learn. Clearly worded commands ("timer ten minutes") are done by Pip's own code straight away (D-123); anything else goes to Claude, which turns it into an action; **Pip's own code checks it, does it and confirms**, so he only says "Timer's on" once it's really saved (PIP-NEW-039, D-84). Through Claude it takes about 2 s (the thinking tone plays). If it's unclear, he asks.
 - **Offline** (no internet), simple phrasings still work for the basics, understood on the Pi (D-83).
 
 ```mermaid
@@ -301,7 +301,7 @@ flowchart TD
 ### Reliability
 - Alarms and "stop" can never be blocked by slower work. A watchdog restarts stuck parts.
 - **Every update rolls back by itself** (built in M1b, PIP-NEW-080): Pip runs from a separate copy (`~/pip-app`); a new version goes live only after he's healthy on it for 2½ minutes, otherwise he switches back to the one before. The last 3 versions are kept. The dashboard header shows which version is running.
-- Brain: your **Claude Pro subscription** via Claude Code, plus, later (M2), a small local model when Claude is unavailable (D-75); for now his own offline commands do the basics.
+- Brain: your **Claude Pro subscription** via Claude Code, no local model for now (D-128; PIP-NEW-081 later): when Claude is unavailable his own offline commands do the basics.
 - **Usage meter** (built in M1b, PIP-NEW-089): the dashboard shows "Claude today: N requests (≈$X)". When Claude says the plan's usage limit is reached, he stops joining in and pauses self-changes until it resets (or for an hour); replies to people keep trying (D-69). There's no early "80%" warning: the Pro plan doesn't say how much is left (D-05, D-17, D-65).
 - Heavy jobs run under a memory cap (lesson from the M0 freeze).
 
@@ -348,7 +348,7 @@ Each time Pip asks Claude something (an answer, a mention, or whether to join in
 
 ## 5. Building it
 
-- **Milestones:** M0 measure (done) → architecture design (approved, D-78) → **M1a** groundwork + Ziggletron's features (done) → **M1b** safe self-changes (built 2026-11-09, installed 2026-11-10) → now: polishing (the owner's feedback) → **M2** smarter conversation and memory → **M3** smart home → **M4** Pip suggesting improvements → **M2** (next) smarter conversation and self-knowledge → **M3** devices, lists, calendar, music → **M4** self-improvement suggestions (D-08, D-29).
+- **Milestones:** M0 measure (done) → architecture design (approved, D-78) → **M1a** groundwork + Ziggletron's features (done) → **M1b** safe self-changes (built 2026-11-09, installed 2026-11-10) → **M2** smarter conversation, memory and self-knowledge (built 2026-11-13, D-128–D-130) → **M3** (next) smart home: devices, lists, music → **M4** Pip suggesting improvements (D-08, D-29).
 - **Made to be understood and extended** (D-70, D-71): plain-language docs and diagrams for every part; module templates so a new feature (a command, a widget, a device type) is fill-in-the-blanks; swappable speech, voice and AI services; a fresh clone of the repo works without anyone's personal data (PIP-NEW-091–097).
 - **May be open-sourced later:** nothing personal ever goes to GitHub, enforced by a commit check.
 - **How it's built:** [ARCHITECTURE.md](ARCHITECTURE.md) (approved, D-78).

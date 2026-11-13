@@ -1,6 +1,7 @@
 """How Claude makes things happen (D-84, D-94).
 
-Online, everything said to Pip goes to Claude in natural language, whatever the wording ("set a
+Online, whatever isn't a clearly worded command (core/commands.py `sure`, D-123) goes to Claude in natural
+language, whatever the wording ("set a
 thing on the calendar in two days for the dentist", "give me ten more minutes"). Claude doesn't set
 anything itself: it replies with one line
 
