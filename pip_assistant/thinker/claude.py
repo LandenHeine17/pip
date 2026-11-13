@@ -20,6 +20,20 @@ SENTENCE_END = re.compile(r"(?<=[.!?])[\"')\]]?\s+")
 URL = re.compile(r"https?://\S+|\[([^\]]+)\]\([^)]+\)")
 
 
+# Claude sometimes says its thinking out loud before the answer: "Caleb's asking about upgrading me." or
+# "Honest answer, short: ..." (owner, 2026-11-12). The rules tell it not to; this catches it when it still does.
+NARRATION = re.compile(r"^(?:[A-Z][a-z]+|someone|they|he|she)(?:'s| is| are)\s+(?:asking|wondering|saying|telling|"
+                       r"talking|curious|checking|bringing up)\b", re.I)
+LABEL = re.compile(r"^(?:[A-Za-z']+[ ,-]*){1,5}:\s+(?=\S)")   # "Honest answer, short: " (no digits: never "7:30")
+LABEL_WORDS = re.compile(r"\b(answer|version|take|reply|response|truth|summary)\b", re.I)
+
+
+def unnarrate(sentence: str) -> str:
+    """The start of an answer without a label like "Honest answer, short:" in front."""
+    m = LABEL.match(sentence)
+    return sentence[m.end():] if m and LABEL_WORDS.search(m.group()) else sentence
+
+
 def speakable(text: str) -> str:
     """Turn text into something sensible to say out loud."""
     text = URL.sub(lambda m: m.group(1) or "", text)
@@ -38,6 +52,7 @@ class SentenceSplitter:
         self.long_after, self.first_after = long_after, first_after
         self.stopped = False
         self.cut = 0   # pieces given out so far
+        self.held = ""   # a first sentence that only narrated the request: dropped if the real answer follows
 
     def feed(self, piece: str) -> list[str]:
         if self.stopped:
@@ -57,13 +72,31 @@ class SentenceSplitter:
                     out.append(self.buf[:cut]); self.buf = self.buf[cut:]
                 break
             out.append(self.buf[:m.end()]); self.buf = self.buf[m.end():]
-        out = [s for s in (speakable(x) for x in out) if s]
-        self.cut += len(out)
-        return out
+        return self._lead([s for s in (speakable(x) for x in out) if s])
+
+    def _lead(self, out: list[str]) -> list[str]:
+        """Before anything's been said: skip sentences narrating the request, and labels before the answer."""
+        kept = []
+        for s in out:
+            if self.cut == 0 and not kept:
+                if NARRATION.match(s):
+                    self.held = s
+                    continue
+                s = unnarrate(s)
+                if not s:
+                    continue
+            kept.append(s)
+        if kept:
+            self.held = ""
+        self.cut += len(kept)
+        return kept
 
     def flush(self) -> list[str]:
         rest, self.buf = speakable(self.buf), ""
-        return [rest] if rest else []
+        out = self._lead([rest] if rest else [])
+        if not out and self.held and self.cut == 0:   # it was the whole answer: better said than silence
+            out, self.held, self.cut = [self.held], "", 1
+        return out
 
 
 def is_action(text: str) -> bool:

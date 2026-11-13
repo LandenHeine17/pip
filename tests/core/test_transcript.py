@@ -49,3 +49,15 @@ def test_nothing_from_pip_means_nothing_to_cut():
     t.add("Sam", "hi")
     t.mark_cut()
     assert t.render()[0].endswith("Sam: hi") and t.last_ours() is None
+
+
+def test_a_quiet_spell_is_marked_so_old_talk_stays_old():
+    clock = Clock()
+    t = Transcript(clock=clock)
+    t.add("Landen", "that sounds like gibberish")
+    clock.t += 4 * 60
+    t.add("Caleb", "ha")
+    clock.t += 25 * 60
+    t.add("Caleb", "Pip, what's an H200?")
+    lines = t.render()
+    assert len(lines) == 4 and lines[2] == "(25 minutes later)" and lines[3].endswith("Pip, what's an H200?")
