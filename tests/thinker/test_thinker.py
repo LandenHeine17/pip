@@ -198,10 +198,46 @@ def test_narrating_the_request_is_not_said():
     sp = SentenceSplitter()
     out = sp.feed("Caleb's asking about upgrading me to an H200. Ha, I'd take it. ") + sp.flush()
     assert out == ["Ha, I'd take it."]
-    sp = SentenceSplitter()                                          # if that's all there is, it's still said
-    assert sp.feed("Caleb's asking a fair one.") + sp.flush() == ["Caleb's asking a fair one."]
+    sp = SentenceSplitter()                                          # only notes: nothing said, and it shows
+    out = sp.feed("Caleb's asking what I think of putting my brain in a talking fish. Keep it short and cheeky.") + sp.flush()
+    assert out == [] and sp.notes == 2
+    for note in ("Be playful here.", "One-liner.", "Short and cheeky: no way."):
+        sp = SentenceSplitter()
+        assert (sp.feed(note + " Ha, never.") + sp.flush())[-1] == "Ha, never." and len(sp.feed("")) == 0, note
+    sp = SentenceSplitter()
+    assert sp.feed("Keep it simple, go with the blue one. ") + sp.flush() == ["Keep it simple, go with the blue one."]
     sp = SentenceSplitter()                                          # ordinary answers are untouched
     out = sp.feed("Seven: thirty minutes, then. Landen's asking too. ") + sp.flush()
     assert out == ["Seven: thirty minutes, then.", "Landen's asking too."]
     sp = SentenceSplitter()
     assert sp.feed("Your alarm's at 7:30. ") + sp.flush() == ["Your alarm's at 7:30."]
+
+
+async def test_a_reply_of_only_notes_is_asked_again(monkeypatch):
+    """owner, 2026-11-12: "Caleb's asking what I think of... Keep it short and cheeky." and nothing else."""
+    from pip_assistant.common.messages import Message
+    from pip_assistant.thinker import main as thinker_main
+    replies = [("", {"only_notes": True, "passed": False}), ("Glub glub, sign me up.", {"passed": False})]
+    asked = []
+
+    class Notes:
+        async def ask(self, aid, system, user, *a, **kw):
+            asked.append(user)
+            return replies[len(asked) - 1]
+
+    th = object.__new__(Thinker)
+    th.claude, th.cancelled = Notes(), set()
+    th.paused = lambda: False
+    th.remember_request = lambda *a: None
+
+    async def system_prompt(persona=None):
+        return "sys"
+
+    async def _ask(cli, kind, aid, *args, **kw):
+        return await cli.ask(aid, *args, **kw)
+    th.system_prompt, th._ask = system_prompt, _ask
+    th.bus = type("B", (), {"emit": lambda self, *a, **k: asyncio.sleep(0)})()
+    reply = await th.on_ask(Message("request", "thinker.ask", source="core", id="r1",
+                                    data={"answer_id": "a1", "kind": "direct"}, private={"text": "what do you think?"}))
+    assert reply.private["text"] == "Glub glub, sign me up." and reply.data["asked_again"]
+    assert len(asked) == 2 and asked[1].endswith(thinker_main.AGAIN)
