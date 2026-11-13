@@ -444,3 +444,20 @@ async def test_a_phantom_thank_you_from_no_known_voice_is_noise(tmp_path):
     assert await conv.unless_phantom("Thank you.", Match("p1", "Sam", "sure"), "follow_up") == "Thank you."
     assert await conv.unless_phantom("Thank you.", Match(), "follow_up") == ""
     await finish(bus, tasks)
+
+
+# ---------------------------------------------------------------- the Settings page's switches for these
+async def test_the_settings_switch_these_off(tmp_path):
+    from pip_assistant.core.people import Match
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, "Yeah.", social={"join_in": False, "step_back_minutes": 2},
+                                                    conversation={"carry_on_after_backchannel": False})
+    assert conv.joining.step_back == 120
+    conv.joining.told_off(talked_over=True)
+    assert conv.joining.suppressed_until <= time.time() + 121
+    conv.spoken, conv.say_reason, conv.voice_kind = ["One.", "Two."], "answer", "direct"
+    await ears.emit("speech.interrupted", {"level_dbfs": -25, "said": 1})
+    await asyncio.sleep(0.05)
+    assert conv.paused is None                       # off: anything over him ends the answer, as before D-122
+    conv.drop_phantoms = False
+    assert await conv.unless_phantom("Thank you.", Match(), "follow_up") == "Thank you."
+    await finish(bus, tasks)

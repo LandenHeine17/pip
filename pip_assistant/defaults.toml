@@ -48,6 +48,7 @@ spare_models = ["whisper-large-v3"]   # Used when the model above has hit Groq's
 timeout_seconds = 6.0
 voice_check = true                 # Only send sounds with a human voice in them to speech-to-text (D-85: stops phantom "Thank you.").
 min_voice_seconds = 0.15           # Less voice than this (except right after the wake word) is treated as noise.
+drop_phantoms = true              # "Thank you.", "you", "Bye." alone, from a voice Pip doesn't know, are noise (2026-11-12).
 offline_model = "base.en"          # Whisper model on the Pi, used only when Groq can't be reached ("" = none). D-83
 # Words that help speech-to-text spell names and terms right (from the M0 benchmark).
 word_list = "Pip, Hey Pip, Pippletron, Pippy, Pips, Ziggletron. Raspberry Pi, ESP32, ESPHome, MQTT, Tailscale, Groq, Claude, Eightree plug, desk lamp, Lincoln, Nebraska."
@@ -60,6 +61,7 @@ pause_seconds = 1.2                # The room must pause this long first.
 live_conversation_seconds = 60.0   # Only if someone spoke within this long.
 quiet_hours = "23:00-07:00"        # Never joins in (or says welcome back) at these times (D-66).
 welcome_back_minutes = 20          # "Hey Landen, welcome back" after the room was quiet this long (0 = never).
+step_back_minutes = 15            # Told "not now" or talked over just after joining in: he stays out this long (D-124).
 
 [mic]
 # Switching listening off (D-91): the dashboard's Listening switch, or two claps. Both must be on.
@@ -78,6 +80,7 @@ own_commands = "sure"              # Pip's fixed-phrasing commands: "sure" = cle
                                    # without internet (D-94); "always" = try them first, as before step 6.
 follow_up_seconds = 8.0            # After Pip answers, talk again within this time without saying his name…
 follow_up_anyone = false           # …anyone (true), or only the person he answered, by voice, unless he asked a question (D-124).
+carry_on_after_backchannel = true  # Talked over by only "yeah", a laugh or nothing: he carries on from where he was cut off (D-122).
 wait_after_name_seconds = 5.0      # Said only his name? Pip listens quietly this long for the rest (no "Yes?" talking over you).
 # Knowing when you're done talking (D-106, D-122). Each wait is counted from when you stop talking: the 0.7 s pause
 # ([listen]) and speech-to-text count towards it, so Pip holds only for what's left. If you start talking again he
