@@ -461,3 +461,50 @@ async def test_the_settings_switch_these_off(tmp_path):
     conv.drop_phantoms = False
     assert await conv.unless_phantom("Thank you.", Match(), "follow_up") == "Thank you."
     await finish(bus, tasks)
+
+
+# ---------------------------------------------------------------- M2 polish (D-128): "hold on", "Want the rest?"
+def test_hold_and_go_on_words():
+    from pip_assistant.core.turns import pause_word
+    assert all(pause_word(t) == "hold" for t in ("Hold on.", "Pip, one sec", "wait a second", "Hang on!"))
+    assert all(pause_word(t) == "go" for t in ("Go on.", "okay, go ahead", "Carry on, Pip"))
+    assert not any(pause_word(t) for t in ("Wait, what time is it?", "go to bed", "hold the door"))
+
+
+async def test_hold_on_then_go_on(tmp_path):
+    bus, conv, ears, got, asks, tasks = await talked_over_mid_answer(tmp_path, "Hold on.")
+    await ears.emit("heard.utterance", *barge_in())
+    await asyncio.sleep(0.2)
+    assert conv.paused and conv.paused.get("held") and says(got) == [] and not asks
+    assert ("ears.listen", None, {"seconds": 30.0}) in got                 # listening for "go on", no name needed
+    conv.stt.text = "Okay, go on."
+    await ears.emit("heard.utterance", {**barge_in()[0], "reason": "follow_up"}, private=barge_in()[1])
+    await asyncio.sleep(0.2)
+    assert says(got) == ["Then another at half past."] and not asks and conv.paused is None
+    await finish(bus, tasks)
+
+
+async def test_cut_short_he_offers_the_rest(tmp_path, monkeypatch):
+    from pip_assistant.common.messages import Message
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, "Yes please.", social={"join_in": False},
+                                                    conversation={"max_sentences": 2, "follow_up_seconds": 5.0})
+    sents = ["The 12 comes at ten.", "Then the 14.", "After that the 12 again.", "Last one's at midnight."]
+
+    async def claude(target, kind, data, private, timeout):
+        for x in sents:
+            await conv.on_sentence(Message("event", "answer.sentence", data={"answer_id": data["answer_id"]},
+                                           private={"text": x}))
+        return Message("reply", kind, data={}, private={"text": " ".join(sents)})
+    monkeypatch.setattr(conv, "bus_request", claude)
+    await conv.answer("when do the buses come", "wake")
+    await asyncio.sleep(0.1)
+    assert says(got) == sents[:2] + ["Want the rest?"] and conv.rest_offer == sents[2:]
+    assert conv.transcript.last_ours()["text"].endswith("Want the rest?")
+    await ears.emit("speech.started", {})
+    await ears.emit("speech.finished", {"interrupted": False, "spoken": True})
+    await asyncio.sleep(0.1)
+    got.clear()
+    await ears.emit("heard.utterance", {**room()[0], "reason": "follow_up"}, private=room()[1])
+    await asyncio.sleep(0.3)
+    assert says(got) == sents[2:] and conv.rest_offer == []
+    await finish(bus, tasks)

@@ -115,10 +115,12 @@ async def test_only_a_voice_cuts_him_off(monkeypatch):
         async def emit(self, kind, data):
             Bus.emitted.append(kind)
     e = ears_main.Ears.__new__(ears_main.Ears)
-    e.bus, e.seg, e.cfg, e.loud_frames, e.overlap_noted = Bus(), Segmenter(), {"barge_in_dbfs": -45.0}, 0, False
+    e.bus, e.seg, e.cfg, e.loud_frames, e.overlap_noted = Bus(), Segmenter(), {"barge_in_dbfs": -45.0,
+                                                                               "duck_before_stop": False}, 0, False
+    e.ducked_at, e.quiet_since = 0.0, None
     cut = []
 
-    async def talked_over(db):
+    async def talked_over(db, lookback=0.4):
         cut.append(db)
     e.talked_over = talked_over
     loud = (np.ones(1280) * 3000).astype(np.int16)
@@ -139,3 +141,42 @@ async def test_only_a_voice_cuts_him_off(monkeypatch):
     for _ in range(5):                                   # quiet: never
         await e.heard_over(loud, -60.0)
     assert len(cut) == 2
+
+
+async def test_a_voice_first_lowers_him_then_he_stops_or_comes_back_up(monkeypatch):
+    """D-128: a voice over him lowers his voice; still talking ~0.6 s later and he stops (keeping what they said
+    meanwhile); quiet again and he comes back up without stopping (a laugh, a "yeah")."""
+    from pip_assistant.ears import main as ears_main
+    from pip_assistant.ears.segmenter import Segmenter
+
+    class Bus:
+        emitted = []
+
+        async def emit(self, kind, data):
+            Bus.emitted.append(kind)
+    clock = {"t": 100.0}
+    monkeypatch.setattr(ears_main.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(ears_main, "voice_seconds_sync", lambda pcm: 0.3)
+    e = ears_main.Ears.__new__(ears_main.Ears)
+    e.bus, e.seg, e.cfg, e.loud_frames, e.overlap_noted = Bus(), Segmenter(), {"barge_in_dbfs": -45.0}, 0, False
+    e.ducked_at, e.quiet_since = 0.0, None
+    e.speaker = type("S", (), {"gain": 1.0})()
+    cut = []
+
+    async def talked_over(db, lookback=0.4):
+        cut.append(round(lookback, 2))
+    e.talked_over = talked_over
+    loud = (np.ones(1280) * 3000).astype(np.int16)
+
+    async def frames(db, n):
+        for _ in range(n):
+            e.seg.history.append((loud, True))
+            await e.heard_over(loud, db)
+            clock["t"] += 0.08
+    await frames(-20.0, 3)                                 # a laugh starts: lowered, not stopped
+    assert e.speaker.gain == ears_main.DUCK_GAIN and cut == [] and "speech.ducked" in Bus.emitted
+    await frames(-60.0, 8)                                 # …and it's over: back up, never stopped
+    assert e.speaker.gain == 1.0 and cut == [] and "speech.unducked" in Bus.emitted
+    await frames(-20.0, 3)                                 # someone starts talking…
+    await frames(-20.0, 9)                                 # …and keeps going: he stops
+    assert cut and cut[0] > 0.9 and e.speaker.gain == 1.0

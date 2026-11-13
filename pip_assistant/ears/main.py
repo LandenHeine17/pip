@@ -41,6 +41,11 @@ from .voice import make_voice
 from .wake import WakeDetector
 
 log = logging.getLogger("pip-ears")
+# Talked over (D-128): a voice over him first lowers his voice to DUCK_GAIN; still talking DUCK_S later and he stops;
+# the room quiet again for UNDUCK_AFTER_S and he comes back up (a short laugh or "yeah")
+DUCK_GAIN = 0.3
+DUCK_S = 0.6
+UNDUCK_AFTER_S = 0.4
 
 
 class Ears:
@@ -69,6 +74,8 @@ class Ears:
         self.speaking = False
         self.voiced = False          # his voice has played in the current run of sounds (speech.started sent)
         self.loud_frames = 0
+        self.ducked_at = 0.0         # his voice is lowered while deciding if someone's talking over him (D-128)
+        self.quiet_since = None      # …and the room has been quiet since then (a short laugh, a "yeah")
         self.overlap_noted = False   # a sound over him without a voice was already traced (heard_over)
         self.said_n = 0              # sentences played to the end in the current run of speech
         self.follow_until = 0.0
@@ -157,8 +164,28 @@ class Ears:
         """Pip is talking: is someone talking over him? The speakerphone removes his own voice, so ~240 ms of
         loud sound is a candidate. Since D-122 it must also have a human voice in it (the same Silero check
         pip-core uses before speech-to-text, ~2 ms): a knock, a clap or the door doesn't cut him off (the owner's
-        spec, 2026-11-12: about 1 in 7 talk-overs was followed by nothing or noise)."""
-        self.loud_frames = self.loud_frames + 1 if db > self.cfg["barge_in_dbfs"] else 0
+        spec, 2026-11-12: about 1 in 7 talk-overs was followed by nothing or noise).
+        Since D-128 (`duck_before_stop`) a voice first only **lowers** his voice: if it keeps going another
+        DUCK_S he stops (they're talking), and if the room goes quiet again he comes back up (a short laugh, a
+        "yeah"), so laughing along doesn't stop him."""
+        loud = db > self.cfg["barge_in_dbfs"]
+        self.loud_frames = self.loud_frames + 1 if loud else 0
+        now = time.monotonic()
+        if self.ducked_at:
+            if loud:
+                self.quiet_since = None
+                if self.loud_frames >= 3:
+                    self.loud_frames = 0
+                    if now - self.ducked_at >= DUCK_S and await self.voice_in(frame):
+                        held = now - self.ducked_at
+                        self.unduck()
+                        await self.talked_over(db, lookback=0.4 + held)   # keep what they said while he was lowered
+            elif self.quiet_since is None:
+                self.quiet_since = now
+            elif now - self.quiet_since >= UNDUCK_AFTER_S:
+                self.unduck()
+                await self.bus.emit("speech.unducked", {})
+            return
         if self.loud_frames < 3:
             return
         self.loud_frames = 0
@@ -167,7 +194,16 @@ class Ears:
                 self.overlap_noted = True
                 await self.bus.emit("speech.overlap_ignored", {"level_dbfs": round(db, 1)})
             return
+        if self.cfg.get("duck_before_stop", True):
+            self.ducked_at, self.quiet_since = now, None
+            self.speaker.gain = DUCK_GAIN
+            await self.bus.emit("speech.ducked", {"level_dbfs": round(db, 1)})
+            return
         await self.talked_over(db)
+
+    def unduck(self) -> None:
+        self.ducked_at, self.quiet_since = 0.0, None
+        self.speaker.gain = 1.0
 
     async def voice_in(self, frame) -> bool:
         """Is there a voice in the last ~0.5 s (the frames just heard and this one)?"""
@@ -176,7 +212,7 @@ class Ears:
         secs = await asyncio.get_running_loop().run_in_executor(None, voice_seconds_sync, pcm)
         return secs >= 0.1
 
-    async def talked_over(self, db: float) -> None:
+    async def talked_over(self, db: float, lookback: float = 0.4) -> None:
         """Someone is talking over Pip: he stops, and what they say is for him. If they were already part-way
         through a sentence when he started (an alarm went off mid-sentence), that recording carries on whole;
         starting a new one would throw away what they'd said so far (owner's feedback, 2026-11-10). Unless it's
@@ -188,7 +224,7 @@ class Ears:
             if self.seg.capture["reason"] == "room":
                 self.seg.capture["reason"] = "barge_in"   # room talk that carried on over him: it's for him now
         else:
-            self.seg.start("barge_in", lookback=0.4)
+            self.seg.start("barge_in", lookback=lookback)
 
     async def _send_utterance(self, utt) -> None:
         data = {"reason": utt.reason, "seconds": utt.seconds, "had_speech": utt.had_speech, "word": utt.word,
@@ -231,6 +267,7 @@ class Ears:
             if not finished or self.queue.empty():
                 # spoken: whether his voice played in this run, or only sounds (a chime, a tone)
                 spoken, self.speaking, self.voiced = self.voiced, False, False
+                self.unduck()
                 await self.bus.emit("speech.finished", {"interrupted": not finished, "spoken": spoken})
                 if not finished:
                     self._clear_queue()

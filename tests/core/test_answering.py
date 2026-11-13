@@ -75,7 +75,7 @@ async def test_answers_are_cut_after_two_sentences_unless_detail_asked(tmp_path)
     await ears.emit("heard.utterance", {"reason": "wake", "had_speech": True, "seconds": 1.5},
                     private={"audio_b64": audio_b64()})
     await asyncio.sleep(0.3)
-    assert [t for k, t, _ in got if k == "ears.say"] == ["One.", "Two."]
+    assert [t for k, t, _ in got if k == "ears.say"] == ["One.", "Two.", "Want the rest?"]   # (D-128)
     got.clear()
     conv.stt.text = "Pip, tell me a story"
     await ears.emit("heard.utterance", {"reason": "wake", "had_speech": True, "seconds": 1.5},

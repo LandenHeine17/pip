@@ -97,6 +97,9 @@ SCHEMA = {
                         "bool", ["ears"]),
     "ears.barge_in_voice_check": _s(T, "Only a voice cuts him off", "Talked over only counts if it has a human voice "
                                     "in it, so a knock, a clap or the door doesn't stop him (D-122).", "bool", ["ears"]),
+    "ears.duck_before_stop": _s(T, "Lower his voice first", "When a voice comes over him, he first gets quieter: if "
+                                "they keep talking (about half a second) he stops; if it was only a laugh or a "
+                                "\"yeah\", he comes back up without stopping (D-128).", "bool", ["ears"]),
     "conversation.carry_on_after_backchannel": _s(T, "Carry on after a \"yeah\" or a laugh", "Talked over by only "
                                                   "\"yeah\", \"mhm\", a laugh or nothing: he picks up from the "
                                                   "sentence he was cut off in. Off: anything over him ends his answer.",
@@ -128,6 +131,8 @@ SCHEMA = {
                                       "quiet this many minutes (0 = never).", "int", ["core"], min=0, max=600),
     "conversation.max_sentences": _s(C, "Short answers", "Pip stops after this many sentences unless you asked for "
                                      "detail or a story (D-79).", "int", ["core"], min=1, max=10),
+    "conversation.offer_rest": _s(C, "Offer the rest", "When an answer is cut short, he asks \"Want the rest?\" and "
+                                  "says it if you say yes (D-128). Off: the rest is dropped.", "bool", ["core"]),
     "thinker.thinking_tone": _s(C, "Thinking tone", "A soft tone when Pip starts thinking (D-86): always, slow "
                                 "(only if the answer is slow) or off.", "str", ["core"],
                                 choices=["always", "slow", "off"]),

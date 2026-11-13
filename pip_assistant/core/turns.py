@@ -40,6 +40,30 @@ SOUND_NOTE = re.compile(r"[\[(*♪][^\])*♪]*[\])*♪]?")
 # Its phantom words for a sound without words in it (D-85). A laugh, a cough or a chair often comes back as
 # "Thank you." (2026-11-12: 1 in 10 of everything transcribed was exactly 10 letters long, mostly from no known voice)
 PHANTOM = re.compile(r"^(thank you( (so|very) much)?( for watching)?|thanks for watching|you|bye|bye bye)$")
+# "Hold on" over him (D-128, PIP-NEW-016): he waits, up to HOLD_S, for "go on"
+HOLD = re.compile(r"^(hold on|hang on|hold up|wait|wait up|wait a (sec|second|minute|moment)|one (sec|second|moment)|"
+                  r"just a (sec|second|moment)|give me a (sec|second|minute)|(pip )?(hold|wait) on)( pip)?$")
+GO_ON = re.compile(r"^(go on|go ahead|carry on|continue|keep going|(ok|okay|alright|sorry) (go on|go ahead|carry on|"
+                   r"continue)|you can go on|go)( pip)?$")
+HOLD_S = 30.0
+# "Want the rest?" answered yes (D-128, PIP-NEW-017)
+YES_REST = re.compile(r"^(yes|yeah|yep|yup|sure|ok|okay|please|yes please|go on|go ahead|tell me|go for it|"
+                      r"keep going|sure go ahead|yeah go on|yeah sure)( please| pip)?$")
+
+
+def plain(text: str) -> str:
+    """Lower case, no punctuation, no "Pip, ": for matching short replies."""
+    t = re.sub(r"[^\w' ]", " ", (text or "").lower())
+    t = re.sub(r"^(hey |ok |okay )?(pip|pippy|pippletron)\b", "", t.strip())
+    return " ".join(t.split())
+
+
+def pause_word(text: str) -> str:
+    """"hold" ("hold on", "one sec"), "go" ("go on", "okay go ahead") or ""."""
+    t = plain(text)
+    return "hold" if HOLD.match(t) else "go" if GO_ON.match(t) else ""
+
+
 # After someone talks over him, how long he waits (on top of the longest they could talk, max_utterance_seconds)
 # for speech-to-text to say what it was, before giving the turn up as theirs
 RESUME_WITHIN_S = 4.0

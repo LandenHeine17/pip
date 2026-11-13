@@ -114,6 +114,7 @@ class Speaker:
         self.player = player or shutil.which("pw-play") or "pw-play"
         self.proc = None
         self._stopped = False
+        self.gain = 1.0   # lowered while pip-ears decides whether someone is talking over him (D-128)
 
     @property
     def playing(self) -> bool:
@@ -133,7 +134,10 @@ class Speaker:
             for i in range(0, len(raw), chunk):
                 if self._stopped:
                     break
-                self.proc.stdin.write(raw[i:i + chunk])
+                piece_raw = raw[i:i + chunk]
+                if self.gain < 0.999:   # ducked: quieter from the next 50 ms piece
+                    piece_raw = (np.frombuffer(piece_raw, np.int16) * self.gain).astype(np.int16).tobytes()
+                self.proc.stdin.write(piece_raw)
                 await self.proc.stdin.drain()
                 if on_level is not None:
                     piece = audio[i // 2:(i + chunk) // 2].astype(np.float32)

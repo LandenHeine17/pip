@@ -420,6 +420,7 @@ const DEPENDS = {
   "thinker.thinking_tone_after_seconds": [() => val("thinker.thinking_tone") === "slow", "Only used when the thinking tone is \"slow\"."],
   "ears.barge_in_voice_check": [() => on("ears.barge_in"), "Only used when \"Stop when talked over\" is on."],
   "conversation.carry_on_after_backchannel": [() => on("ears.barge_in"), "Only used when \"Stop when talked over\" is on."],
+  "ears.duck_before_stop": [() => on("ears.barge_in"), "Only used when \"Stop when talked over\" is on."],
   "conversation.follow_up_anyone": [() => n("conversation.follow_up_seconds") > 0, "Only used when there's a follow-up window."],
   "listen.wait_for_speech_seconds": [() => n("conversation.follow_up_seconds") > 0, "Only used when there's a follow-up window."],
   "social.mood": [() => on("social.join_in"), "Only used when \"Join in\" is on."],
@@ -464,13 +465,17 @@ function turnViz(){
 const PREVIEW = {
   "conversation.carry_on_after_backchannel": () => {
     const stops = on("ears.barge_in"), voice = on("ears.barge_in_voice_check"), carry = on("conversation.carry_on_after_backchannel");
+    const duck = on("ears.duck_before_stop");
     const out = (txt, cls) => `<span class="out ${cls}">${esc(txt)}</span>`;
     const resumed = carry ? out("stops for a moment, then carries on", "good") : out("stops; that answer is over", "bad");
+    const short = duck ? out("gets quieter for a moment, never stops", "good") : resumed;
     const rows = !stops ? [["anything", out("he keeps talking (say \"stop\" with his name to stop him)", "")]] : [
-      ["\"Wait, no, I meant tomorrow\"", out("stops and listens", "good")],
-      ["\"Yeah\" / \"mhm\"", resumed],
-      ["Someone laughs", resumed],
-      ["A knock or a clap", voice ? out("keeps talking", "good") : resumed]];
+      ["\"Wait, no, I meant tomorrow\"", out(duck ? "gets quieter, then stops and listens" : "stops and listens", "good")],
+      ["A quick \"yeah\" / \"mhm\"", short],
+      ["A short laugh", short],
+      ["A long laugh", resumed],
+      ["\"Hold on\" … \"go on\"", carry ? out("waits (up to 30 s), then carries on", "good") : out("stops; that answer is over", "bad")],
+      ["A knock or a clap", voice ? out("keeps talking", "good") : duck ? short : resumed]];
     return `<div style="margin-bottom:4px">While Pip is answering, if someone talks over him…</div>
       <div class="scen">${rows.map(([a, b]) => `<span>${esc(a)}</span>${b}`).join("")}</div>`;
   },
@@ -516,8 +521,9 @@ const PREVIEW = {
   "conversation.max_sentences": () => {
     const k = n("conversation.max_sentences");
     const s = ["Rainy, around fifty.", "Grab a jacket.", "It clears up by Friday.", "The weekend looks sunny.", "Next week cools off again."];
-    return `<div style="margin-bottom:4px">An answer Claude wrote at length, as Pip says it:</div>${s.map((x, i) => `<span class="sent ${i >= k ? "cut" : ""}">${esc(x)}</span>`).join(" ")}
-      <div style="margin-top:4px">Asking for detail or a story lifts the limit.</div>`;
+    const offer = on("conversation.offer_rest") && k < s.length;
+    return `<div style="margin-bottom:4px">An answer Claude wrote at length, as Pip says it:</div>${s.map((x, i) => `<span class="sent ${i >= k ? "cut" : ""}">${esc(x)}</span>`).join(" ")}${offer ? ` <b>Want the rest?</b>` : ""}
+      <div style="margin-top:4px">${offer ? "Say \"yes\" and he says the crossed-out part. " : ""}Asking for detail or a story lifts the limit.</div>`;
   },
   "thinker.thinking_tone": () => ({always: "A soft tone every time he starts thinking.",
     slow: `A soft tone only if his answer hasn't started after ${secs(n("thinker.thinking_tone_after_seconds"))}.`,
