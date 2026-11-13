@@ -169,6 +169,11 @@ class Module:
         """Links for one person on the dashboard's People card: [{"label", "href"}]."""
         return []
 
+    async def forget_person(self, person_id: str, name: str) -> int:
+        """Someone is removed from the household (PIP-NEW-033, D-128): drop everything this module keeps about them
+        (their accounts, their notes…). Returns how many things were removed."""
+        return 0
+
 
 class HostNotAllowed(PermissionError):
     pass
@@ -418,6 +423,16 @@ class Registry:
     def pages(self) -> list[dict]:
         return [{"name": i.name, "label": i.label or i.name.title(), "page": i.page}
                 for i in self.infos.values() if i.page]
+
+    async def forget_person(self, person_id: str, name: str) -> int:
+        """Every module drops what it keeps about someone being removed (Module.forget_person)."""
+        n = 0
+        for mname, m in self.modules.items():
+            try:
+                n += int(await m.forget_person(person_id, name) or 0)
+            except Exception:
+                log.exception("module %s forget_person failed", mname)
+        return n
 
     # ---------------------------------------------------------------- background jobs
     def start(self) -> None:

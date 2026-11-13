@@ -80,9 +80,11 @@ async def people_action(people: People, memory: Memory, conv: Conversation, m: M
             people.update_person(pid, role=m.data.get("role"))
             return {"ok": True}
         if act == "remove":
+            person = people.get(pid) or {}
             n = memory.forget_person(pid)
+            other = await conv.modules.forget_person(pid, person.get("name", "")) if conv.modules is not None else 0
             people.remove_person(pid)
-            return {"ok": True, "memories_removed": n}
+            return {"ok": True, "memories_removed": n, "other_removed": other}
         if act == "forget_voice":
             people.forget_voice(pid)
             return {"ok": True}

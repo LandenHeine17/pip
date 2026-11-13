@@ -156,3 +156,28 @@ async def test_a_slow_web_look_up_is_awaited_and_pip_says_so(tmp_path, monkeypat
     assert looked["count"] == 1 and looked["seconds"] >= 1.3
     assert "huskers" not in json.dumps(bus.trace.recent()).lower()     # the query is never logged
     await finish(bus, tasks)
+
+
+async def test_that_was_sam_not_me_fixes_the_line_and_learns_the_voice(tmp_path):
+    """PIP-NEW-026 (D-128): a correction relabels the line before it and, said by someone Pip knows for sure,
+    adds that line's audio to Sam's voice."""
+    from pip_assistant.core.people import Match
+    people = People(tmp_path / "pip.db", embedder=FakeEmbedder())
+    landen, sam = people.add_person("Landen", "admin"), people.add_person("Sam")
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, "", social={"join_in": False}, people=people)
+    conv.hear("I'm going to the store", Match(landen["id"], "Landen", "probably", 0.5), pcm=b"x" * 64000)
+    me = Match(landen["id"], "Landen", "sure", 0.9)
+    conv.hear("Pip, that was Sam, not me", me, pcm=b"y" * 64000)
+    before = len(list(people.db.execute("SELECT 1 FROM voices WHERE person_id = ?", (sam["id"],))))
+    await conv.claude_action('ACTION {"do": "correct_speaker", "name": "sam"}', 0.0, asker=(me, b""))
+    await asyncio.sleep(0.1)
+    [line] = [x for x in conv.transcript.lines if x["text"] == "I'm going to the store"]
+    assert line["speaker"] == "Sam"
+    assert len(list(people.db.execute("SELECT 1 FROM voices WHERE person_id = ?", (sam["id"],)))) == before + 1
+    assert says(got)[-1] == "Got it, that was Sam. I'll know Sam's voice better now."
+    conv.hear("again", None, pcm=b"z" * 64000)                       # someone Pip doesn't know: relabelled only
+    conv.hear("that was Sam", Match(), pcm=b"z" * 64000)
+    await conv.claude_action('ACTION {"do": "correct_speaker", "name": "Sam"}', 0.0, asker=(Match(), b""))
+    await asyncio.sleep(0.1)
+    assert says(got)[-1] == "Got it, that was Sam."
+    await finish(bus, tasks)

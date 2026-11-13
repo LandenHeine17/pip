@@ -198,6 +198,13 @@ class GoogleAccounts:
                 fn(aid)
         return self.account(aid)
 
+    async def forget_person(self, person_id: str, name: str) -> int:
+        """They're removed from the household: their Google accounts are disconnected (and their copies dropped)."""
+        accs = self.accounts(person_id)
+        for a in accs:
+            await self.disconnect(a["id"])
+        return len(accs)
+
     async def disconnect(self, aid: str) -> None:
         token = ((self.ctx.secrets.get("accounts") or {}).get(aid) or {}).get("refresh_token")
         if token:
@@ -283,6 +290,9 @@ class Google(Module):
         self.ctx = ctx
         self.api = GoogleAccounts(ctx)
         self.actions = {}
+
+    async def forget_person(self, person_id: str, name: str) -> int:
+        return await self.api.forget_person(person_id, name)
 
     def people_links(self, person_id: str) -> list[dict]:
         """On the dashboard's People card: that person's Google settings, or a button to connect their account."""

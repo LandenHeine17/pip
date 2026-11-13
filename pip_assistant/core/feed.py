@@ -9,6 +9,7 @@ the dashboard, never logged or saved (D-34, D-53).
     note           a small event bar on the feed ("chimed", "mic off for 12 s"…), no words
 """
 import time
+from collections import deque
 
 from ..common.messages import Message
 
@@ -36,10 +37,14 @@ class Feed:
         sp = speaker if speaker is not None else self.speaker
         return sp.label if sp is not None else "Someone"
 
-    def hear(self, text: str, speaker=None) -> None:
-        """A person said this (to Pip or not): into the room transcript."""
-        self.transcript.add(self.label(speaker), text)
+    def hear(self, text: str, speaker=None, pcm: bytes | None = None) -> None:
+        """A person said this (to Pip or not): into the room transcript. The last few lines' audio is kept in
+        memory only (`recent_heard`), so "that was Sam, not me" can fix who said it and teach Pip Sam's voice
+        (`correct_speaker`, D-128); it's never saved or logged."""
+        line = self.transcript.add(self.label(speaker), text)
         self.last_voice_at = time.time()
+        recent = self.__dict__.setdefault("recent_heard", deque(maxlen=4))
+        recent.append((line, speaker if speaker is not None else self.speaker, pcm))
 
     def said(self, text: str) -> None:
         """Pip said this."""

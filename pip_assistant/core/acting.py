@@ -105,6 +105,8 @@ class Acting:
                     said.append(text)
                     done += ok
                     continue
+                elif step[0] == "correct_speaker":
+                    said.append(await self.correct_speaker(step[1], speaker))
                 elif step[0] == "learn_voice":
                     r = await self.people_cmds.introduced(step[1], True, speaker, pcm) \
                         if self.people_cmds else "I can't recognise voices yet."
@@ -154,6 +156,28 @@ class Acting:
             self.filler_said = "searching"
             await self.say("Let me look that up.", "searching")
             self.refresh_state()
+
+    async def correct_speaker(self, name: str, corrector) -> str:
+        """"That was Sam, not me" (PIP-NEW-026, D-128): the line before this one is relabelled in the transcript, and if
+        someone Pip knows for sure made the correction about someone who lives here, that line's audio is added
+        to their voice, so he gets it right next time. Voice alone never grants anything (D-87); a correction
+        only adds one sample, and anyone can be re-learned on the dashboard."""
+        recent = list(self.__dict__.get("recent_heard", ()))
+        if len(recent) < 2:
+            return "I'm not sure which line you mean."
+        line, _, pcm = recent[-2]          # (the last one is the correction itself)
+        person = self.people.by_name(name) if self.people is not None else None
+        line["speaker"] = person["name"] if person else name
+        learned = 0
+        sure = corrector is not None and corrector.level == "sure" and not corrector.guest
+        if person and pcm and sure:
+            try:
+                learned = await self.people.add_samples(person["id"], [pcm], f"corrected by {corrector.name}")
+            except Exception as e:
+                log.warning("voice correction failed: %s", type(e).__name__)
+        await self.bus.publish(Message("event", "voice.corrected", data={"learned": bool(learned)}))
+        who = line["speaker"]
+        return f"Got it, that was {who}." + (f" I'll know {who}'s voice better now." if learned else "")
 
     async def look_up(self, looks: list[dict], again: tuple | None, t0: float, asker: tuple | None = None) -> None:
         """Claude asked to see more first (the calendar for next Friday, the web, …): fetch it and ask again.

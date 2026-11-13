@@ -99,3 +99,14 @@ def test_only_a_module_allowed_to_may_ask_for_summaries(tmp_path):
     ctx = ModuleContext(info, db_path=tmp_path / "pip.db")
     with pytest.raises(PermissionError):
         asyncio.run(ctx.summarize(["a"]))
+
+
+def test_removing_someone_deletes_the_notes_they_were_in(setup):
+    reg, rec, clock, asked = setup
+    hear(rec, clock)                                             # Caleb's conversation
+    asyncio.run(rec.write_notes())
+    hear(rec, clock, who=None)                                   # strangers only
+    asyncio.run(rec.write_notes())
+    assert asyncio.run(reg.forget_person("c", "Caleb")) == 1
+    [left] = rec.notes()
+    assert left["people"] == ""

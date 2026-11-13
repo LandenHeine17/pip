@@ -586,11 +586,11 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             kind = self.follow_up_for(self.speaker)       # D-124: the same voice, or anyone after a question
             if kind == "room":
                 await self.decided("follow_up_other_voice", "room")
-                await self.room_talk(text, self.speaker, offline, time.time() - self.last_voice_at)
+                await self.room_talk(text, self.speaker, offline, time.time() - self.last_voice_at, pcm=pcm)
                 return
             if kind == "likely":   # for him, as far as Pip can tell; Claude may still PASS (D-127)
                 kind, ask = "direct", "follow_up_likely"
-        self.hear(text)
+        self.hear(text, pcm=pcm)
         await self.feed(text, "direct" if kind == "direct" else "mentioned", self.speaker, stt_s=stt_s, offline=offline,
                         reason=reason)
         if reason == "wake" and NOT_PIP.search(text) and not PIP_NAMES.search(text):
@@ -768,9 +768,9 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
                                                                      "addressed": how != "room", "how": how,
                                                                      "speaker": speaker.level if speaker else None}))
         if how == "room":
-            await self.room_talk(text, speaker, offline, quiet_for)
+            await self.room_talk(text, speaker, offline, quiet_for, pcm=pcm)
             return
-        self.hear(text, speaker)
+        self.hear(text, speaker, pcm=pcm)
         await self.feed(text, "mentioned" if kind == "follow_up" else how, speaker, offline=offline)
         self.joining.cancel_wait()
         if not expected and await self.modules_answer(text, speaker, how):
@@ -787,9 +787,9 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         await self.addressed(text, "expected" if expected else "transcript", offline=offline, chime=not expected,
                              heard_s=msg.data.get("seconds") or 0, ended_at=self.speech_ended(msg), kind=kind)
 
-    async def room_talk(self, text: str, speaker, offline: bool, quiet_for: float) -> None:
+    async def room_talk(self, text: str, speaker, offline: bool, quiet_for: float, pcm: bytes | None = None) -> None:
         """Room talk, not for Pip: into the transcript and the feed; welcome back, the modules, maybe joining in."""
-        self.hear(text, speaker)
+        self.hear(text, speaker, pcm=pcm)
         await self.feed(text, "room", speaker, offline=offline)
         self.room_until = time.monotonic() + 4.0   # following the conversation (D-112)
         self.refresh_state()

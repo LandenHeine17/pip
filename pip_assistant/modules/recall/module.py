@@ -160,6 +160,16 @@ class Recall(Module):
             return f"No notes of conversations for {what} (notes are kept {self.ctx.settings['keep_days']} days)."
         return f"Your notes of conversations for {what}: " + " ".join(self.line(n) for n in found[:3])
 
+    async def forget_person(self, person_id: str, name: str) -> int:
+        """They're removed from the household: notes of conversations they took part in are deleted."""
+        if not name:
+            return 0
+        ids = [n["id"] for n in self.notes() if name in [p.strip() for p in n["people"].split(",")]]
+        for i in ids:
+            self.db.execute("DELETE FROM recall_notes WHERE id = ?", (i,))
+        self.db.commit()
+        return len(ids)
+
     # ---------------------------------------------------------------- its page
     async def dashboard(self, action: str, args: dict) -> dict:
         if action == "list":
