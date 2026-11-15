@@ -405,3 +405,24 @@ async def test_a_join_in_reply_that_comes_too_late_is_dropped(tmp_path):
     await asyncio.sleep(0.05)
     assert says(got) == [] and conv.answer_id is None
     await finish(bus, tasks)
+
+
+async def test_a_message_typed_on_the_dashboard_is_answered_quietly_unless_asked(tmp_path):
+    """D-131: the front page's chat box. Typed words go the same way as speech (Pip's own commands, then
+    Claude), as the person picked on the page; the reply comes back to the page, and is said only if asked."""
+    from pip_assistant.core.people import Match
+    from pip_assistant.core.schedule import Schedule
+    sched = Schedule(tmp_path / "pip.db")
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, social={"join_in": False}, schedule=sched,
+                                                    replies={"direct": ["Pretty good, you?", "Hi there."]})
+    landen = Match("p1", "Landen", "sure", 1.0)
+    reply = await conv.typed("how's it going", landen)
+    assert reply == "Pretty good, you?" and says(got) == []
+    assert asks[0][1]["text"] == "how's it going" and conv.transcript.lines[-2]["speaker"] == "Landen"
+    assert not conv.typing and conv.speaker is None
+    reply = await conv.typed("set a timer for 5 minutes", landen)          # Pip's own command, no Claude
+    assert "5 minutes" in reply and len(asks) == 1 and len(sched.active()) == 1 and says(got) == []
+    reply = await conv.typed("say hi", None, aloud=True)
+    await asyncio.sleep(0.1)
+    assert reply == "Hi there." and says(got) == ["Hi there."]
+    await finish(bus, tasks)

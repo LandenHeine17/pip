@@ -12,7 +12,7 @@ from ..common.program import release_info
 from ..common.messages import Message
 from .bus import Bus
 from .conversation import Conversation
-from .dashapi import (alert_action, alerts_snapshot, face_status, memory_action, memory_snapshot, mic_action, people_action,
+from .dashapi import (alert_action, alerts_snapshot, chat, face_status, memory_action, memory_snapshot, mic_action, people_action,
                       people_snapshot, tv_snapshot)
 from .memory import Memory
 from .mic import MicSwitch
@@ -92,6 +92,8 @@ def build(cfg: dict) -> Core:
     from .yourdata import YourData   # Settings → Your data: export and delete everything (PIP-NEW-034, D-128)
     your_data = YourData(memory, people, modules, conv)
     bus.core_handlers["core.data"] = lambda m: privately(your_data.handle, m)
+    # The front page's chat box: typed to Pip, answered like speech (D-131); the words travel privately
+    bus.core_handlers["core.chat"] = lambda m: privately(lambda d: chat(conv, people, schedule, d), m)
     return Core(bus, trace, schedule, net, modules)
 
 

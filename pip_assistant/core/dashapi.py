@@ -2,7 +2,8 @@
 
     alerts_snapshot   the timers card (core.alerts), with the cards modules add (the calendar's next two weeks)
     tv_snapshot       what the face on the monitor shows (core.tv): timers, and each module's boxes
-    alert_action      the timers card's buttons and forms, and commands typed on the dashboard (core.alert_action)
+    alert_action      the timers card's buttons and forms (core.alert_action)
+    chat              the front page's chat box: a message typed to Pip, answered like speech (core.chat)
     people_action     people and voices (core.people_action)
     memory_snapshot   the Memory Center's list (core.memory)
     memory_action     the Memory Center's buttons (core.memory_action)
@@ -18,7 +19,7 @@ from ..common.messages import Message
 from .conversation import Conversation
 from .memory import CATEGORIES, Memory, Refused
 from .modules import Registry
-from .people import People, m0_owner_clips
+from .people import Match, People, m0_owner_clips
 from .schedule import Schedule
 
 
@@ -184,9 +185,20 @@ async def alert_action(schedule: Schedule, conv: Conversation, m: Message) -> di
             return {"error": "Pick between 1 second and 24 hours"}
         row = schedule.add("timer", (m.private.get("label") or "timer").strip()[:40] or "timer", schedule.clock() + secs, length=secs)
         return {"ok": True, "id": row["id"], "said": when.say_duration(secs)}
-    if act == "command":  # typed into the dashboard: the same commands as speaking; any typed message answers an alarm
-        if schedule.ringing:
-            await schedule.acknowledge("typed")
-        reply = await conv.commands.handle(m.private.get("text", ""))
-        return ({"handled": reply is not None}, {"reply": reply or ""})
     return {"error": f"unknown action {act}"}
+
+
+async def chat(conv: Conversation, people: People, schedule: Schedule, d: dict) -> dict:
+    """The front page's chat box: a message typed to Pip (core/conversation.py `typed`). {"text", "person" (whose
+    message it is: a household member picked on the page, or "" for someone), "aloud" (say the reply in the
+    room too)} → {"reply"}. Like anything said to Pip, a typed message answers a ringing alarm. Private both ways."""
+    text = re.sub(r"\s+", " ", str(d.get("text") or "")).strip()[:500]
+    if not text:
+        return {"error": "Type something first"}
+    if schedule.ringing:
+        await schedule.acknowledge("typed")
+        return {"reply": "Okay, it's off."}
+    p = people.get(str(d.get("person") or "")) if d.get("person") else None
+    who = Match(p["id"], p["name"], "sure", 1.0) if p else None
+    reply = await conv.typed(text, who, aloud=bool(d.get("aloud")))
+    return {"reply": reply}

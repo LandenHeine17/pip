@@ -159,7 +159,7 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         return await core_get("core.alerts")
 
     async def alert_action(request):
-        """Shut off / snooze / cancel / new timer / typed command. Labels and typed text travel privately."""
+        """Shut off / snooze / cancel / new timer. Labels travel privately."""
         body = await request.json()
         private = {k: str(body.pop(k))[:200] for k in ("label", "text") if k in body}
         data = {k: body[k] for k in ("action", "id", "minutes") if k in body}
@@ -325,6 +325,7 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
                              Route("/settings", settings_page),
                              Route("/api/settings", passed_to_core("core.settings", 300), methods=["GET", "POST"]),
                              Route("/api/data", passed_to_core("core.data", 60), methods=["GET", "POST"]),
+                             Route("/api/chat", passed_to_core("core.chat", 120), methods=["POST"]),
                              Route("/api/personality", passed_to_core("core.personality", 70), methods=["GET", "POST"]),
                              Route("/api/migrate", passed_to_core("core.migrate", 60), methods=["GET", "POST"]),
                              Route("/changes", changes_page),

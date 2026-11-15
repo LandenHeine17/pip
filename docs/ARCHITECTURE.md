@@ -131,6 +131,7 @@ What else leaves the Pi:
 | Groq | Audio of everything said in the room while Pip is listening, plus the household's first names as spelling hints | As it happens |
 | Claude | The room transcript (last 40 lines), memories, what's set, the calendar's today and tomorrow plus counts for the week (the rest only when Claude looks it up, D-102) and open to-dos (only what the speaker may hear; never private events or ignored calendars), the allowed actions. Join-in checks get only the rest of today | Each answer, mention or join-in check (at most every ~40 s) |
 | Open-Meteo | "Lincoln, Nebraska" | Weather updates |
+| Tuya (smart plugs, D-132, until the plugs' own network) | Which plug to switch on or off; the list of plugs and whether each is on | When a plug is switched, and every 10 minutes |
 | Brave Search | The search words Claude chose (the websearch module, D-125; needs the owner's key) | Only when Claude looks something up on the web |
 | Google | For each person who connected their account (D-97): their calendar events and to-dos, both ways (D-98, D-100). Private events are kept on the Pi too but never told to Claude | Every ~2 min, and straight after a change |
 | Claude (self-changes) | The request, Pip's code (the workspace copy) and the plan; never `~/pip-data` | When a change is planned or built (D-118) |
@@ -138,7 +139,7 @@ What else leaves the Pi:
 
 ## 7. Modules: how features plug in
 
-Every new feature is a **module**: a folder with a short description file and a little code. Pip finds modules automatically at startup (D-96, built 2026-11-07). This is the main way Pip grows, whether the module is written by you, by Claude, or by Pip's own self-change. Today: **google** (accounts), **calendar**, **todos**, **screen** (what's on the monitor, D-111), **websearch** (D-125), **six_seven** (Pip's first self-change, D-121) and **recall** (conversation notes, D-128). (The older built-in parts, like timers and memory, live in pip-core.)
+Every new feature is a **module**: a folder with a short description file and a little code. Pip finds modules automatically at startup (D-96, built 2026-11-07). This is the main way Pip grows, whether the module is written by you, by Claude, or by Pip's own self-change. Today: **google** (accounts), **calendar**, **todos**, **screen** (what's on the monitor, D-111), **websearch** (D-125), **six_seven** (Pip's first self-change, D-121), **recall** (conversation notes, D-128) and **tuya** (smart plugs through Tuya's cloud, a stopgap, D-132). (The older built-in parts, like timers and memory, live in pip-core.)
 
 ### 7.1 Kinds of module
 
@@ -336,7 +337,7 @@ pip/                          (the repo)
 │   ├── builder/              pip-builder (the self-change pipeline: store, sandbox, agent, pipeline)
 │   ├── release.py            versioned installs with automatic rollback (run with the system python3)
 │   ├── common/               shared bits: messages, settings, secrets, paths, db (opening pip.db), when (times)
-│   └── modules/              plug-in features: google, calendar, todos, screen, websearch, six_seven, recall (+ _template/)
+│   └── modules/              plug-in features: google, calendar, todos, screen, websearch, six_seven, recall, tuya (+ _template/)
 ├── models/                   generic, public-safe models
 ├── deploy/                   systemd service files (deploy/systemd/, incl. pip-builder.service), install.sh (installs the committed HEAD as a release); the monitor's kiosk (deploy/tv/, install-tv.sh); https (install-https.sh)
 ├── tools/                    the commit checks, and sandbox-test (tests with no network and no home folder)

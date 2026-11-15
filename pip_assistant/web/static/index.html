@@ -34,14 +34,18 @@
   </div>
   <form id="newtimer"><input id="tmin" type="number" min="0.1" step="0.1" placeholder="Minutes" style="width:7em" required>
     <input id="tlabel" placeholder="Label (optional)" maxlength="40" style="flex:1;min-width:8em"><button class="primary">Start timer</button></form>
-  <form id="typed"><input id="ttext" placeholder='Type a command: "remind me at 6 to call Mom"' style="flex:1;min-width:14em" maxlength="200">
-    <button>Send</button></form><div class="sub" id="typedreply" style="margin-top:6px"></div>
 </section>
 </div>
 
 <section>
   <div class="head"><h2>Conversation</h2><span class="sub"><label style="display:inline-flex;gap:5px;align-items:center"><input type="checkbox" id="showroom" checked onchange="renderConv()"> everything heard</label> · live, never saved</span></div>
-  <div id="conv"><div class="empty">Say "Pippletron" or "Hey Pip" and ask something.</div></div>
+  <!-- Typed to Pip (D-131): answered like the same words said to him, by the person picked here -->
+  <form id="chat" style="margin-bottom:10px"><input id="ctext" placeholder="Message Pip…" style="flex:1;min-width:14em" maxlength="500" autocomplete="off">
+    <select id="cfrom" title="Who's typing"><option value="">Someone</option></select>
+    <label class="sub" style="display:inline-flex;gap:5px;align-items:center"><input type="checkbox" id="caloud"> say it out loud</label>
+    <button class="primary" id="csend">Send</button></form>
+  <div class="sub" id="creply" style="margin:-4px 0 10px;white-space:pre-wrap"></div>
+  <div id="conv"><div class="empty">Say "Pippletron" or "Hey Pip" and ask something, or type to him above.</div></div>
 </section>
 </div>
 
@@ -267,7 +271,29 @@ async function removeItem(module, action, id, repeats){
 async function loadSched(){ try{ const r = await (await fetch("/api/alerts",{cache:"no-store"})).json(); if(r.now){ sched = r; skew = Date.now()/1000 - r.now; $("ringing").dataset.key = ""; renderSched(); } }catch(e){} }
 async function act(body){ try{ const r = await (await fetch("/api/alerts/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})).json(); if(r.error) alert(r.error); return r; }catch(e){ alert("Couldn't reach Pip"); } finally { loadSched(); } }
 $("newtimer").onsubmit = async ev => { ev.preventDefault(); const r = await act({action:"timer", minutes:+$("tmin").value, label:$("tlabel").value}); if(r && r.ok){ $("tmin").value=""; $("tlabel").value=""; } };
-$("typed").onsubmit = async ev => { ev.preventDefault(); const r = await act({action:"command", text:$("ttext").value}); if(r){ $("typedreply").textContent = r.handled ? "Pip: "+(r.reply||"Okay.") : "That's not one of Pip's commands (ask him out loud for anything else)."; if(r.handled) $("ttext").value=""; } };
+// ---------------------------------------------------------------- the chat box (D-131): typed to Pip, answered like speech
+const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
+function chatPeople(){
+  const sel = $("cfrom"), keep = sel.value || store("pip.chat.from") || "";
+  sel.innerHTML = `<option value="">Someone</option>` + (ppl.people || []).filter(p => !p.guest).map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
+  sel.value = [...sel.options].some(o => o.value === keep) ? keep : "";
+}
+$("caloud").checked = store("pip.chat.aloud") === "1";
+$("caloud").onchange = () => store("pip.chat.aloud", $("caloud").checked ? "1" : "0");
+$("cfrom").onchange = () => store("pip.chat.from", $("cfrom").value);
+$("chat").onsubmit = async ev => {
+  ev.preventDefault();
+  const text = $("ctext").value.trim(); if (!text) return;
+  $("csend").disabled = true; $("creply").textContent = "Pip is thinking…";
+  try {
+    const r = await (await fetch("/api/chat", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({text, person: $("cfrom").value, aloud: $("caloud").checked})})).json();
+    if (r.error) { $("creply").textContent = r.error; return; }
+    $("creply").textContent = r.reply ? "Pip: " + r.reply : "Pip didn't say anything (he decided it wasn't for him).";
+    $("ctext").value = "";
+  } catch (e) { $("creply").textContent = "Couldn't reach Pip."; }
+  finally { $("csend").disabled = false; $("ctext").focus(); loadSched(); }
+};
 setInterval(renderSched, 1000); setInterval(loadSched, 30000);
 // ---------------------------------------------------------------- memory
 let mem = {memories:[], categories:{}};
@@ -336,7 +362,7 @@ function renderPeople(){
 }
 // ppl.links: each person's links that modules add (core/modules.py people_links), like "Google settings" (D-109)
 async function loadPeople(){ try{ const r = await (await fetch("/api/people",{cache:"no-store"})).json();
-  if(r.people){ ppl = r; renderPeople(); } }catch(e){} }
+  if(r.people){ ppl = r; renderPeople(); chatPeople(); } }catch(e){} }
 async function pAct(body){ try{ const r = await (await fetch("/api/people/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})).json(); if(r.error) alert(r.error); return r; }catch(e){ alert("Couldn't reach Pip"); } finally { loadPeople(); loadMemory(); } }
 $("personadd").onsubmit = async ev => { ev.preventDefault(); const r = await pAct({action:"add", name:$("pname").value, role:$("prole").value}); if (r && r.ok) $("pname").value = ""; };
 setInterval(() => { if (ppl.enrolling) loadPeople(); }, 1500);
