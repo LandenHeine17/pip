@@ -17,6 +17,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -92,7 +93,7 @@ def check_command(cid, src: Path, minutes: float = 15) -> list[str]:
     """systemd-run for the full test suite plus an import smoke run in the strict sandbox (no network)."""
     src = Path(src)
     script = (".venv/bin/python -m pytest -q -p no:cacheprovider && echo 'Start-up check:' && "
-              f".venv/bin/python -c '{SMOKE}' && echo 'all modules import'")
+              f".venv/bin/python -c {shlex.quote(SMOKE)} && echo 'all modules import'")   # SMOKE has quotes in it
     return ["systemd-run", "--user", "--wait", "--pipe", "--collect", "--quiet", f"--unit={check_unit(cid)}",
             f"--working-directory={src}",
             "-p", "ProtectHome=tmpfs", "-p", f"BindPaths={src}", "-p", f"BindReadOnlyPaths={src / '.venv'}",

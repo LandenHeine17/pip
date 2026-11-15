@@ -199,3 +199,16 @@ def test_agent_sandbox_hides_home_except_workspace_and_login(tmp_path):
                    "login file": "allowed", "change wrapper": "blocked", "change venv": "blocked",
                    "write workspace": "allowed"}
     assert (src / "ok.txt").exists() and (work / "home/.claude/.credentials.json").stat().st_size == 0
+
+
+def test_check_commands_start_up_check_reaches_python_intact(tmp_path):
+    """The start-up check is a Python one-liner inside `sh -c`; its quotes must survive the shell (they once
+    didn't, and every self-change failed with a SyntaxError after its tests passed)."""
+    import subprocess
+    script = sandbox.check_command("7", tmp_path)[-1]
+    smoke = script.split("echo 'Start-up check:' && ", 1)[1].split(" && echo", 1)[0]
+    # what the shell hands Python: print it instead of running it, then check it's the one-liner and parses
+    shown = subprocess.run(["/bin/sh", "-c", smoke.replace(".venv/bin/python -c", "printf %s", 1)],
+                           capture_output=True, text=True, check=True).stdout
+    assert shown == sandbox.SMOKE
+    compile(shown, "<smoke>", "exec")

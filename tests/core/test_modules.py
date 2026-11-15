@@ -109,7 +109,12 @@ def test_the_dashboard_serves_module_pages_and_passes_requests_privately():
 
     bus = Bus()
     client = TestClient(build_app(bus, State(), {}))
-    assert [m["label"] for m in client.get("/api/modules").json()] == ["Calendar", "Conversations", "Google", "Screen", "To-dos"]
+    # every module with a dashboard page gets a button, whichever modules are installed (no fixed list, so a new
+    # module's page doesn't need this test changed)
+    from pip_assistant.common.modules import enabled
+    with_page = [m.label or m.name.title() for m in sorted(enabled({}), key=lambda m: m.label or m.name) if m.page]
+    labels = [m["label"] for m in client.get("/api/modules").json()]
+    assert labels == with_page and {"Calendar", "To-dos"} <= set(labels)
     page = client.get("/m/calendar/")
     assert page.status_code == 200 and "text/html" in page.headers["content-type"]
     assert client.get("/m/calendar/../module.py").status_code == 404           # nothing outside static/
