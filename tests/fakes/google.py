@@ -195,8 +195,8 @@ async def connect(google_module, fake: FakeGoogle, person_id: str, email: str) -
     """Go through Pip's sign-in for one person, as if they'd pasted Google's address back."""
     g = google_module.api
     if not g.configured():
-        await google_module.dashboard("save_client", {"client_id": "123-abc.apps.googleusercontent.com",
-                                                      "client_secret": "GOCSPX-test-secret"})
+        await google_module.dashboard("save_client", {"client_id": "123-abc.apps.googleusercontent.com",   # secret-check: allow (fake)
+                                                      "client_secret": "GOCSPX-test-secret"})   # secret-check: allow (fake)
     url = (await google_module.dashboard("connect", {"person_id": person_id}))["url"]
     state = parse_qs(urlparse(url).query)["state"][0]
     await google_module.dashboard("finish", {"pasted": f"http://127.0.0.1:8765/?state={state}&code={fake.sign_in_code(email)}"})

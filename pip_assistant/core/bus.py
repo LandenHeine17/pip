@@ -33,6 +33,7 @@ class Bus:
         self.core_waiting: dict = {}            # request id -> future, for requests core itself sent
         self.on_connect: list = []              # coroutines called with a program's name when it (re)connects
         self.on_subscribe: list = []            # …and when it has said which events it wants (it can receive them now)
+        self.answering: set[asyncio.Task] = set()   # requests to core being answered (kept so they aren't lost)
         self.server = None
 
     async def start(self) -> None:
@@ -114,7 +115,11 @@ class Bus:
                                            data={"type": msg.type, "target": msg.target, "from": msg.source}))
         elif msg.kind == "request":
             if msg.target == "core":
-                await self._answer_core(msg)
+                # In its own task: a slow one (a typed message waits for Claude) mustn't hold up everything
+                # else from that program, its heartbeats included (the watchdog would think it stuck).
+                task = asyncio.create_task(self._answer_core(msg))
+                self.answering.add(task)
+                task.add_done_callback(self.answering.discard)
             elif msg.target in self.writers:
                 self.waiting[msg.id] = msg.source
                 await self._send(msg.target, msg)
@@ -196,17 +201,20 @@ class Bus:
         last_prune = 0.0
         while True:
             await asyncio.sleep(every)
-            self.trace.flush()
-            for action in self.health.check():
-                await self.publish(Message("event", "health.restarted", source="core", data=action))
-            await self.publish_health()
-            if time.time() - last_prune > 3600:
-                self.trace.prune()
-                if getattr(self, "schedule", None):
-                    self.schedule.prune()
-                if getattr(self, "memory", None):
-                    self.memory.prune()
-                last_prune = time.time()
+            try:   # one failure (say, the database busy) must never stop the trace, the watchdog or health
+                self.trace.flush()
+                for action in self.health.check():
+                    await self.publish(Message("event", "health.restarted", source="core", data=action))
+                await self.publish_health()
+                if time.time() - last_prune > 3600:
+                    last_prune = time.time()
+                    self.trace.prune()
+                    if getattr(self, "schedule", None):
+                        self.schedule.prune()
+                    if getattr(self, "memory", None):
+                        self.memory.prune()
+            except Exception:
+                log.exception("housekeeping failed; trying again in %s s", every)
 
     async def publish_health(self) -> None:
         snap = self.health.snapshot()

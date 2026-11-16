@@ -278,7 +278,7 @@ The voice engine is a setting: `voice_engine` under `[ears]` in `defaults.toml` 
 ## 10. Updates, restarts and recovery
 
 - Each program is a **systemd service**: started at boot, restarted if it crashes, memory-capped.
-- **Watchdog:** each program sends a heartbeat. A missed heartbeat means it's stuck, so it gets restarted and logged (PIP-NEW-079).
+- **Watchdog:** each program sends a heartbeat. A missed heartbeat means it's stuck, so it gets restarted and logged (PIP-NEW-079) If pip-core itself was held up, nobody is restarted for it, and restarts never make pip-core wait. A program whose listening, speaking or other main loop dies exits, so systemd restarts it, instead of sending heartbeats while deaf or mute (`common/program.py serve`).
 - **Versioned installs** (built in M1b, PIP-NEW-080, D-118). Pip runs from a separate live copy, never straight from the repo. Every update, by you or by a self-change, goes through `pip_assistant/release.py`:
 
 ```mermaid

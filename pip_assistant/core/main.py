@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from .. import __version__
 from ..common import paths, settings
-from ..common.program import release_info
+from ..common.program import release_info, setup_logging
 from ..common.messages import Message
 from .bus import Bus
 from .conversation import Conversation
@@ -124,7 +124,7 @@ async def main() -> None:
 
 
 def run() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
+    setup_logging("%(name)s: %(message)s")   # (quiet web libraries: rule 1)
     asyncio.run(main())
 
 

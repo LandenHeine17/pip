@@ -63,10 +63,18 @@ class BusClient:
         await self._writer.drain()
 
     async def emit(self, msg_type: str, data: dict | None = None, private: dict | None = None) -> None:
-        await self.send(Message("event", msg_type, data=data or {}, private=private or {}))
+        """Tell whoever's listening. While pip-core is away (a restart takes 2–3 s) the event is dropped with a
+        warning, never raised: an error here would stop the loop that sent it (listening, speaking) for good."""
+        await self._send_or_drop(Message("event", msg_type, data=data or {}, private=private or {}))
 
     async def command(self, target: str, msg_type: str, data: dict | None = None, private: dict | None = None) -> None:
-        await self.send(Message("command", msg_type, target=target, data=data or {}, private=private or {}))
+        await self._send_or_drop(Message("command", msg_type, target=target, data=data or {}, private=private or {}))
+
+    async def _send_or_drop(self, msg: Message) -> None:
+        try:
+            await self.send(msg)
+        except (ConnectionError, OSError):
+            log.warning("%s: pip-core isn't connected; dropped %s", self.name, msg.type)   # (the type only)
 
     async def request(self, target: str, msg_type: str, data: dict | None = None,
                       private: dict | None = None, timeout: float = 10.0) -> Message:

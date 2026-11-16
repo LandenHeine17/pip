@@ -42,17 +42,38 @@ def make_bus(name: str) -> tuple[BusClient, dict]:
 
 
 async def serve(bus: BusClient, *extra: Callable[[], Awaitable[None]]) -> None:
-    """Run the bus connection (and any extra tasks) until SIGTERM/SIGINT."""
+    """Run the bus connection (and any extra tasks) until SIGTERM/SIGINT.
+
+    The tasks are meant to run forever (listening, speaking, …). If one ends anyway, most likely with an
+    error, the program exits with a failure so systemd restarts it: otherwise it would carry on sending
+    heartbeats, looking healthy, while never listening or speaking again."""
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)
     tasks = [asyncio.create_task(bus.run())] + [asyncio.create_task(fn()) for fn in extra]
-    await stop.wait()
-    for t in tasks:
+    stopping = asyncio.create_task(stop.wait())
+    done, _ = await asyncio.wait([stopping, *tasks], return_when=asyncio.FIRST_COMPLETED)
+    for t in [stopping, *tasks]:
         t.cancel()
+    ended = [t for t in done if t is not stopping]
+    if ended:
+        t = ended[0]
+        err = t.exception() if not t.cancelled() else None
+        logging.getLogger(__name__).error("%s: a task that should run forever ended (%s); exiting so it restarts",
+                                          bus.name, type(err).__name__ if err else "returned", exc_info=err)
+        raise SystemExit(1)
+
+
+def setup_logging(fmt: str) -> None:
+    """INFO to the journal, but not the web libraries' own lines: httpx logs every request's full address,
+    and those hold what someone asked (a web search's ?q=), email addresses (Google calendar ids) and
+    tokens (rule 1). Their warnings and errors still show."""
+    logging.basicConfig(level=logging.INFO, format=fmt)
+    for lib in ("httpx", "httpcore"):
+        logging.getLogger(lib).setLevel(logging.WARNING)
 
 
 def start(name: str, main: Callable[[], Awaitable[None]]) -> None:
-    logging.basicConfig(level=logging.INFO, format=f"pip-{name}: %(message)s")
+    setup_logging(f"pip-{name}: %(message)s")
     asyncio.run(main())

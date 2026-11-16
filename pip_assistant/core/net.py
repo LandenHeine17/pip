@@ -3,9 +3,8 @@ about anyone. Offline after two failed checks in a row (or at once when speech-t
 online again on the first success. Published as `net.changed {online}` for the dashboard's small
 offline indicator; Conversation uses it to fall back to Pip's own offline commands (D-83, D-94).
 
-The check sends no key on purpose, so Groq answers "401 Unauthorized": that still means reachable. httpx
-logs every request, so those lines are dropped from the log (`QuietCheck`) instead of showing up as a
-fake error every 30 s; speech-to-text's own requests are still logged.
+The check sends no key on purpose, so Groq answers "401 Unauthorized": that still means reachable. (httpx's
+request lines aren't logged at all, `common/program.py setup_logging`, so it doesn't show as an error.)
 """
 import asyncio
 import logging
@@ -17,14 +16,6 @@ from ..common.messages import Message
 log = logging.getLogger(__name__)
 URL = "https://api.groq.com/openai/v1/models"   # any answer (even "not signed in") means reachable
 
-
-class QuietCheck(logging.Filter):
-    """Drops httpx's "HTTP Request: GET …/models 401 Unauthorized" line for the online check."""
-    def filter(self, record: logging.LogRecord) -> bool:
-        return URL not in record.getMessage()
-
-
-logging.getLogger("httpx").addFilter(QuietCheck())
 
 
 class Net:

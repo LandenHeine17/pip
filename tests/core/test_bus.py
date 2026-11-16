@@ -44,11 +44,32 @@ def test_health_states_and_restart():
     assert h.state("ears") == MISSING
     h.heartbeat("ears", {"rss_mb": 40})
     assert h.state("ears") == OK
-    now[0] += 11
+    for _ in range(5):          # pip-core checks every 2 s; ears stops sending heartbeats
+        now[0] += 2
+        assert h.check() == []
+    now[0] += 2
     assert h.state("ears") == STUCK
     assert h.check() == [{"program": "ears", "state": STUCK, "restarted": True}]
     assert h.check() == []  # not again within 60 s
     assert restarted == ["ears"]
+
+
+def test_pip_cores_own_stall_restarts_nobody():
+    """The whole Pi stalled for 40 s: every heartbeat looks old, but that's pip-core's hold-up, not theirs."""
+    now = [1000.0]
+    restarted = []
+    h = Health(["ears", "web"], stuck_after=10, restart_fn=lambda n: restarted.append(n) or True, clock=lambda: now[0])
+    h.restart = True
+    now[0] += 31                # past the start-up grace
+    h.heartbeat("ears", {})
+    h.heartbeat("web", {})
+    h.check()
+    now[0] += 40                # pip-core held up: no check, no heartbeats read
+    assert h.check() == []      # skipped
+    h.heartbeat("ears", {})     # their queued heartbeats arrive
+    h.heartbeat("web", {})
+    now[0] += 2
+    assert h.check() == [] and restarted == []
 
 # ---------------------------------------------------------------- the hub, over real sockets
 
@@ -114,6 +135,29 @@ async def test_events_commands_requests_and_trace(hub):
     types = [r["type"] for r in rows]
     assert "timer.done" in types and "b.say" in types and "b.ask" in types
     assert all("pasta" not in json.dumps(r) and "hello" not in json.dumps(r) for r in rows)
+
+
+async def test_a_slow_request_to_core_holds_up_nothing_else(hub):
+    """A typed message waits for Claude; meanwhile the same program's other requests and heartbeats go through."""
+    bus, sock, connect, _ = hub
+    release = asyncio.Event()
+
+    async def slow(m):
+        await release.wait()
+        return {"reply": "done"}
+
+    bus.core_handlers["core.chat"] = slow
+    a = await connect("a")
+    await start(a)
+    chat = asyncio.create_task(a.request("core", "core.chat", timeout=5))
+    await asyncio.sleep(0.05)
+    seen = bus.health.programs["a"]["last_seen"]
+    quick = await a.request("core", "core.health", timeout=1)     # answered while the chat still waits
+    assert quick.data["programs"]["a"]["state"] == OK
+    await asyncio.sleep(0.3)
+    assert bus.health.programs["a"]["last_seen"] > seen             # heartbeats still read
+    release.set()
+    assert (await chat).data == {"reply": "done"}
 
 
 async def test_programs_cannot_impersonate(hub):

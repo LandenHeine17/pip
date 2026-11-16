@@ -4,7 +4,7 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
 
 ## 1. Before you change anything
 
-1. **Find out what phase we're in.** See `CLAUDE.md` → "Current phase". M1a, M1b and M2 are built (`docs/ARCHITECTURE.md` §14); next is M3 (smart home). The application is `pip_assistant/`; `m0/` holds the measurement tools from M0.
+1. **Find out what phase we're in.** See `CLAUDE.md` → "Current phase". M1a, M1b and M2 are built (`docs/ARCHITECTURE.md` §14); M3 (smart home) started 2026-11-15. The application is `pip_assistant/`; `m0/` holds the measurement tools from M0.
 2. **Find the requirement.** Read the relevant part of `docs/PIP-SPEC.md`, then look it up in `docs/REQUIREMENTS.md` (`PIP-NEW-nnn`, Ziggletron's `FEAT-nnn`, acceptance criteria `AC-*`). **When building a feature, open its Detail link**: the archived proposal holds the exact rules, edge cases and examples. Check REQUIREMENTS §0 (overridden passages) and `docs/DECISIONS.md` first; decisions win.
 3. **Check the owner's decisions** in `docs/DECISIONS.md` (`D-nn`). Decisions override the rest of the spec. If your change contradicts one, **stop and ask the owner**.
 4. **Read only what you need.** The map says which file covers what. You don't need to read everything.

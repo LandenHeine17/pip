@@ -36,7 +36,7 @@ async def test_two_people_connect_their_own_accounts(setup):
     mod, g, fake, people, tmp = setup
     with pytest.raises(ValueError):
         await mod.dashboard("connect", {"person_id": "x"})        # no client set up yet
-    await mod.dashboard("save_client", {"client_id": "123-abc.apps.googleusercontent.com", "client_secret": "GOCSPX-secret-1"})
+    await mod.dashboard("save_client", {"client_id": "123-abc.apps.googleusercontent.com", "client_secret": "GOCSPX-secret-1"})   # secret-check: allow (fake)
     landen, sam = people.add_person("Landen", "admin"), people.add_person("Sam")
     a = await connect(mod, g, fake, landen["id"], "landen@example.com")
     b = await connect(mod, g, fake, sam["id"], "sam@example.com")
@@ -68,7 +68,7 @@ async def test_two_people_connect_their_own_accounts(setup):
 
 async def test_a_pasted_address_from_another_sign_in_is_refused(setup):
     mod, g, fake, people, tmp = setup
-    await mod.dashboard("save_client", {"client_id": "123-abc.apps.googleusercontent.com", "client_secret": "GOCSPX-secret-1"})
+    await mod.dashboard("save_client", {"client_id": "123-abc.apps.googleusercontent.com", "client_secret": "GOCSPX-secret-1"})   # secret-check: allow (fake)
     p = people.add_person("Landen", "admin")
     await mod.dashboard("connect", {"person_id": p["id"]})
     with pytest.raises(ValueError):
@@ -78,7 +78,7 @@ async def test_a_pasted_address_from_another_sign_in_is_refused(setup):
 async def test_unticked_permissions_are_shown_not_hidden(setup):
     """Google's "what Pip can access" boxes start unticked: Pip says so instead of looking connected."""
     mod, g, fake, people, tmp = setup
-    await mod.dashboard("save_client", {"client_id": "123-abc.apps.googleusercontent.com", "client_secret": "GOCSPX-secret-1"})
+    await mod.dashboard("save_client", {"client_id": "123-abc.apps.googleusercontent.com", "client_secret": "GOCSPX-secret-1"})   # secret-check: allow (fake)
     p = people.add_person("Landen", "admin")
     fake.only_email = True
     await connect(mod, g, fake, p["id"], "landen@example.com")

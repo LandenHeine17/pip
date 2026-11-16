@@ -254,6 +254,9 @@ class Ears:
                 audio = await item if kind == "speech" else item
             except asyncio.CancelledError:
                 continue
+            except Exception:   # one sentence Piper couldn't make: skip it, keep speaking
+                log.exception("speech synthesis failed")
+                continue
             if audio is None or not len(audio):
                 continue
             self.speaking = True

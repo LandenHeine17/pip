@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Block commits that contain likely credentials or phone numbers.
+"""Block commits that contain likely credentials, phone numbers or the Pi's Tailscale address.
 
 Used as a git pre-commit hook (tools/install_hooks.sh) and can be run directly:
     python3 tools/check_secrets.py            # check staged changes
@@ -20,9 +20,17 @@ PATTERNS = {
     "AWS access key": re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     "Twilio SID": re.compile(r"\bAC[0-9a-f]{32}\b"),
     "Private key block": re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    # Any name ending in one of these, assigned a long quoted value: client_secret = "…", "access_secret": "…",
+    # refresh_token, local_key, access_id (Google's and Tuya's keys in secrets.toml).
     "Assigned secret": re.compile(
-        r"(?i)\b(api[_-]?key|auth[_-]?token|secret|password|oauth[_-]?token)\b\s*[=:]\s*['\"][^'\"\s]{12,}['\"]"
+        r"(?i)[\w-]*(api[_-]?key|token|secret|password|passwd|local[_-]?key|access[_-]?id|client[_-]?id)"
+        r"['\"]?\s*[=:]\s*['\"][^'\"\s]{12,}['\"]"
     ),
+    "Google API key": re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"),
+    "Google OAuth secret": re.compile(r"\bGOCSPX-[0-9A-Za-z_-]{20,}"),
+    "Google refresh token": re.compile(r"\b1//0[0-9A-Za-z_-]{30,}"),
+    # The Pi's address on Tailscale (100.64.0.0/10): the repo is public (D-70). Tests use 100.64.0.x.
+    "Tailscale address": re.compile(r"(?<![\d.])100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.(?!0\.\d{1,3}\b)\d{1,3}\.\d{1,3}(?![\d.])"),
     "Phone number (E.164)": re.compile(r"(?<![\w.])\+\d{10,14}\b"),
     "Phone number (US style)": re.compile(r"(?<![\w.-])\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}\b"),
 }

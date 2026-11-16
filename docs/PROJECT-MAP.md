@@ -2,9 +2,9 @@
 
 Where everything is, what it's for, and whether you may change it. **Keep this file up to date**: any change that adds, moves or removes a folder or important file must update this map in the same commit.
 
-Last reviewed: 2026-11-13 (M1a and M1b done; M2 built: self-knowledge, conversation notes, your data, a richer face; D-130 long answers said in full).
+Last reviewed: 2026-11-16 (M1a and M1b done; M2 built: self-knowledge, conversation notes, your data, a richer face; D-130 long answers said in full; M3 started: one smart plug through Tuya's cloud, D-132, and the dashboard's chat box, D-131).
 
-## In this repository (`~/pip`, GitHub: private repo `pip`)
+## In this repository (`~/pip`, GitHub: **public** repo `pip`, D-70, so nothing personal in it)
 
 | Path | What it is | Change it? |
 |---|---|---|

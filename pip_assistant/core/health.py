@@ -1,4 +1,9 @@
-"""Watchdog: knows which programs are alive, notices stuck ones, restarts them (PIP-NEW-079)."""
+"""Watchdog: knows which programs are alive, notices stuck ones, restarts them (PIP-NEW-079).
+
+If pip-core itself was held up (the whole Pi stalled, say), every program's last heartbeat looks old at once
+although they're fine: that check is skipped, and they're judged again once their heartbeats have caught up.
+"""
+import logging
 import os
 import subprocess
 import time
@@ -21,6 +26,7 @@ class Health:
         self.programs: dict[str, dict] = {}
         self.last_restart: dict[str, float] = {}
         self.started = clock()
+        self.last_check = self.started
 
     def heartbeat(self, name: str, data: dict) -> None:
         self.programs[name] = {**self.programs.get(name, {}), **data, "last_seen": self.clock(), "connected": True}
@@ -53,6 +59,10 @@ class Health:
         """Return actions taken: restarts of programs that are stuck (or missing after start-up grace)."""
         actions = []
         now = self.clock()
+        held_up = now - self.last_check > self.stuck_after   # pip-core didn't get to check: its own stall
+        self.last_check = now
+        if held_up:
+            return actions
         for n in self.expected:
             st = self.state(n)
             grace_over = now - self.started > 3 * self.stuck_after
@@ -65,5 +75,12 @@ class Health:
 
     @staticmethod
     def _systemd_restart(name: str) -> bool:
-        r = subprocess.run(["systemctl", "--user", "restart", f"pip-{name}.service"], capture_output=True, timeout=30)
-        return r.returncode == 0
+        """Ask systemd to restart it, without waiting for the restart (--no-block): a stuck program can take
+        90 s to stop, and pip-core's whole event loop would wait with it."""
+        try:
+            r = subprocess.run(["systemctl", "--user", "--no-block", "restart", f"pip-{name}.service"],
+                               capture_output=True, timeout=5)
+            return r.returncode == 0
+        except (OSError, subprocess.SubprocessError) as e:
+            logging.getLogger(__name__).warning("couldn't restart pip-%s: %s", name, type(e).__name__)
+            return False
