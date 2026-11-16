@@ -203,3 +203,55 @@ async def test_that_was_sam_not_me_fixes_the_line_and_learns_the_voice(tmp_path)
     await asyncio.sleep(0.1)
     assert says(got)[-1] == "Got it, that was Sam."
     await finish(bus, tasks)
+
+
+async def test_let_me_check_then_a_look_up_is_looked_up(tmp_path):
+    """Review fixes (2026-11-16): Claude often writes "Let me check." and then the look ACTION. That line is said,
+    and the look-up is done and answered (it used to be dropped, leaving only "Let me check.")."""
+    from datetime import datetime, timedelta
+
+    from helpers import registry
+
+    sched = Schedule(tmp_path / "pip.db")
+    reg = registry(tmp_path, schedule=sched)
+    day = (datetime.now() + timedelta(days=9)).replace(hour=15, minute=0, second=0, microsecond=0)
+    reg.module("calendar").store.add_event("dentist", day)
+    look = 'Let me check.\nACTION {"do": "look", "kind": "calendar", "from": "%s"}' % day.date().isoformat()
+    bus, conv, ears, got, asks, tasks = await setup(
+        tmp_path, "Pip, what have I got that day?", social={"join_in": False}, schedule=sched, modules=reg,
+        replies={"direct": [look, "The dentist at 3."]})
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.6)
+    assert len(asks) == 2 and "dentist" in asks[1][1]["looked_up"]
+    assert says(got) == ["Let me check.", "The dentist at 3."]
+    await finish(bus, tasks)
+
+
+async def test_a_look_up_is_dropped_if_they_say_his_name_meanwhile(tmp_path, monkeypatch):
+    """Review fixes (2026-11-16): a web search takes seconds; "Hey Pip, stop" (or a new question) meanwhile used to
+    be overtaken by the old answer arriving afterwards."""
+    import httpx
+
+    from pip_assistant.common.modules import ROOT, read
+    from pip_assistant.core.modules import Registry
+
+    monkeypatch.setenv("PIP_DATA", str(tmp_path))
+    (tmp_path / "secrets.toml").write_text('[websearch]\napi_key = "BSA-test"\n')
+
+    async def brave(request):
+        await asyncio.sleep(0.8)
+        return httpx.Response(200, json={"web": {"results": [{"title": "Huskers 24, Iowa 17", "description": "Final."}]}})
+    reg = Registry.load({}, infos=[read(ROOT / "websearch")], db_path=tmp_path / "pip.db",
+                        transport=httpx.MockTransport(brave))
+    look = 'ACTION {"do": "look", "kind": "web", "query": "huskers score"}'
+    bus, conv, ears, got, asks, tasks = await setup(
+        tmp_path, "Pip, did the Huskers win?", social={"join_in": False}, modules=reg, schedule=Schedule(tmp_path / "pip.db"),
+        replies={"direct": [look, "Yep, 24 to 17."]})
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.4)
+    assert conv.fetching and conv.state == "thinking"            # the face: looking it up
+    await ears.emit("heard.wake", {"word": "hey_pip"})
+    await asyncio.sleep(1.0)
+    assert len(asks) == 1 and "Yep, 24 to 17." not in says(got) and not conv.fetching
+    await finish(bus, tasks)
+

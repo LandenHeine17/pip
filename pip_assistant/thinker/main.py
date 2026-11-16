@@ -140,6 +140,7 @@ class Thinker:
             self.usage = None
         self.paused_until = 0.0
         self.cancelled: set[str] = set()
+        self.was_cancelled: set[str] = set()   # answers cancelled while being asked (no "ask again" for them)
         self.show_usage()
 
     name = "Pip"   # fills {name} in the personality; settings ([pip] name) override it in __init__
@@ -184,21 +185,24 @@ class Thinker:
         return self.paused_until > time.time()
 
     async def _ask(self, cli, kind: str, aid: str, *args, **kw):
-        """cli.ask(…), counted in the usage meter."""
+        """cli.ask(…), counted in the usage meter (an answer stopped on purpose isn't counted as a failure)."""
         report: dict = {}
 
         def on_result(cost, is_error, text):
             report.update(cost=cost, error=bool(is_error), text=text or "")
-        failed = None
+        failed, info = None, {}
         try:
-            return await cli.ask(aid, *args, on_result=on_result, **kw)
+            text, info = await cli.ask(aid, *args, on_result=on_result, **kw)
+            return text, info
         except Exception as e:
             failed = e
             raise
         finally:
             stopped = self.__dict__.setdefault("cancelled", set())
-            cancelled = aid in stopped
+            cancelled = aid in stopped or bool(info.get("cancelled"))
             stopped.discard(aid)
+            if cancelled and aid:
+                self.__dict__.setdefault("was_cancelled", set()).add(aid)
             await self.count(kind, report, failed, cancelled)
 
     async def prompt_parts(self) -> dict:
@@ -360,7 +364,8 @@ class Thinker:
                               looked_up=msg.private.get("looked_up", ""))
         try:
             text, info = await self._ask(self.claude, kind, aid, system, user, sentence, searching, held=kind == "join")
-            if info.get("only_notes") and aid not in self.cancelled:
+            if info.get("only_notes") and aid not in self.__dict__.setdefault("was_cancelled", set()) \
+                    and not info.get("cancelled"):
                 # It only wrote notes to itself ("Caleb's asking... Keep it short and cheeky."), none of it said:
                 # once more, told so (owner, 2026-11-12)
                 text, info = await self._ask(self.claude, kind, aid, system, user + "\n\n" + AGAIN, sentence,
@@ -369,6 +374,8 @@ class Thinker:
         except Exception as e:
             log.warning("answer failed: %s", e)
             return msg.reply({"error": f"{type(e).__name__}: {str(e)[:120]}"}, source="thinker")
+        finally:
+            self.__dict__.setdefault("was_cancelled", set()).discard(aid)
         if info.get("is_error") and not text and not info.get("action"):
             # The CLI answered with an error (a usage limit, …) rather than words: say so, don't go quiet
             return msg.reply({"error": "Claude reported an error"}, source="thinker")
@@ -382,10 +389,14 @@ class Thinker:
         return msg.reply({k: v for k, v in info.items() if v is not None}, private=private, source="thinker")
 
     async def on_cancel(self, msg: Message):
-        if msg.data.get("answer_id"):
-            self.cancelled.add(msg.data["answer_id"])
-        self.claude.cancel(msg.data.get("answer_id"))
-        self.preview_claude.cancel(msg.data.get("answer_id"))
+        """Stop an answer: the one named, or (no answer_id: a wake word, a new request) whatever answer is in
+        progress. Never conversation notes or a Settings "Try it" without their id: those aren't answers, and a
+        summary cut short would be saved as the notes (recall)."""
+        aid = msg.data.get("answer_id")
+        if aid:
+            self.cancelled.add(aid)
+            self.preview_claude.cancel(aid)
+        self.claude.cancel(aid)
         return {"ok": True}
 
     async def keep_warm(self) -> None:

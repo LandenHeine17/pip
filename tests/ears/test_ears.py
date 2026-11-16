@@ -180,3 +180,44 @@ async def test_a_voice_first_lowers_him_then_he_stops_or_comes_back_up(monkeypat
     await frames(-20.0, 3)                                 # someone starts talking…
     await frames(-20.0, 9)                                 # …and keeps going: he stops
     assert cut and cut[0] > 0.9 and e.speaker.gain == 1.0
+
+
+async def test_a_sentence_still_being_made_when_he_is_stopped_is_dropped():
+    """Review fixes (2026-11-16): "stop" (or a wake word, or talking over him) while Piper is still making the
+    first sentence: it used to play anyway, after the stop."""
+    import numpy as np
+    from pip_assistant.ears import main as ears_main
+
+    played = []
+
+    class Speaker:
+        async def play(self, audio, rate, on_level=None):
+            played.append(len(audio))
+            return True
+
+        async def stop(self):
+            pass
+
+    class Bus:
+        async def emit(self, kind, data):
+            pass
+
+    e = ears_main.Ears.__new__(ears_main.Ears)
+    e.bus, e.speaker, e.queue = Bus(), Speaker(), asyncio.Queue()
+    e.voice = type("V", (), {"rate": 22050})()
+    e.stops, e.speaking, e.voiced, e.said_n = 0, False, False, 0
+    e.unduck = lambda: None
+    making = asyncio.get_running_loop().create_future()
+    await e.queue.put(("speech", making))
+    loop = asyncio.create_task(e.speak_loop())
+    await asyncio.sleep(0.05)                       # the loop is waiting for Piper
+    await e.stop_speaking()
+    making.set_result(np.ones(100, np.int16))
+    await asyncio.sleep(0.05)
+    assert played == []
+    done = asyncio.get_running_loop().create_future()
+    done.set_result(np.ones(50, np.int16))
+    await e.queue.put(("speech", done))             # the next thing said after the stop plays
+    await asyncio.sleep(0.05)
+    assert played == [50]
+    loop.cancel()

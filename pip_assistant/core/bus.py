@@ -27,7 +27,7 @@ class Bus:
         self.health = health
         self.writers: dict[str, asyncio.StreamWriter] = {}
         self.patterns: dict[str, list[str]] = {}
-        self.waiting: dict[str, str] = {}      # request id -> who asked
+        self.waiting: dict[str, tuple[str, str]] = {}   # request id -> (who asked, who was asked)
         self.core_handlers: dict = {}           # requests addressed to "core"
         self.core_listeners: list = []          # (pattern, coroutine) for events core itself reacts to
         self.core_waiting: dict = {}            # request id -> future, for requests core itself sent
@@ -81,6 +81,7 @@ class Bus:
                 del self.writers[name]
                 self.patterns.pop(name, None)
                 self.health.disconnected(name)
+                await self._drop_waiting(name)
                 await self.publish(Message("event", "program.disconnected", source="core", data={"program": name}))
             with contextlib.suppress(Exception):
                 writer.close()
@@ -121,13 +122,24 @@ class Bus:
                 self.answering.add(task)
                 task.add_done_callback(self.answering.discard)
             elif msg.target in self.writers:
-                self.waiting[msg.id] = msg.source
+                self.waiting[msg.id] = (msg.source, msg.target)
                 await self._send(msg.target, msg)
             else:
                 await self._reply_to(msg.source, msg.reply({"error": f"{msg.target} isn't running"}, source="core"))
         elif msg.kind == "reply":
-            asker = self.waiting.pop(msg.id, msg.target)
+            asker = self.waiting.pop(msg.id, (msg.target, msg.source))[0]
             await self._reply_to(asker, msg)
+
+    async def _drop_waiting(self, gone: str) -> None:
+        """A program went away: requests it was asked get an answer now (not after their timeout), and those it
+        asked are forgotten (otherwise `waiting` would only ever grow)."""
+        for rid, (asker, target) in list(self.waiting.items()):
+            if gone not in (asker, target):
+                continue
+            del self.waiting[rid]
+            if target == gone:
+                await self._reply_to(asker, Message("reply", "error", source="core", target=asker, id=rid,
+                                                    data={"error": f"{gone} stopped before answering"}))
 
     async def _reply_to(self, asker: str, msg: Message) -> None:
         if asker == "core":

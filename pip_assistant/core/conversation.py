@@ -171,6 +171,8 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.offline_until = 0.0       # speech-to-text fell back to the Pi: "offline" until then
         self.room_until = 0.0          # people are talking in the room (not to him): he's following along
         self.looking_up = False        # the second round of an answer, after a look-up
+        self.fetching = False          # a look-up (a web search, …) is under way between Claude's two rounds
+        self.requests = 0              # counts new requests and stops: a look-up's second round is for the same one
         self.filler_said = None        # None until his first words of an answer ("searching" if he said so)
         # (also read: answer_id / answer_kind below, pending below, ringing and mic)
         self._state_timer = None       # re-checks the state when the next *_until deadline passes
@@ -356,6 +358,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             # or nothing, stops it, as saying his name always has (FEAT-037, respond and Schedule.hush).
             await self.schedule.hush()
         self.answer_id = None  # a new request replaces anything in progress
+        self.requests += 1     # (a look-up under way, too)
         self.drop_paused()
         await self.command("thinker", "thinker.cancel")
         await self.chime()
@@ -721,6 +724,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             if STOP.match(clean(text)):
                 # "Stop", "never mind": quiet at once (CB-019), and no more listening for him (D-105)
                 self.answer_id = None
+                self.requests += 1   # a look-up under way is dropped too
                 await self.command("thinker", "thinker.cancel")
                 await self.go_quiet()
                 await self.note("passed", about="direct")     # the feed: he stayed quiet, as when Claude passes
@@ -864,6 +868,8 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             self.last_asker = asker[0]   # the follow-up window is for them (D-124)
         self.follow = None
         aid = new_id()
+        if not looked_up:
+            self.requests += 1
         if TYPED.get() is not None:
             self.typed_answers[aid] = TYPED.get()   # its sentences arrive outside this request (on_sentence)
         self.answer_id, self.answer_kind, self.join_spoke = aid, kind, False
@@ -918,7 +924,8 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         await self.show("pip", answer, total_s=round(time.perf_counter() - t0, 2),
                         first_s=reply.data.get("first_sentence_s"), kind=kind)
         if after:
-            await self.claude_action(after, t0, asker=asker, quiet=True)
+            await self.claude_action(after, t0, asker=asker, quiet=True,
+                                     again=None if looked_up else (text, reason, kind, mood))
         if self.speech_done.is_set():
             await self._maybe_follow_up()
 

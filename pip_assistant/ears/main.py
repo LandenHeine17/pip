@@ -72,6 +72,7 @@ class Ears:
         self.transcript_wake = li["transcript_wake"]
         self.queue: asyncio.Queue = asyncio.Queue()
         self.speaking = False
+        self.stops = 0               # how many times he's been stopped: a sentence being made meanwhile is dropped
         self.voiced = False          # his voice has played in the current run of sounds (speech.started sent)
         self.loud_frames = 0
         self.ducked_at = 0.0         # his voice is lowered while deciding if someone's talking over him (D-128)
@@ -250,6 +251,7 @@ class Ears:
         """Plays queued sounds in order. Each spoken sentence is synthesised as soon as it's queued."""
         while True:
             kind, item = await self.queue.get()
+            stops = self.stops
             try:
                 audio = await item if kind == "speech" else item
             except asyncio.CancelledError:
@@ -257,8 +259,8 @@ class Ears:
             except Exception:   # one sentence Piper couldn't make: skip it, keep speaking
                 log.exception("speech synthesis failed")
                 continue
-            if audio is None or not len(audio):
-                continue
+            if audio is None or not len(audio) or self.stops != stops:
+                continue   # (stopped while Piper was making it: "stop", a wake word, talked over)
             self.speaking = True
             if kind == "speech" and not self.voiced:   # his voice starts (even right after a chime or tone)
                 self.voiced, self.overlap_noted, self.said_n = True, False, 0
@@ -288,6 +290,7 @@ class Ears:
                 item.cancel()
 
     async def stop_speaking(self) -> None:
+        self.stops += 1
         self._clear_queue()
         await self.speaker.stop()
 

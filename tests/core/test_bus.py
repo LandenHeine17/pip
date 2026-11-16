@@ -160,6 +160,23 @@ async def test_a_slow_request_to_core_holds_up_nothing_else(hub):
     assert (await chat).data == {"reply": "done"}
 
 
+async def test_a_program_that_goes_away_answers_its_requests_at_once(hub):
+    """Its pending requests get an error now (not after their timeout), and nothing is left in `waiting`."""
+    bus, sock, connect, _ = hub
+    a, b = await connect("a"), await connect("b")
+
+    async def slow(m):
+        await asyncio.sleep(10)
+    b.on("b.ask", slow)
+    await start(a); await start(b)
+    pending = asyncio.create_task(a.request("b", "b.ask", timeout=5))
+    await asyncio.sleep(0.1)
+    assert len(bus.waiting) == 1
+    b._task.cancel()                                  # b stops
+    reply = await asyncio.wait_for(pending, 2)
+    assert "stopped before answering" in reply.data["error"] and bus.waiting == {}
+
+
 async def test_programs_cannot_impersonate(hub):
     bus, sock, connect, _ = hub
     seen = []

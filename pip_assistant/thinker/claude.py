@@ -145,6 +145,8 @@ class ClaudeCLI:
         self.warm: asyncio.subprocess.Process | None = None
         self.warm_prompt: str | None = None
         self.current: dict[str, asyncio.subprocess.Process] = {}
+        self.killed: set[str] = set()   # answers stopped on purpose (cancel): not failures
+        self.preparing = asyncio.Lock()   # one warm process at a time (ask's warm-up and keep_warm can overlap)
 
     def _args(self, system_prompt: str) -> list[str]:
         tools = ["--tools", "WebSearch", "--allowedTools", "WebSearch"] if self.web_search else ["--tools", ""]
@@ -159,13 +161,15 @@ class ClaudeCLI:
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, limit=8 * 1024 * 1024)
 
     async def prepare(self, system_prompt: str) -> None:
-        """Start the next process in advance (it waits for its question)."""
-        if self.warm and self.warm.returncode is None and self.warm_prompt == system_prompt:
-            return
-        if self.warm and self.warm.returncode is None:
-            with contextlib.suppress(ProcessLookupError):
-                self.warm.kill()
-        self.warm, self.warm_prompt = await self._spawn(system_prompt), system_prompt
+        """Start the next process in advance (it waits for its question). One at a time: two overlapping calls
+        would each start one, and the one overwritten would wait forever (about 190 MB each)."""
+        async with self.preparing:
+            if self.warm and self.warm.returncode is None and self.warm_prompt == system_prompt:
+                return
+            if self.warm and self.warm.returncode is None:
+                with contextlib.suppress(ProcessLookupError):
+                    self.warm.kill()
+            self.warm, self.warm_prompt = await self._spawn(system_prompt), system_prompt
 
     async def ask(self, answer_id: str, system_prompt: str, user_text: str, on_sentence, on_searching,
                   held: bool = False, on_result=None):
@@ -252,11 +256,14 @@ class ClaudeCLI:
             if mode == "speak" and not full and split.notes:
                 info["only_notes"] = True   # it only planned its answer out loud: pip-thinker asks again
             await proc.wait()
-            if proc.returncode not in (0, None) and not full and mode not in ("action", "pass"):
+            if answer_id in self.killed:
+                info["cancelled"] = True   # stopped on purpose: whatever came out is all there is, not a failure
+            elif proc.returncode not in (0, None) and not full and mode not in ("action", "pass"):
                 err = (await proc.stderr.read()).decode(errors="replace")[-200:]
                 raise RuntimeError(f"claude exited {proc.returncode}: {err}")
         finally:
             self.current.pop(answer_id, None)
+            self.killed.discard(answer_id)
             if proc.returncode is None:
                 with contextlib.suppress(ProcessLookupError):
                     proc.kill()
@@ -266,5 +273,6 @@ class ClaudeCLI:
     def cancel(self, answer_id: str | None = None) -> None:
         for aid, proc in list(self.current.items()):
             if answer_id is None or aid == answer_id:
+                self.killed.add(aid)
                 with contextlib.suppress(ProcessLookupError):
                     proc.kill()

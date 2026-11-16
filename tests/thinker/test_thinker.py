@@ -253,3 +253,43 @@ async def test_a_reply_of_only_notes_is_asked_again(monkeypatch):
                                     data={"answer_id": "a1", "kind": "direct"}, private={"text": "what do you think?"}))
     assert reply.private["text"] == "Glub glub, sign me up." and reply.data["asked_again"]
     assert len(asked) == 2 and asked[1].endswith(thinker_main.AGAIN)
+    asked.clear()
+    th.was_cancelled = {"a2"}                     # talked over meanwhile: no second request for nothing
+    reply = await th.on_ask(Message("request", "thinker.ask", source="core", id="r2",
+                                    data={"answer_id": "a2", "kind": "direct"}, private={"text": "what do you think?"}))
+    assert len(asked) == 1 and not reply.data.get("asked_again")
+
+
+async def test_an_answer_stopped_on_purpose_is_not_a_failure(tmp_path):
+    """Review fixes (2026-11-16): a wake word kills the answer in progress; that's not "claude exited -9" in
+    the log and the usage meter. And it stops answers only: conversation notes and Settings previews carry on."""
+    fake = tmp_path / "claude"
+    fake.write_text("#!/bin/sh\ncat > /dev/null\nexec sleep 30\n")
+    fake.chmod(0o755)
+    cli = ClaudeCLI()
+    cli.exe = str(fake)
+
+    async def nothing(*_):
+        pass
+    task = asyncio.create_task(cli.ask("a1", "system", "hi", nothing, nothing))
+    await asyncio.sleep(0.3)
+    cli.cancel()                                   # no answer id: whatever is in progress
+    text, info = await asyncio.wait_for(task, 5)
+    assert text == "" and info["cancelled"]
+    cli.cancel()
+
+    stopped = []
+
+    class Fake:
+        def __init__(self, name):
+            self.name = name
+
+        def cancel(self, aid=None):
+            stopped.append((self.name, aid))
+
+    th = object.__new__(Thinker)
+    th.claude, th.preview_claude, th.cancelled = Fake("answers"), Fake("summaries"), set()
+    await th.on_cancel(type("M", (), {"data": {}})())
+    assert stopped == [("answers", None)]          # a summary being written isn't cut short
+    await th.on_cancel(type("M", (), {"data": {"answer_id": "s1"}})())
+    assert ("summaries", "s1") in stopped

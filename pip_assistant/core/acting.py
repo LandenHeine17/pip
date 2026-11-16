@@ -76,8 +76,9 @@ class Acting:
         Ringing alarms and voice learning are handled here (they need the alarm and the audio);
         the rest by core/actions.py. Anything invalid means nothing at all is done.
         A look-up ("look", D-102) isn't a change: Pip fetches it and asks Claude again, once (`again`).
-        quiet=True: the ACTION line came after an answer he already said (D-130): no look-ups, and the
-        confirmation is said only if nothing could be done."""
+        quiet=True: the ACTION line came after an answer he already said (D-130): the confirmation is said only if
+        nothing could be done, and no look-ups, unless all he said was a line or two before looking ("Let me check
+        that."): then he looks it up and answers, as if the ACTION had come alone (that line was the filler)."""
         from . import actions
         from .peoplecmds import StartLearning
         asker = asker or self.asker_now()
@@ -86,7 +87,10 @@ class Acting:
         try:
             items = actions.parse(raw)
             looks = [a for a in items if a.get("do") == "look"]
-            if quiet:   # after a spoken answer it's too late to look anything up
+            if quiet and not (looks and len(looks) == len(items) and again is not None and len(self.spoken) <= 2):
+                # after a spoken answer it's too late to look anything up
+                if looks:
+                    await self.bus.publish(Message("event", "action.look_dropped", data={"count": len(looks)}))
                 items = [a for a in items if a.get("do") != "look"]
                 looks = []
                 if not items:
@@ -158,9 +162,9 @@ class Acting:
             return self.SAYINGS["change_unavailable"], False
         return self.SAYINGS["change_asked"], True
 
-    async def _say_looking(self, after: float) -> None:
+    async def _say_looking(self, after: float, request: int | None = None) -> None:
         await asyncio.sleep(after)
-        if not self.filler_said:
+        if not self.filler_said and (request is None or request == self.requests):
             self.filler_said = "searching"
             await self.say("Let me look that up.", "searching")
             self.refresh_state()
@@ -194,7 +198,10 @@ class Acting:
         found = []
         asker = asker or self.asker_now()
         started = time.perf_counter()
-        slow = asyncio.create_task(self._say_looking(1.0)) if again is not None else None
+        request = self.requests            # "stop" or a new request meanwhile: the second round isn't wanted
+        slow = asyncio.create_task(self._say_looking(1.0, request)) if again is not None else None
+        self.fetching, self.looking_up = again is not None, again is not None
+        self.refresh_state()               # the face: "Looking it up"
         try:
             if again is not None:
                 ctx = self._action_ctx(asker[0])
@@ -215,6 +222,11 @@ class Acting:
         finally:
             if slow:
                 slow.cancel()
+            self.fetching = False
+            self.refresh_state()
+        if self.requests != request:
+            await self.bus.publish(Message("event", "answer.dropped", data={"why": "newer request"}))
+            return
         await self.bus.publish(Message("event", "action.looked", data={"count": len(found), "again": again is not None,
                                                                         "seconds": round(time.perf_counter() - started, 2)}))
         if not found:   # a second look-up, or nothing to look at: don't go round in circles

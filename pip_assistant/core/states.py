@@ -87,14 +87,15 @@ def quiet(c) -> bool:
     working on anything. The one rule for both: core/settingsapi.py and release.py (via `pip.state`)."""
     return (getattr(c, "state", "idle") in QUIET_STATES and getattr(c, "answer_id", None) is None
             and not getattr(c, "pending", "") and not getattr(c, "transcribing", False)
-            and not getattr(c, "ringing", False) and not getattr(c, "speaking", False))
+            and not getattr(c, "ringing", False) and not getattr(c, "speaking", False)
+            and not getattr(c, "fetching", False))
 
 
 def situation(c) -> tuple[str, str, float]:
     """(state, detail, ends_at) for the Conversation `c`. ends_at: when a wait he's in runs out (a
     time.monotonic() value; 0 if he isn't waiting a known time). The face shows it as a countdown."""
     now = time.monotonic()
-    working = c.answer_id is not None            # Claude is working on something for him
+    working = c.answer_id is not None or getattr(c, "fetching", False)   # Claude (or a look-up) is working for him
     if c.ringing:                                 # an alarm, timer or reminder is going off
         return "ringing", "ring", 0.0
     if c.speaking:                                # his voice is playing
