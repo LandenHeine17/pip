@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Put Pip's face on the monitor (step 7, D-110): installs deploy/tv/pip-tv.service as a system service and
 # switches Ziggletron's screen service (ziggletron-tv) off, as the owner chose. Ziggletron's own files are
-# not touched. Needs sudo. Run it once:   sh deploy/install-tv.sh
+# not touched. Needs sudo. Run it once, and again after deploy/tv/pip-tv.service changes:   sh deploy/install-tv.sh
 # To undo:   sudo systemctl disable --now pip-tv && sudo rm /etc/systemd/system/pip-tv.service
 #            (and, to give the screen back to Ziggletron:  sudo systemctl enable --now ziggletron-tv)
 set -eu
@@ -33,5 +33,6 @@ sed -e "s|@USER@|$USER|" -e "s|@PORT@|$port|" -e "s|@REPO@|$repo|" deploy/tv/pip
     sudo tee /etc/systemd/system/pip-tv.service >/dev/null
 sudo usermod -aG video,render,input "$USER"
 sudo systemctl daemon-reload
-sudo systemctl enable --now pip-tv
+sudo systemctl enable pip-tv
+sudo systemctl restart pip-tv   # picks up a changed service file (if you're on another console, it waits for tty1)
 echo "Pip's face is on the monitor: http://127.0.0.1:$port/tv (it waits for pip-web if Pip isn't running yet)."

@@ -20,6 +20,10 @@ StandardInput=tty-fail
 StandardOutput=journal
 StandardError=journal
 Environment=PIP_TV_URL=http://127.0.0.1:@PORT@/tv
+# cage can only start while tty1 is the console on the screen. If someone is using another one (Ctrl+Alt+F2)
+# when it (re)starts, wait for them to come back to tty1 (Ctrl+Alt+F1) instead of failing every 10 s.
+ExecStartPre=/bin/sh -c 'until [ "$(cat /sys/class/tty/tty0/active)" = tty1 ]; do sleep 2; done'
+TimeoutStartSec=infinity
 ExecStart=/usr/bin/cage -d -s -- @REPO@/deploy/tv/tv-kiosk.sh
 Restart=always
 RestartSec=5
