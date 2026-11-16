@@ -9,6 +9,9 @@ Pi → Tuya's cloud → plug (about 0.2 s). When Pip's own network is up, this m
                                  the module's settings, or, with only one plug, any plug/light/lamp)
                                → do_plug asks Tuya to switch it, then says "The light's off."
 
+The dashboard's front page has a "Smart plugs" card with an On/Off button for each (`home`), which switches it
+the same way (`dashboard` "switch" → do_plug).
+
 What Claude reads with every message (`summary`): each plug's name and whether it's on, from the last check.
 The plugs and their states are fetched at startup, every `refresh_minutes` and right after switching.
 
@@ -172,19 +175,46 @@ class Tuya(Module):
             raise Invalid("which plug: " + ", ".join(p["name"] for p in self.plugs.values()))
         return pid, a["on"], words(a.get("name", ""))
 
+    # ---------------------------------------------------------------- the dashboard's front page
+    def home(self) -> dict | None:
+        """A card on the front page with an On/Off button for each plug (index.html draws it; the button sends
+        "switch" below). No card until the plugs have been fetched (no Tuya keys, no card)."""
+        if not self.plugs:
+            return None
+        return {"title": "Smart plugs", "link": "", "empty": "No plugs found.", "switch": "switch",
+                "items": [{"id": pid, "title": p["name"], "on": p["on"] if p["online"] else None,
+                           "sub": "" if p["online"] else "offline"} for pid, p in self.plugs.items()]}
+
+    async def dashboard(self, action: str, args: dict) -> dict:
+        if action != "switch":
+            return {"error": f"unknown action {action}"}
+        pid, on = str(args.get("id", "")), args.get("on")
+        if pid not in self.plugs or not isinstance(on, bool):
+            return {"error": "Which plug, on or off?"}
+        try:
+            await self.switch(pid, on)   # the same switching as by voice
+        except Exception as e:
+            log.warning("switching a plug failed: %s", type(e).__name__)
+            return {"error": "Couldn't reach the plug." if self.plugs[pid]["online"] else "That plug is offline."}
+        return {"ok": True}
+
+    async def switch(self, pid: str, on: bool) -> None:
+        """Ask Tuya to switch one plug (raises if it can't), and remember it's now on/off."""
+        p = self.plugs[pid]
+        await self.request("POST", f"/v1.0/iot-03/devices/{pid}/commands", {"commands": [{"code": p["switch"], "value": on}]})
+        p["on"], self.switched[pid] = on, self.ctx.clock()
+        await self.ctx.publish("changed", {"plugs": len(self.plugs)})   # the front page's card redraws
+
     async def do_plug(self, plan: tuple[str, bool, str], call: Call) -> str:
         pid, on, said = plan
         p = self.plugs[pid]
         name = said if said and said not in ("it", "that") else words(p["name"]) or "the plug"   # as they called it
         name = name if name.startswith(("the ", "my ")) else "the " + name
         try:
-            await self.request("POST", f"/v1.0/iot-03/devices/{pid}/commands",
-                               {"commands": [{"code": p["switch"], "value": on}]})
+            await self.switch(pid, on)
         except Exception as e:
             log.warning("switching a plug failed: %s", type(e).__name__)
             return f"I couldn't reach {name}." if p["online"] else f"{name[0].upper() + name[1:]} is offline."
-        p["on"], self.switched[pid] = on, self.ctx.clock()
-        await self.ctx.publish("changed", {"plugs": len(self.plugs)})
         return f"{name[0].upper() + name[1:]}'s {'on' if on else 'off'}."
 
 

@@ -94,3 +94,19 @@ async def test_no_keys_means_nothing_to_switch(tmp_path, monkeypatch):
     with pytest.raises(Invalid):
         await reg.modules["tuya"].refresh()
     assert reg.summary(Call()) == ""
+
+
+async def test_the_front_page_card_switches_a_plug(tmp_path, monkeypatch):
+    reg, mod, fake = setup(tmp_path, monkeypatch, {"p1": ("Smart plug", False, True), "p2": ("Fan", True, False)})
+    assert reg.home_cards() == []                                             # nothing fetched yet: no card
+    await mod.refresh()
+    [card] = reg.home_cards()
+    assert card["switch"] == "switch" and card["module"] == "tuya"
+    assert [(i["title"], i["on"], i["sub"]) for i in card["items"]] == [("Smart plug", False, ""), ("Fan", None, "offline")]
+    assert await mod.dashboard("switch", {"id": "p1", "on": True}) == {"ok": True}
+    assert fake.plugs["p1"][1] is True and mod.plugs["p1"]["on"] is True
+    assert "error" in await mod.dashboard("switch", {"id": "p1", "on": "yes"})
+    assert "error" in await mod.dashboard("switch", {"id": "nope", "on": True})
+    fake.plugs.clear()                                                        # Tuya now fails the command
+    r = await mod.dashboard("switch", {"id": "p1", "on": False})
+    assert r == {"error": "Couldn't reach the plug."} and mod.plugs["p1"]["on"] is True   # not shown as switched

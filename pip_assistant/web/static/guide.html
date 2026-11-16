@@ -349,7 +349,7 @@ ${diagram(780, 230, [
 <tr><td>[[core/modules.py#Module|actions]]</td><td>ACTION verbs Claude may use; each is a check and a do</td><td>[[modules/calendar/actions.py#ClaudeActions.check_add|calendar: add an event]]</td></tr>
 <tr><td>[[core/modules.py#Module.summary|summary(call)]]</td><td>its part of what Claude reads (keep it short: every request)</td><td>[[modules/calendar/actions.py#ClaudeActions.summary|today and tomorrow]]</td></tr>
 <tr><td>[[core/modules.py#Module.offline|offline()]]</td><td>its own phrases when Pip is offline</td><td>[[modules/calendar/offline.py#CalendarOffline|calendar's offline.py]]</td></tr>
-<tr><td>[[core/modules.py#Module.home|home()]]</td><td>a card on the dashboard's front page</td><td>[[modules/calendar/dashboard.py#DashboardPage.home|next two weeks]]</td></tr>
+<tr><td>[[core/modules.py#Module.home|home()]]</td><td>a card on the dashboard's front page (dated items, or On/Off buttons: [[modules/tuya/module.py#Tuya.home|the smart plugs]])</td><td>[[modules/calendar/dashboard.py#DashboardPage.home|next two weeks]]</td></tr>
 <tr><td>[[core/modules.py#Module.tv|tv(shown)]] + <code>[monitor.kind]</code> + <code>monitor.js</code></td><td>a kind of box on the monitor</td><td>[[modules/calendar/static/monitor.js|the calendar box]]</td></tr>
 <tr><td>[[core/modules.py#Module.room_heard|room_heard]]</td><td>hears everything said; may answer for Pip</td><td>[[modules/six_seven/module.py#SixSeven.room_heard|six seven]]</td></tr>
 <tr><td>[[core/modules.py#Module.room_may_see|room_may_see]]</td><td>may an alert show on the room's monitor?</td><td>[[modules/calendar/dashboard.py#DashboardPage.room_may_see|calendar privacy]]</td></tr>

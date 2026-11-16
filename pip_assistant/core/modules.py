@@ -139,7 +139,10 @@ class Module:
         """A card on the dashboard's front page, or None. Sent privately (titles are personal):
         {"title": "Calendar · next two weeks", "link": "/m/<its name>/", "empty": "Nothing on the calendar.",
          "items": [{"id", "title", "at" (timestamp), "all_day", "repeat", "private", "color"}],
-         "remove": "delete" (its dashboard action that removes one item by "id"; "" for none)}"""
+         "remove": "delete" (its dashboard action that removes one item by "id"; "" for none)}
+        Or a card of switches (the smart plugs): {"title", "link", "empty", "switch": "<its dashboard action>",
+         "items": [{"id", "title", "on" (True/False, or None if unknown), "sub" (a short note, e.g. "offline")}]};
+        each item gets an On/Off button that sends that action {"id", "on"}."""
         return None
 
     def tv(self, shown: list[dict]) -> dict:

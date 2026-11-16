@@ -242,7 +242,7 @@ Every new feature is a module: a folder in `pip_assistant/modules/`. Pip finds i
    - `actions`: what Claude can do (`check` first, raising `Invalid` if it doesn't make sense; then `do`, returning what Pip says).
    - `summary(call)`: what Claude should know with every request. It goes with *every* request, so keep it to a line, or nothing.
    - `offline()`: its own phrases when the internet is down (`OfflineItems`; the template's dice, the calendar's `offline.py`).
-   - `home()`: a card on the dashboard's front page.
+   - `home()`: a card on the dashboard's front page: a list of dated items (the calendar), or a row of On/Off buttons (the smart plugs, `modules/tuya/`).
    - `tv(shown)` with a `[monitor.<kind>]` table and `static/monitor.js`: a box on the monitor ("put the shopping list up").
    - `dashboard(action, args)` with `static/index.html`: its own page, with a button on the dashboard.
    - `room_heard(text, call)`: hears everything (room talk, and what's said to or about Pip: `call.kind`) and may return something for him to say; for speech to Pip that replaces asking Claude (`modules/six_seven/` is just this). `modules_answer` in `core/conversation.py` offers it at any hour; Pip says the answer only when he's free to talk. To make the monitor's face react, `ctx.publish("reaction", {"reaction": "pleased"})`. Read the words, keep nothing.

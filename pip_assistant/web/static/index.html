@@ -225,6 +225,8 @@ function live(){
   es.addEventListener("people", () => loadPeople());
   es.addEventListener("trace", ev => { const e = JSON.parse(ev.data); e._fresh = true; rows.unshift(e); rows = rows.slice(0,200); renderTrace(); });
   es.addEventListener("alerts", () => loadSched());
+  // a module with a card here says it changed (a plug switched by voice): fetch the cards again
+  es.addEventListener("module", ev => { const m = JSON.parse(ev.data).module; if ((sched.cards||[]).some(c => c.module === m)) loadSched(); });
   es.onerror = () => { $("conn").textContent = "Reconnecting…"; };
 }
 let sched = {alerts:[], cards:[], ringing:[], missed:[], now:0, snooze_minutes:5}, skew = 0, menuOpen = false;
@@ -258,15 +260,23 @@ function renderSched(){
       ${pct!=null?`<div class="bar"><i style="width:${pct}%"></i></div>`:""}</div>
       <span style="display:flex;align-items:center;gap:6px">${a.kind==="timer" ? `<span class="big">${left(a.due-now)}</span>` : ""}<button class="ghost" title="Cancel" onclick="act({action:'cancel',id:${js(a.id)}})">✕</button></span></div>`;
   }).concat(missed).concat(sched.later_heads_ups ? [`<div class="sub" style="padding:4px 2px">+ ${sched.later_heads_ups} more heads-up${sched.later_heads_ups>1?"s":""} after tomorrow</div>`] : []).join("") || `<div class="empty">Nothing set.</div>`;
-  // Each card a module adds (its home(), core/modules.py): a list of dated items, each with ✕ if it can remove them.
+  // Each card a module adds (its home(), core/modules.py): a list of dated items, each with ✕ if it can remove them,
+  // or (a card with "switch") things to turn on and off, like the smart plugs, each with an On/Off button.
   $("cards").innerHTML = (sched.cards||[]).map(c => `<div><div class="label" style="display:flex;justify-content:space-between">${esc(c.title)}${c.link?` <a href="${esc(c.link)}">Open ›</a>`:""}</div>
-    <div class="items">${(c.items||[]).map(e => `<div class="item" style="border-left:4px solid ${esc(e.color||"transparent")}"><div><b>${esc(e.title)}</b>${e.private?` <span class="pill" style="background:var(--line)">private</span>`:""}<div class="sub">${e.all_day ? new Date(e.at*1000).toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"})+" · all day" : clock(e.at)}${e.repeat?" · "+REP(e.repeat):""}</div></div>
+    <div class="items">${(c.items||[]).map(e => c.switch ? `<div class="item"><div><b>${esc(e.title)}</b>
+      <div class="sub">${esc([e.on===true?"On":e.on===false?"Off":"", e.sub].filter(Boolean).join(" · ") || "Not known yet")}</div></div>
+      <button class="${e.on?"ghost":"primary"}" onclick="switchItem(this,${js(c.module)},${js(c.switch)},${js(e.id)},${e.on?"false":"true"})">Turn ${e.on?"off":"on"}</button></div>`
+      : `<div class="item" style="border-left:4px solid ${esc(e.color||"transparent")}"><div><b>${esc(e.title)}</b>${e.private?` <span class="pill" style="background:var(--line)">private</span>`:""}<div class="sub">${e.all_day ? new Date(e.at*1000).toLocaleDateString([], {weekday:"short", month:"short", day:"numeric"})+" · all day" : clock(e.at)}${e.repeat?" · "+REP(e.repeat):""}</div></div>
       ${c.remove ? `<button class="ghost" title="Remove" onclick="removeItem(${js(c.module)},${js(c.remove)},${js(e.id)},${e.repeat?1:0})">✕</button>` : ""}</div>`).join("")
       || `<div class="empty">${esc(c.empty||"Nothing here.")}</div>`}</div></div>`).join("");
 }
 async function removeItem(module, action, id, repeats){
   if(!confirm(repeats ? "Remove this (all repeats)?" : "Remove this?")) return;
   try{ await pip.act(pip.post(action, {id}, module)); }finally{ loadSched(); }
+}
+async function switchItem(btn, module, action, id, on){
+  btn.disabled = true; btn.textContent = "…";
+  try{ await pip.act(pip.post(action, {id, on}, module)); }finally{ loadSched(); }
 }
 async function loadSched(){ try{ const r = await (await fetch("/api/alerts",{cache:"no-store"})).json(); if(r.now){ sched = r; skew = Date.now()/1000 - r.now; $("ringing").dataset.key = ""; renderSched(); } }catch(e){} }
 async function act(body){ try{ const r = await (await fetch("/api/alerts/action",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})).json(); if(r.error) alert(r.error); return r; }catch(e){ alert("Couldn't reach Pip"); } finally { loadSched(); } }

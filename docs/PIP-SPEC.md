@@ -308,7 +308,7 @@ flowchart TD
 - Heavy jobs run under a memory cap (lesson from the M0 freeze).
 
 ### Devices (M3, started 2026-11-15)
-- **Smart plugs, for now through Tuya's cloud** (D-132): "Pip, turn off the light" / "is the light on?". The plug is the one paired in the Smart Life app; with only one plug, "the light", "the lamp" or "the plug" all mean it (other names: Settings → the tuya module's nicknames). It needs the internet. Later the Pi, on Ethernet, hosts a Wi-Fi network for the plugs and switches them locally.
+- **Smart plugs, for now through Tuya's cloud** (D-132): "Pip, turn off the light" / "is the light on?". The plug is the one paired in the Smart Life app; with only one plug, "the light", "the lamp" or "the plug" all mean it (other names: Settings → the tuya module's nicknames). The dashboard's front page also has a **Smart plugs** card with an On/Off button for each. It needs the internet. Later the Pi, on Ethernet, hosts a Wi-Fi network for the plugs and switches them locally.
 - Pip becomes the device hub on the Pi, with no Home Assistant: ESP32/ESPHome devices announce themselves over MQTT and appear on the dashboard for approval; Eightree plugs via the local Tuya protocol (D-18, D-36). New brands are added as one adapter module each.
 - Music from local files on Pip's speaker (D-20).
 

@@ -218,7 +218,7 @@ flowchart LR
 | `actions` | ACTION verbs Claude may use (checked first, then done) | add, change, cancel an event; look further ahead |
 | `summary(call)` | its part of what Claude reads with each request | today, tomorrow, the calendars' names |
 | `offline()` | its own phrases for when Pip is offline, and items the shared "move it", "cancel that" rules can change (`OfflineItems`) | "put the dentist on the calendar Friday at 3" (`offline.py`) |
-| `home()` | a card on the dashboard's front page | the next two weeks |
+| `home()` | a card on the dashboard's front page: dated items, or things with an On/Off button | the next two weeks (calendar); the smart plugs (tuya) |
 | `tv(shown)` + `[monitor.<kind>]` + `static/monitor.js` | a kind of box on the monitor: the screen module learns it at startup, the module sends its data and draws it | today's and tomorrow's shared events |
 | `room_heard(text, call)` | hears everything said (room talk, or to or about Pip: `call.kind`) and may answer with something for Pip to say, instead of Claude for speech to him; may ask the monitor's face for a reaction (`ctx.publish("reaction", …)`). Offered at any hour; said only when Pip is free to talk; the module keeps nothing of the words | the six-seven chant and freak-out |
 | `room_may_see(alert)` | whether a heads-up may show on the room's monitor | not for an event Pip mayn't mention to everyone |
