@@ -34,5 +34,5 @@ sed -e "s|@USER@|$USER|" -e "s|@PORT@|$port|" -e "s|@REPO@|$repo|" deploy/tv/pip
 sudo usermod -aG video,render,input "$USER"
 sudo systemctl daemon-reload
 sudo systemctl enable pip-tv
-sudo systemctl restart pip-tv   # picks up a changed service file (if you're on another console, it waits for tty1)
-echo "Pip's face is on the monitor: http://127.0.0.1:$port/tv (it waits for pip-web if Pip isn't running yet)."
+sudo systemctl restart --no-block pip-tv   # picks up a changed service file; --no-block: on another console it waits for tty1, and this script shouldn't
+echo "Pip's face is on the monitor: http://127.0.0.1:$port/tv (it waits for pip-web if Pip isn't running yet). If you're on another console, it appears when you switch back (Ctrl+Alt+F1)."
