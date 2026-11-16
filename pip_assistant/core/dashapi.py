@@ -191,14 +191,15 @@ async def alert_action(schedule: Schedule, conv: Conversation, m: Message) -> di
 async def chat(conv: Conversation, people: People, schedule: Schedule, d: dict) -> dict:
     """The front page's chat box: a message typed to Pip (core/conversation.py `typed`). {"text", "person" (whose
     message it is: a household member picked on the page, or "" for someone), "aloud" (say the reply in the
-    room too)} → {"reply"}. Like anything said to Pip, a typed message answers a ringing alarm. Private both ways."""
+    room too)} → {"reply"}. Like anything said to Pip, a typed message answers a ringing alarm: "snooze" snoozes,
+    "okay" stops it, and anything else goes on to Claude, who's told it's ringing (D-94). Private both ways."""
     text = re.sub(r"\s+", " ", str(d.get("text") or "")).strip()[:500]
     if not text:
         return {"error": "Type something first"}
-    if schedule.ringing:
-        await schedule.acknowledge("typed")
-        return {"reply": "Okay, it's off."}
     p = people.get(str(d.get("person") or "")) if d.get("person") else None
-    who = Match(p["id"], p["name"], "sure", 1.0) if p else None
+    who = Match(p["id"], p["name"], "sure", 1.0) if p else Match()   # "someone": nobody in particular
+    was_ringing = bool(schedule.ringing)
     reply = await conv.typed(text, who, aloud=bool(d.get("aloud")))
+    if not reply and was_ringing and not schedule.ringing:
+        reply = "Okay, it's off."   # (stopping an alarm by voice says nothing; here the page needs a reply)
     return {"reply": reply}

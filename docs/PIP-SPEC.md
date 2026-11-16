@@ -154,6 +154,7 @@ Examples (any similar wording works; tested with real Claude, test `natural-lang
 | "Ditch the pasta one" · "cancel that" · "take the dentist off the calendar" | "That" / "it" means the item just talked about, or the one that just rang |
 | "What have I got going on?" · "how long's left on the pasta?" · "what time is it?" | Answers from what's set |
 | While ringing: "okay" / "stop" / "snooze" / his name | Instant, no Claude needed |
+| While ringing: "Hey Pip" | Quiet at once; then "snooze" snoozes, and anything else (or nothing for 20 s) stops it |
 | While ringing: "ugh, five more" · "I'm awake, kill it" | Claude: snoozes 5 minutes / turns it off |
 
 A time with no AM/PM means the next one coming ("at 6" in the afternoon is 6 PM), except an **alarm for a named day** is the morning ("wake me up tomorrow at 6" is 6 AM). "Tonight at 1" means after midnight. **"Tomorrow" means after you next sleep** (D-114): until 4 AM it's still the day before, so at 00:30 "wake me up tomorrow at 7" is that same morning. A time already past means tomorrow. "In 8 hours" is 8 real hours, even across a clock change. Repeats keep their clock time across daylight saving, and **snoozing a repeating alarm doesn't move it** (tomorrow's is still at its usual time). Moving something that's ringing stops it and it rings again at the new time. A bare "later" while ringing doesn't snooze ("okay, I'll do it later" stops it). If a request has several parts and one is wrong, **none** of it is done.

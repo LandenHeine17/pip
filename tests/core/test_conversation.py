@@ -419,10 +419,41 @@ async def test_a_message_typed_on_the_dashboard_is_answered_quietly_unless_asked
     reply = await conv.typed("how's it going", landen)
     assert reply == "Pretty good, you?" and says(got) == []
     assert asks[0][1]["text"] == "how's it going" and conv.transcript.lines[-2]["speaker"] == "Landen"
-    assert not conv.typing and conv.speaker is None
+    assert conv.speaker is None and not conv.silent                         # nothing left set afterwards
     reply = await conv.typed("set a timer for 5 minutes", landen)          # Pip's own command, no Claude
     assert "5 minutes" in reply and len(asks) == 1 and len(sched.active()) == 1 and says(got) == []
     reply = await conv.typed("say hi", None, aloud=True)
     await asyncio.sleep(0.1)
     assert reply == "Hi there." and says(got) == ["Hi there."]
     await finish(bus, tasks)
+
+
+async def test_a_typed_message_is_its_own_request(tmp_path):
+    """Review fixes (2026-11-16): a quiet typed message doesn't mute what Pip says to the room meanwhile, never
+    uses the last voice heard as the typist's, and a reply said out loud opens no listening window."""
+    from pip_assistant.core.people import Match
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, social={"join_in": False},
+                                                    replies={"direct": ["Noted.", "Hello!"]})
+    conv.last_pcm = b"someone else's voice"
+    seen = []
+    real = conv.answer
+
+    async def answer(*a, **k):
+        seen.append(conv.asker_now())
+        return await real(*a, **k)
+
+    conv.answer = answer
+    sam = Match("p2", "Sam", "sure", 1.0)
+    typed = asyncio.create_task(conv.typed("note this", sam))
+    await asyncio.sleep(0.02)
+    await conv.say("Welcome back, Alex.", "welcome")                   # Pip greeting the room meanwhile: said
+    assert await typed == "Noted."
+    await asyncio.sleep(0.05)
+    assert seen and seen[0] == (sam, b"")                              # not the room's last voice
+    assert says(got) == ["Welcome back, Alex."]
+    await conv.typed("say hello", None, aloud=True)
+    await asyncio.sleep(0.05)
+    await conv._maybe_follow_up()
+    assert conv.follow is None                                         # no listening window after a typed reply
+    await finish(bus, tasks)
+

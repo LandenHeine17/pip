@@ -59,6 +59,7 @@ import base64
 import collections
 import logging
 import time
+from contextvars import ContextVar
 
 from ..common.messages import Message, new_id
 from .acting import Acting
@@ -70,6 +71,7 @@ from .joining import STALE_S, Joining, in_quiet_hours
 from .micctl import MicControl
 from .modules import Call
 from .names import NOT_PIP, PIP_NAMES, calls_pip, names_pip
+from .people import Match
 from .commands import HALLUCINATION, STOP, clean
 from .commands import sure as sure_command
 from . import states
@@ -79,6 +81,9 @@ from .turns import (HOLD_S, RESUME_WITHIN_S, TurnTaking, is_phantom, listening_o
                     looks_unfinished, pause_word, plain)   # (tests import looks_unfinished from here)  # noqa: F401  (tests import looks_unfinished)
 
 log = logging.getLogger(__name__)
+# A message typed on the dashboard (D-131) being answered: {"who": Match, "aloud": bool, "said": [what he said]}.
+# A context variable, so it belongs to that one request: Pip talking to the room meanwhile isn't affected.
+TYPED: ContextVar[dict | None] = ContextVar("typed", default=None)
 
 SAYINGS = {
     "not_caught": "Sorry, I didn't catch that. Could you say it again?",
@@ -193,10 +198,11 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.pending_how = ("direct", False, {}, False)   # (reason, offline, data, chime) for the held turn
         self.sentences = 0
         self.spoken: list[str] = []  # sentences of the current answer actually sent to be spoken
-        # Answering something typed on the dashboard (`typed`); what he says is spoken only if typed_aloud
-        self.typing = False
-        self.typed_aloud = False
+        # Messages typed on the dashboard (`typed`, TYPED): one at a time; their answers by answer id (whose
+        # sentences come back from pip-thinker outside the request), and whether the last thing he answered was one
         self.typed_lock = asyncio.Lock()
+        self.typed_answers: dict[str, dict] = {}
+        self.last_typed = False
         self.stt = stt
         self.stt_limited = False     # Groq's daily limit is used up (D-115): not offline, just heard on the Pi
         self.answer_id = None
@@ -264,11 +270,15 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.listen_why = why
         self.refresh_state()
 
-    async def say(self, text: str, reason: str) -> None:
+    async def say(self, text: str, reason: str, typed: dict | None = None) -> None:
         """Speak `text` through pip-ears. `reason` says why (answer, welcome, command, error, …); the face
-        shows it while he talks (states.SPEAKING)."""
-        if text and self.silent:
-            return
+        shows it while he talks (states.SPEAKING). `typed`: the typed message this answers (else TYPED's): it's
+        kept as the reply, and spoken only if they asked for it out loud."""
+        typed = typed or TYPED.get()
+        if text and typed is not None:
+            typed["said"].append(text)
+            if not typed["aloud"]:
+                return
         if text:
             self.say_reason = reason
         if text and not self.speaking:
@@ -278,29 +288,44 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
 
     @property
     def silent(self) -> bool:
-        """Answering something typed on the dashboard, without saying it out loud."""
-        return self.typing and not self.typed_aloud
+        """Answering something typed on the dashboard, without saying it out loud (this request only)."""
+        t = TYPED.get()
+        return t is not None and not t["aloud"]
+
+    def asker_now(self) -> tuple:
+        """(who, their audio) for the request being handled: the person picked for a typed message (no audio: it
+        mustn't be the last voice heard in the room), else whoever spoke last."""
+        t = TYPED.get()
+        return (t["who"], b"") if t is not None else (self.speaker, self.last_pcm)
 
     async def typed(self, text: str, who=None, aloud: bool = False) -> str:
         """The dashboard's chat box: a message typed to Pip, answered like the same words said to him by `who`
-        (a Match: the person picked on the page), through Pip's own commands or Claude. Returns what he said
-        (his lines in the room transcript meanwhile); it's spoken too only if `aloud`. One typed message at a
-        time. Never logged (the text travels privately)."""
+        (a Match: the person picked on the page, or an unknown one), through Pip's own commands or Claude. Returns
+        what he said; it's spoken too only if `aloud`. One typed message at a time, and not over a spoken answer
+        in progress (it waits for it, up to a minute). Never logged (the text travels privately)."""
+        who = who if who is not None else Match()
         async with self.typed_lock:
-            self.typing, self.typed_aloud = True, aloud
-            before, self.speaker = self.speaker, who
+            for _ in range(300):
+                if self.answer_id is None:
+                    break
+                await asyncio.sleep(0.2)
+            t = {"who": who, "aloud": aloud, "said": []}
+            token = TYPED.set(t)
             try:
                 text = self.fix_names(text)
                 self.hear(text, who)
-                start = self.transcript.count
                 await self.feed(text, "direct", who, reason="typed")
-                await self.respond(text, "typed")
+                reply = await self.commands.while_ringing(text, "typed") if self.ringing and self.commands else None
+                if reply is not None:   # "snooze", "okay": the alarm's answered (else Claude's told it's ringing)
+                    if reply:
+                        await self.speak_reply(reply, "alarm answered")
+                else:
+                    await self.respond(text, "typed")
             finally:
-                self.typing, self.typed_aloud = False, False
-                if self.speaker is who:
-                    self.speaker = before
-            n = min(self.transcript.count - start, len(self.transcript.lines))
-            return " ".join(line["text"] for line in list(self.transcript.lines)[len(self.transcript.lines) - n:] if line["ours"])
+                TYPED.reset(token)
+                for aid in [a for a, v in self.typed_answers.items() if v is t]:
+                    del self.typed_answers[aid]
+            return " ".join(t["said"])
 
     async def speak_reply(self, text: str, reason: str, t0: float | None = None, digits: int = 2) -> None:
         """Say a reply Pip made himself (a command's confirmation, a welcome back…): into the room transcript,
@@ -327,7 +352,9 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
     # ---------------------------------------------------------------- events
     async def on_wake(self, msg: Message) -> None:
         if self.ringing:
-            await self.schedule.acknowledge("name")  # saying his name answers an alarm (FEAT-037)
+            # Quiet, but not stopped yet: what they say next decides ("Hey Pip, snooze" snoozes); anything else,
+            # or nothing, stops it, as saying his name always has (FEAT-037, respond and Schedule.hush).
+            await self.schedule.hush()
         self.answer_id = None  # a new request replaces anything in progress
         self.drop_paused()
         await self.command("thinker", "thinker.cancel")
@@ -452,8 +479,8 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             self.join_spoke = True
             self.joining.joined()
             await self.note("joined")
-        self.sentences += 1   # every sentence Claude wrote is said (D-130); "short" is Claude's job (RULES, D-79)
-        if not self.silent:
+        typed = self.typed_answers.get(msg.data.get("answer_id"))
+        if typed is None or typed["aloud"]:   # every sentence Claude wrote is said (D-130)
             self.speech_done.clear()
         self.spoken.append(text)
         if self.paused and self.paused["aid"] == msg.data.get("answer_id"):
@@ -461,7 +488,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             return
         self.filler_said = self.filler_said or "first sentence"  # he's answering: no longer "thinking"
         self.voice_kind = self.answer_kind   # what he's saying is an answer, or him joining in
-        await self.say(text, "answer")
+        await self.say(text, "answer", typed=typed)
         self.refresh_state()
 
     async def on_searching(self, msg: Message) -> None:
@@ -577,6 +604,8 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
                 await self.say(reply, "alarm answered")
                 await self._finish_pending()
                 return
+            if reason == "wake" and self.ringing:   # his name, then something else: the name stopped it (FEAT-037)
+                await self.schedule.acknowledge("name")
         if self.alarm_only:   # listening is off; the mic is on only for the alarm: nothing else is used (D-127)
             await self._finish_pending()
             return
@@ -678,10 +707,12 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
     async def respond(self, text: str, reason: str, offline: bool = False, **data) -> None:
         """Their turn is over: answer it."""
         self.expect_until = 0.0
-        since = {"since_speech_s": self.turn_since_speech, "reason": reason}
+        self.last_typed = reason == "typed"
+        # (how long since they stopped talking: nobody did, for a typed message, tools/latency.py)
+        since = {"since_speech_s": self.turn_since_speech, "reason": reason} if reason != "typed" else {"reason": reason}
         if offline or self.own_commands == "always":
             # No Claude without the internet: Pip's own fixed-phrasing commands do the basics (D-83, D-94)
-            if await self.people_command(text, offline) or await self.local_command(text, self.speaker):
+            if await self.people_command(text, offline) or await self.local_command(text, self.asker_now()[0]):
                 await self.decided("fast_command", "offline" if offline else "always", **since)
                 return
         elif self.own_commands == "sure" and sure_command(text):
@@ -695,7 +726,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
                 await self.note("passed", about="direct")     # the feed: he stayed quiet, as when Claude passes
                 await self.decided("fast_command", "stop", **since)
                 return
-            if await self.local_command(text, self.speaker):
+            if await self.local_command(text, self.asker_now()[0]):
                 await self.decided("fast_command", "sure", **since)
                 return
         if offline:
@@ -828,11 +859,13 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         `looked_up`: what Claude asked Pip to look up first (ACTION look), for the second round.
         `asker`: (speaker, audio) of who asked. It's kept with this answer, so if someone else talks while
         Claude works, the actions and look-ups are still done as the person who asked."""
-        asker = asker or (self.speaker, self.last_pcm)
+        asker = asker or self.asker_now()
         if kind in ("direct", "follow_up"):
             self.last_asker = asker[0]   # the follow-up window is for them (D-124)
         self.follow = None
         aid = new_id()
+        if TYPED.get() is not None:
+            self.typed_answers[aid] = TYPED.get()   # its sentences arrive outside this request (on_sentence)
         self.answer_id, self.answer_kind, self.join_spoke = aid, kind, False
         self.join_count = self.transcript.count
         self.join_asked_at = time.monotonic()
@@ -917,7 +950,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             self.refresh_state()
 
     async def _maybe_follow_up(self) -> None:
-        if self.typing:   # typed on the dashboard: no listening window for a reply out loud
+        if self.last_typed:   # typed on the dashboard: no listening window, even after a reply said out loud
             return
         last = self.transcript.last()
         if self.follow_up_s > 0 and last is not None and last["ours"] and not self.ringing and self.listening:

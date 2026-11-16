@@ -52,7 +52,7 @@ class Acting:
         """Offline (or if Claude fails): 'I'm Sam', 'learn my voice', 'who am I?', 'remember…' (core/peoplecmds.py)."""
         if not self.people_cmds:
             return False
-        speaker, pcm = asker or (self.speaker, self.last_pcm)
+        speaker, pcm = asker or self.asker_now()
         try:
             reply = await self.people_cmds.handle(text, speaker, pcm, offline)
         except Exception:
@@ -80,7 +80,7 @@ class Acting:
         confirmation is said only if nothing could be done."""
         from . import actions
         from .peoplecmds import StartLearning
-        asker = asker or (self.speaker, self.last_pcm)
+        asker = asker or self.asker_now()
         speaker, pcm = asker
         said, done, learning = [], 0, None
         try:
@@ -192,7 +192,7 @@ class Acting:
         A module's look-up may be async (a web search, D-125); if it takes over a second, Pip says so."""
         from . import actions, selfknow
         found = []
-        asker = asker or (self.speaker, self.last_pcm)
+        asker = asker or self.asker_now()
         started = time.perf_counter()
         slow = asyncio.create_task(self._say_looking(1.0)) if again is not None else None
         try:

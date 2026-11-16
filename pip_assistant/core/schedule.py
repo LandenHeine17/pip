@@ -72,6 +72,7 @@ class Schedule:
         self.tones = s.get("ringtones", {"timer": "kitchen", "alarm": "classic", "reminder": "chimes", "event": "chimes"})
         self.ringing: list[str] = []          # ids ringing right now, oldest first
         self._ring_task: asyncio.Task | None = None
+        self.hush_s = 20.0   # after "Hey Pip" while ringing: how long to wait for what they say (hush)
         self._wake = asyncio.Event()          # "something changed": re-check what's due now
         self.last_rung: tuple[str, float] | None = None  # (id, when): "snooze that" / "change that alarm"
         self.watchers: list = []              # called with no arguments when ringing starts or stops (Pip's state)
@@ -320,6 +321,24 @@ class Schedule:
         if ids:
             await self._event("alert.snoozed", {"how": how, "minutes": minutes, "count": len(ids)})
         return len(ids)
+
+    async def hush(self, seconds: float | None = None) -> None:
+        """Someone said Pip's name while it rings: quiet now so they can be heard, but not answered yet: "Hey Pip,
+        snooze" must still snooze. Whatever they say next decides (Conversation.respond); if nothing does
+        within `seconds`, saying his name stopped it, as before (FEAT-037)."""
+        if not self.ringing:
+            return
+        if self._ring_task and not self._ring_task.done():
+            self._ring_task.cancel()
+        await self._stop_sound()
+
+        async def answered_by_name() -> None:
+            await asyncio.sleep(self.hush_s if seconds is None else seconds)
+            self._ring_task = None   # (acknowledge cancels _ring_task: not this one, it's doing the acknowledging)
+            if self.ringing:
+                await self.acknowledge("name")
+
+        self._ring_task = asyncio.create_task(answered_by_name())   # acknowledge/snooze/a new alarm cancel it
 
     async def _stop_sound(self) -> None:
         await self._command("ears", "ears.ring_stop")

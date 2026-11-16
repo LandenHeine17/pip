@@ -54,8 +54,8 @@ def requests(rows: list) -> list[dict]:
     for i, (ts, ty, d) in enumerate(rows):
         fast = ty == "turn.decision" and d.get("decision") == "fast_command"
         asked = ty == "thinker.ask" and "answer_id" in d and d.get("kind") in ("direct", "mentioned", "follow_up_likely")
-        if not (fast or asked):
-            continue
+        if not (fast or asked) or d.get("reason") == "typed":
+            continue   # (a message typed on the dashboard, D-131: nobody spoke, so there's no wait to measure)
         r = {"kind": "fast" if fast else d["kind"], "reason": d.get("reason", ""), "outcome": "other"}
         # what came before: the decision (new traces), speech-to-text and the utterance
         stt = utt = dec = None
