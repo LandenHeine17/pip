@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 
 import pytest
-from helpers import FakeSTT, clock_at, finish, registry, say, utt
+from helpers import FakeSTT, clock_at, finish, registry, room, say, utt
 from helpers import alarms_bus as setup_bus
 
 from pip_assistant.core.commands import Commands
@@ -101,48 +101,56 @@ async def test_ringing_obvious_words_are_instant_and_anything_else_goes_to_claud
     await finish(bus, tasks)
 
 async def test_hey_pip_snooze_snoozes(tmp_path):
-    """The wake word quiets the alarm but doesn't stop it: "Hey Pip, snooze" must snooze, not stop (and then say
-    "nothing's ringing")."""
+    """His name alone quiets the alarm but doesn't stop it: "Hey Pip… snooze" must snooze, not stop (and then say
+    "nothing's ringing"). Said in one go, "Hey Pip, snooze" snoozes too (D-133, D-134: his name in the words)."""
     clock = Clock()
-    stt = FakeSTT("snooze")
+    stt = FakeSTT("Hey Pip.")
     bus, sched, conv, ears, got, tasks = await setup_bus(tmp_path, clock, stt)
     sched.add("alarm", "alarm", clock() + 5, repeat="daily")
     clock.t += 6
     await asyncio.sleep(0.3)
-    await ears.emit("heard.wake", {"word": "hey_pip"})
-    await asyncio.sleep(0.2)
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.3)
     assert sched.ringing and "ears.ring_stop" in [k for k, _, _ in got]     # quiet so they can be heard
-    d, p = utt("wake")
-    await ears.emit("heard.utterance", d, private=p)
+    stt.text = "snooze"
+    await ears.emit("heard.utterance", *room())
     await asyncio.sleep(0.3)
     assert not sched.ringing
     [a] = sched.active()
     assert a["due"] == pytest.approx(clock() + 5 * 60)                       # snoozed, not moved to tomorrow
     assert "Snoozed for 5 minutes." in [t for k, t, _ in got if k == "ears.say"]
+    clock.t += 5 * 60 + 1
+    await asyncio.sleep(0.3)
+    assert sched.ringing
+    stt.text = "Hey Pip, snooze."
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.3)
+    assert not sched.ringing and len(sched.active()) == 1
     await finish(bus, tasks)
 
 
 async def test_hey_pip_then_a_question_or_nothing_stops_it(tmp_path):
     clock = Clock()
-    stt = FakeSTT("what's the capital of France?")
+    stt = FakeSTT("Hey Pip.")
     bus, sched, conv, ears, got, tasks = await setup_bus(tmp_path, clock, stt,
                                                          answers={"what's the capital of France?": "Paris."})
     sched.add("alarm", "alarm", clock() + 5)
     clock.t += 6
     await asyncio.sleep(0.3)
-    await ears.emit("heard.wake", {"word": "hey_pip"})
-    await asyncio.sleep(0.2)
-    d, p = utt("wake")
-    await ears.emit("heard.utterance", d, private=p)
-    await asyncio.sleep(0.6)
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.3)
+    stt.text = "what's the capital of France?"
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(1.5)
     assert not sched.ringing                                                 # his name stopped it…
     assert "Paris." in [t for k, t, _ in got if k == "ears.say"]    # …and the question was answered
     sched.add("alarm", "alarm", clock() + 5)
     clock.t += 6
     await asyncio.sleep(0.3)
     sched.hush_s = 0.1
-    await ears.emit("heard.wake", {"word": "hey_pip"})                       # and then says nothing
-    await asyncio.sleep(0.4)
+    stt.text = "Hey Pip."
+    await ears.emit("heard.utterance", *room())                             # and then says nothing
+    await asyncio.sleep(0.6)
     assert not sched.ringing
     await finish(bus, tasks)
 

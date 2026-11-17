@@ -33,7 +33,7 @@ SITUATIONS = {
         "joining":        "Thinking about joining in",               # Claude decides whether to join in
     },
     "listening": {
-        "called":         "Heard my name: go on",                    # a wake word or his name, waiting for the rest
+        "called":         "Heard my name: go on",                    # just his name, waiting for the rest
         "hearing":        "Working out what you said",               # speech-to-text on what was said to him
         "turn":           "Waiting to see if you're done",           # holding your words for the end of your turn (D-106)
         "follow_up":      "Listening for your reply",                # after answering, in case you reply

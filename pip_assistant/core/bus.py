@@ -169,7 +169,7 @@ class Bus:
         await self._deliver_event(msg)
 
     def core_listen(self, pattern: str, handler) -> None:
-        """Let a part of pip-core react to events (e.g. the conversation reacting to heard.wake)."""
+        """Let a part of pip-core react to events (e.g. the conversation reacting to heard.utterance)."""
         self.core_listeners.append((pattern, handler))
 
     async def _deliver_event(self, msg: Message) -> None:

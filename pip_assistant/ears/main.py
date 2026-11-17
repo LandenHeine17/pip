@@ -1,7 +1,7 @@
-"""pip-ears: listens all the time, hears the wake words, captures what's said, speaks, and stops
-instantly when talked over.
+"""pip-ears: listens all the time, captures what's said (all of it goes to speech-to-text: pip-core listens for
+Pip's name in the words, D-134), speaks, and stops instantly when talked over.
 
-Events it sends:   heard.wake {word, score} · heard.started {reason} · heard.utterance {reason, seconds, had_speech, word,
+Events it sends:   heard.started {reason} · heard.utterance {reason, seconds, had_speech,
                    quiet_s} (+ private audio) · speech.started · speech.interrupted {level_dbfs, said} · speech.finished
                    {interrupted, spoken} · speech.overlap_ignored {level_dbfs} (loud over him, but no voice: he carries on)
                    speech.level {level 0–1} (~10 a second while he talks, for the face's mouth; not traced)
@@ -38,7 +38,6 @@ from .audio import Microphone, Speaker, chime, level_dbfs, mic_tone, microphones
 from .clap import ClapDetector
 from .segmenter import Segmenter
 from .voice import make_voice
-from .wake import WakeDetector
 
 log = logging.getLogger("pip-ears")
 # Talked over (D-128): a voice over him first lowers his voice to DUCK_GAIN; still talking DUCK_S later and he stops;
@@ -55,7 +54,6 @@ class Ears:
         self.cfg = e
         self.mic = Microphone()
         self.speaker = Speaker()
-        self.wake = WakeDetector(e["wake_words"], thresholds=e["wake_thresholds"])
         self.voice = make_voice(e["voice_engine"], e["voice"], e["speech_rate"])
         self.chime = chime(self.voice.rate)
         self.tones = {"thinking": thinking_tone(self.voice.rate), "mic_on": mic_tone(True, self.voice.rate),
@@ -67,9 +65,7 @@ class Ears:
         self.claps_live = False    # False: trial (only reported), until "Two claps switch listening" is ticked
         self.quiet_after = 0.0     # Pip's own sound reaches the clap microphone: ignore it until a moment after
         self.seg = Segmenter(speech_dbfs=li["speech_dbfs"], end_silence_s=li["end_silence_seconds"],
-                             max_s=li["max_utterance_seconds"], wait_for_speech_s=li["wait_for_speech_seconds"],
-                             after_wake_s=li["after_wake_seconds"])
-        self.transcript_wake = li["transcript_wake"]
+                             max_s=li["max_utterance_seconds"], wait_for_speech_s=li["wait_for_speech_seconds"])
         self.queue: asyncio.Queue = asyncio.Queue()
         self.speaking = False
         self.stops = 0               # how many times he's been stopped: a sentence being made meanwhile is dropped
@@ -126,7 +122,6 @@ class Ears:
 
     # ---------------------------------------------------------------- listening
     async def listen(self) -> None:
-        loop = asyncio.get_running_loop()
         async for frame in self.mic.frames():
             if self.mic_mode == "off":
                 await self._update_state(frame)
@@ -143,23 +138,12 @@ class Ears:
                     self.follow_until = 0.0
                     self.seg.start("follow_up", lookback=0.4)
                     await self.bus.emit("heard.started", {"reason": "follow_up"})
-                elif self.transcript_wake:
-                    self.seg.start("room", lookback=0.4)  # everything heard is transcribed, like Ziggletron (D-92)
+                else:
+                    self.seg.start("room", lookback=0.4)  # everything heard is transcribed, like Ziggletron (D-92, D-134)
                     await self.bus.emit("heard.started", {"reason": "room"})
             utt = self.seg.feed(frame, db)
             if utt and (utt.reason != "room" or utt.seconds >= 0.5):
                 await self._send_utterance(utt)
-            hit = await loop.run_in_executor(None, self.wake.feed, frame)
-            if hit:
-                word, score = hit
-                log.info("heard wake word %s (%.2f)", word, score)
-                await self.stop_speaking()
-                await self.bus.emit("heard.wake", {"word": word, "score": score})
-                if self.seg.capturing and self.seg.capture["reason"] in ("room", "follow_up"):
-                    c = self.seg.capture  # the same speech: now it's a wake-word request
-                    c["reason"], c["word"], c["after"] = "wake", word, c["had_speech"]
-                else:
-                    self.seg.start("wake", word=word, lookback="phrase")
 
     async def heard_over(self, frame, db: float) -> None:
         """Pip is talking: is someone talking over him? The speakerphone removes his own voice, so ~240 ms of
@@ -228,8 +212,7 @@ class Ears:
             self.seg.start("barge_in", lookback=lookback)
 
     async def _send_utterance(self, utt) -> None:
-        data = {"reason": utt.reason, "seconds": utt.seconds, "had_speech": utt.had_speech, "word": utt.word,
-                "quiet_s": utt.quiet_s}
+        data = {"reason": utt.reason, "seconds": utt.seconds, "had_speech": utt.had_speech, "quiet_s": utt.quiet_s}
         private = {"audio_b64": base64.b64encode(utt.audio.tobytes()).decode()} if utt.had_speech else {}
         await self.bus.emit("heard.utterance", data, private=private)
 
@@ -260,7 +243,7 @@ class Ears:
                 log.exception("speech synthesis failed")
                 continue
             if audio is None or not len(audio) or self.stops != stops:
-                continue   # (stopped while Piper was making it: "stop", a wake word, talked over)
+                continue   # (stopped while Piper was making it: "stop", talked over)
             self.speaking = True
             if kind == "speech" and not self.voiced:   # his voice starts (even right after a chime or tone)
                 self.voiced, self.overlap_noted, self.said_n = True, False, 0
@@ -383,10 +366,10 @@ async def main() -> None:
     bus.on("ears.mics", ears.on_mics)
     bus.on("ears.ring", ears.on_ring)
     bus.on("ears.ring_stop", ears.on_ring_stop)
-    bus.status.update(activity="listening", wake_words=cfg["ears"]["wake_words"])
+    bus.status.update(activity="listening")
     if cfg["ears"].get("barge_in_voice_check", True):
         voice_seconds_sync(b"\0\0" * 1600)   # load the voice detector now, not the first time he's talked over
-    log.info("listening for %s", ", ".join(cfg["ears"]["wake_words"]))
+    log.info("listening (for Pip's name in what's said, D-134)")
     await serve(bus, ears.listen, ears.speak_loop)
 
 

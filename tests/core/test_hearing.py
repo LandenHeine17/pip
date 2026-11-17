@@ -95,7 +95,7 @@ class LimitedSTT(FakeSTT):
 async def test_when_groq_is_used_up_pip_still_answers_with_claude(tmp_path):
     local = FakeSTT("Pip, what's the capital of Australia?")
     bus, sched, conv, ears, got, tasks = await setup_bus(tmp_path, Clock(), LimitedSTT(), local_stt=local)
-    await ears.emit("heard.utterance", *utt("wake"))
+    await ears.emit("heard.utterance", *utt("barge_in"))
     await asyncio.sleep(0.4)
     assert local.calls == 1                                    # heard on the Pi…
     assert "thinker.ask" in [k for k, _, _ in got]             # …and Claude answers: not offline

@@ -139,7 +139,7 @@ async def test_offline_indicator(tmp_path):
 # ---------------------------------------------------------------- fixes from the 2026-11-09 review
 
 
-def utt(reason="wake"):
+def utt(reason="barge_in"):
     import base64
     return {"reason": reason, "had_speech": True, "seconds": 1.0}, {"audio_b64": base64.b64encode(b"x" * 32000).decode()}
 
@@ -241,28 +241,23 @@ class DelayedSTT(FakeSTT):
 
 
 async def test_urgent_messages_do_not_wait_behind_speech_to_text(tmp_path):
-    """Speech-to-text takes ~0.5 s (2 s here). It used to hold up every message from pip-ears after it: his name, a
-    talk-over and "someone started talking" now arrive at once, and what was heard is still handled in order."""
+    """Speech-to-text takes ~0.5 s (2 s here). It used to hold up every message from pip-ears after it: a talk-over
+    and "someone started talking" now arrive at once, and what was heard is still handled in order."""
     bus, conv, ears, got, asks, tasks = await setup(tmp_path, social={"join_in": False})
     conv.stt = DelayedSTT("did you see the game", 2.0)
     seen = []
-    orig_wake, orig_cut = conv.on_wake, conv.on_interrupted
-
-    async def wake(msg):
-        seen.append(("wake", time.monotonic()))
-        await orig_wake(msg)
+    orig_cut = conv.on_interrupted
 
     async def cut(msg):
         seen.append(("cut", time.monotonic()))
         await orig_cut(msg)
-    bus.core_listeners = [(p, {conv.on_wake: wake, conv.on_interrupted: cut}.get(h, h)) for p, h in bus.core_listeners]
+    bus.core_listeners = [(p, {conv.on_interrupted: cut}.get(h, h)) for p, h in bus.core_listeners]
     t0 = time.monotonic()
     await ears.emit("heard.utterance", *room())
     await ears.emit("heard.utterance", *room())                   # two in a row: both transcribed, in order
     await ears.emit("speech.interrupted", {"level_dbfs": -20})
-    await ears.emit("heard.wake", {"word": "pippletron", "score": 0.9})
     await asyncio.sleep(0.3)
-    assert [w for w, _ in seen] == ["cut", "wake"] and all(at - t0 < 0.3 for _, at in seen)
+    assert [w for w, _ in seen] == ["cut"] and all(at - t0 < 0.3 for _, at in seen)
     assert conv.stt.calls == 1                                    # the first is still being transcribed
     await asyncio.sleep(4.2)
     await conv.drain()
@@ -326,7 +321,7 @@ async def answered_then(tmp_path, monkeypatch, then_voice, asker):
         return who["now"]
     who = {"now": asker}
     monkeypatch.setattr(conv, "identify", identify)
-    await ears.emit("heard.utterance", {**room()[0], "reason": "wake"}, private=room()[1])
+    await ears.emit("heard.utterance", {**room()[0], "reason": "barge_in"}, private=room()[1])
     await asyncio.sleep(0.2)
     await ears.emit("speech.started", {})
     await ears.emit("speech.finished", {"interrupted": False, "spoken": True})

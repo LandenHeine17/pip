@@ -189,7 +189,7 @@ async def test_any_wording_goes_to_claude_whose_action_pip_carries_out(tmp_path)
     stt = FakeSTT(said)
     bus, sched, conv, ears, got, tasks = await setup_bus(
         tmp_path, clock, stt, answers={said: 'ACTION {"do": "add", "kind": "timer", "seconds": 600}'})
-    d, p = utt("wake")
+    d, p = utt("barge_in")
     await ears.emit("heard.utterance", d, private=p)
     await asyncio.sleep(0.3)
     assert [k for k, _, _ in got if k == "thinker.ask"] == ["thinker.ask"]
@@ -212,7 +212,7 @@ async def test_if_claude_fails_pips_own_commands_still_try(tmp_path):
         from pip_assistant.common.messages import Message
         return Message("reply", "thinker.ask", data={"error": "TimeoutError"})
     conv.bus_request = broken
-    d, p = utt("wake")
+    d, p = utt("barge_in")
     await ears.emit("heard.utterance", d, private=p)
     await asyncio.sleep(0.3)
     assert [t for k, t, _ in got if k == "ears.say"] == ["Timer's on, 10 minutes."]
@@ -223,7 +223,7 @@ async def test_offline_uses_local_hearing_and_only_does_commands(tmp_path):
     clock = Clock()
     local = FakeSTT("Pip, set a timer for five minutes")
     bus, sched, conv, ears, got, tasks = await setup_bus(tmp_path, clock, FakeSTT(fail=True), local_stt=local)
-    d, p = utt("wake")
+    d, p = utt("barge_in")
     await ears.emit("heard.utterance", d, private=p)
     await asyncio.sleep(0.3)
     assert [t for k, t, _ in got if k == "ears.say"] == ["Timer's on, 5 minutes."] and len(sched.active()) == 1
@@ -232,11 +232,13 @@ async def test_offline_uses_local_hearing_and_only_does_commands(tmp_path):
     await asyncio.sleep(0.3)
     assert [t for k, t, _ in got if k == "ears.say"] == ["Timer's on, 5 minutes."]   # stays quiet (D-115)
     assert "thinker.ask" not in [k for k, _, _ in got]
-    d, p = utt("room")                                        # room speech is never transcribed on the Pi (D-50)
+    d, p = utt("room")              # room speech is transcribed on the Pi too now: his name in it calls him (D-134)
     calls = local.calls
+    local.text = "Pip, set a timer for two minutes"
     await ears.emit("heard.utterance", d, private=p)
-    await asyncio.sleep(0.2)
-    assert local.calls == calls
+    await asyncio.sleep(1.5)
+    assert local.calls == calls + 1 and len(sched.active()) == 2
+    assert "thinker.ask" not in [k for k, _, _ in got]
     await finish(bus, tasks)
 
 
@@ -261,7 +263,7 @@ async def test_a_sure_command_is_done_without_claude_and_stop_is_instant(tmp_pat
     clock = Clock()
     stt = FakeSTT("Pip, set a timer for ten minutes.")
     bus, sched, conv, ears, got, tasks = await setup_bus(tmp_path, clock, stt)
-    d, p = utt("wake")
+    d, p = utt("barge_in")
     await ears.emit("heard.utterance", d, private=p)
     await asyncio.sleep(0.3)
     assert [t for k, t, _ in got if k == "ears.say"] == ["Timer's on, 10 minutes."] and len(sched.active()) == 1

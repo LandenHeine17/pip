@@ -68,7 +68,7 @@ class FakeSTT:
 
 
 
-def utt(reason="wake", pcm=b"\1\0" * 800):
+def utt(reason="barge_in", pcm=b"\1\0" * 800):
     return {"reason": reason, "had_speech": True, "seconds": 1.5}, {"audio_b64": base64.b64encode(pcm).decode()}
 
 
@@ -205,6 +205,7 @@ def says(got):
 
 
 asked = []   # what answering_setup's fake Claude was asked
+asked_how = []   # …and how: (kind, before) (D-134: "name_after", with how many lines came before his name)
 
 
 async def answering_setup(tmp_path, stt_text, sentences=("Canberra is the capital.", "Not Sydney!")):
@@ -224,6 +225,7 @@ async def answering_setup(tmp_path, stt_text, sentences=("Canberra is the capita
 
     async def ask(msg):
         asked.append(msg.private.get("text"))
+        asked_how.append((msg.data.get("kind"), msg.data.get("before")))
         for s in sentences:
             await thinker.emit("answer.sentence", {"answer_id": msg.data["answer_id"]}, private={"text": s})
         return msg.reply({"first_sentence_s": 0.5}, private={"text": " ".join(sentences)}, source="thinker")

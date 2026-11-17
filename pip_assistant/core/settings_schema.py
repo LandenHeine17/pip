@@ -43,15 +43,6 @@ def _voice_choices():
     return voices.choices()
 
 
-def _wake_choices():
-    """Wake-word models there are (household-tuned ones in ~/pip-data, then the repo's)."""
-    found = set()
-    for d in paths.wake_model_folders():   # the same folders ears/wake.py looks in
-        if d.is_dir():
-            found |= {f.stem for f in d.glob("*.onnx") if f.stem not in ("melspectrogram", "embedding_model")}
-    return sorted(found)
-
-
 V, L, T, C, F, W, B, P, A = GROUPS
 SCHEMA = {
     # ---- Voice & sounds
@@ -69,13 +60,12 @@ SCHEMA = {
     "alarms.snooze_minutes": _s(V, "Snooze for", "Minutes, when you say \"snooze\" without a length.",
                                 "float", ["core"], min=1, max=60),
     # ---- Listening
-    "ears.wake_words": _s(L, "Wake words", "The names Pip listens for (D-74).", "list", ["ears"],
-                          choices=_wake_choices, nonempty=True),
-    "ears.wake_thresholds": _s(L, "Wake-word strictness", "How sure each detector must be (0–1): higher = fewer "
-                               "false wakes, more misses. Pippletron is strict because \"Ziggletron\" sounds similar.",
-                               "map", ["ears"], min=0.05, max=0.99),
-    "listen.transcript_wake": _s(L, "Hear the whole room", "Transcribe everything said in the room, like Ziggletron "
-                                 "(D-92). Off: Pip only reacts to the wake word.", "bool", ["ears"]),
+    "conversation.wait_after_name_seconds": _s(L, "After just his name", "Said only his name, with nothing said just "
+                                               "before? Pip listens quietly this many seconds for the rest.", "float",
+                                               ["core"], min=1, max=15),
+    "conversation.name_lookback_seconds": _s(L, "Before just his name", "Said only his name (\"what's the weather… "
+                                             "Pip?\"): what anyone said this many seconds before is taken as the "
+                                             "question, the most recent first (D-134).", "float", ["core"], min=5, max=120),
     # ---- Taking turns: when Pip answers, when he stops, who he answers (D-106, D-122-D-124)
     "conversation.turn_wait_short_seconds": _s(T, "After a question", "Seconds from when you stop talking before Pip "
                                                "answers a question or short request. The end-of-speech pause and "
@@ -91,8 +81,6 @@ SCHEMA = {
     "conversation.turn_wait_after_interrupt_seconds": _s(T, "Extra after being talked over", "Added to the next "
                                                          "turn after someone talked over him: he takes the hint.",
                                                          "float", ["core"], min=0, max=5),
-    "conversation.wait_after_name_seconds": _s(T, "After just his name", "Said only his name? Pip listens quietly "
-                                               "this many seconds for the rest.", "float", ["core"], min=1, max=15),
     "ears.barge_in": _s(T, "Stop when talked over", "Stop talking straight away when someone talks over Pip.",
                         "bool", ["ears"]),
     "ears.barge_in_voice_check": _s(T, "Only a voice cuts him off", "Talked over only counts if it has a human voice "
@@ -164,8 +152,8 @@ SCHEMA = {
     "builder.effort": _s(B, "Effort for changes", "How hard Claude thinks while planning and building a change.",
                          "str", ["builder"], choices=["low", "medium", "high", "xhigh", "max"]),
     # ---- Personality (the editor is on the same part of the page)
-    "pip.name": _s(P, "Name", "What Pip calls himself in his personality ({name}). It doesn't change the wake words "
-                   "or the names he answers to.", "str", ["thinker"], nonempty=True, max=30),
+    "pip.name": _s(P, "Name", "What Pip calls himself in his personality ({name}). It doesn't change "
+                   "the names he answers to.", "str", ["thinker"], nonempty=True, max=30),
     # ---- Advanced: speech-to-text, voice recognition, clap tuning, programs, trace, web
     "ears.voice_engine": _s(A, "Voice engine", "Swappable later (PIP-NEW-097); only Piper for now.", "str", ["ears"],
                             choices=["piper"]),
@@ -177,8 +165,6 @@ SCHEMA = {
                                      "speaking (Ziggletron: 0.7).", "float", ["ears"], min=0.2, max=3),
     "listen.max_utterance_seconds": _s(A, "Longest request", "Longest single request, in seconds.", "float",
                                        ["ears", "core"], min=3, max=60),
-    "listen.after_wake_seconds": _s(A, "Wait after the wake word", "After the wake word, how long to wait for a "
-                                    "question (else it came before the name).", "float", ["ears"], min=0.2, max=3),
     "stt.provider": _s(A, "Speech-to-text service", "Swappable (PIP-NEW-008, D-48); only Groq for now.", "str",
                        ["core"], choices=["groq"]),
     "stt.model": _s(A, "Speech-to-text model", "Groq's Whisper model.", "str", ["core"], nonempty=True),
@@ -191,8 +177,8 @@ SCHEMA = {
     "stt.drop_phantoms": _s(A, "Ignore phantom \"Thank you.\"", "Speech-to-text writes \"Thank you.\", \"you\" or "
                             "\"Bye.\" for a cough or a laugh. Alone, from a voice Pip doesn't know, they're treated as "
                             "noise; a voice he knows is still answered.", "bool", ["core"]),
-    "stt.min_voice_seconds": _s(A, "Least voice", "Less voice than this (seconds, except right after the wake word) "
-                                "is treated as noise.", "float", ["core"], min=0, max=2),
+    "stt.min_voice_seconds": _s(A, "Least voice", "Less voice than this (seconds) is treated as noise.",
+                                "float", ["core"], min=0, max=2),
     "stt.offline_model": _s(A, "Offline speech-to-text", "Whisper model on the Pi, used only when Groq can't be "
                             "reached (empty = none, D-83).", "str", ["core"],
                             choices=["", "tiny.en", "base.en", "small.en"]),
@@ -248,6 +234,8 @@ SCHEMA = {
     "web.port": _s(A, "Dashboard port", "Port for the dashboard.", "int", ["web"], min=1024, max=65535),
     "web.tv_host": _s(A, "Monitor address", "Also listen here (same port), so the monitor's browser on the Pi works "
                       "without Tailscale.", "str", ["web"]),
+    "web.allowed_hosts": _s(A, "Other dashboard names", "Other names the dashboard may be opened by, like a name of "
+                            "your own for the Pi. Its own address and Tailscale name always work.", "list", ["web"]),
 }
 TYPES = {"str": str, "int": int, "float": float, "bool": bool, "list": list, "map": dict}
 

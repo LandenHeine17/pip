@@ -49,7 +49,7 @@ async def test_claude_looking_up_why_gets_the_trace(tmp_path):
     bus, conv, ears, got, asks, tasks = await setup(
         tmp_path, "Pip, why didn't you answer me?", social={"join_in": False}, schedule=Schedule(tmp_path / "pip.db"),
         replies={"direct": ['ACTION {"do": "look", "kind": "why"}', "Your voice was a bit quiet."]})
-    await ears.emit("heard.utterance", {**room()[0], "reason": "wake"}, private=room()[1])
+    await ears.emit("heard.utterance", {**room()[0], "reason": "barge_in"}, private=room()[1])
     await asyncio.sleep(2.0)
     assert len(asks) == 2
     second = asks[1][1]

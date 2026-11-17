@@ -52,7 +52,7 @@ def build(cfg: dict) -> Core:
     bus.core_handlers["core.trace"] = lambda m: {"entries": trace.recent(int(m.data.get("limit", 200)))}
     try:
         stt = make_stt(cfg)
-    except Exception as e:  # Pip still runs (wake words, health) without speech-to-text
+    except Exception as e:  # Pip still runs (timers, health) without speech-to-text
         log.warning("speech-to-text unavailable: %s", e)
         stt = None
     schedule = Schedule(paths.database(), bus, cfg)

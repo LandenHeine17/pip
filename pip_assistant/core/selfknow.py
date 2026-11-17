@@ -74,8 +74,6 @@ def describe(row: dict) -> str | None:
         return "someone talked over him, so he stopped"
     if ty == "speech.overlap_ignored":
         return "a loud sound over him with no voice: he kept talking"
-    if ty == "wake.rejected":
-        return "heard \"Ziggletron\", not his name: ignored"
     if ty == "stt.failed":
         return "speech-to-text failed, so he couldn't make it out"
     if ty == "mic.changed":

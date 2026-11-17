@@ -1,5 +1,5 @@
-"""Cutting what's said out of the sound (ears/segmenter.py): a wake word at the end or start of a sentence, a pause
-after the name, and a wake word during room capture."""
+"""Cutting what's said out of the sound (ears/segmenter.py): the speech just before a capture started is kept,
+a pause ends it, nothing said gives up, and nothing runs past the longest request."""
 from helpers import LOUD, QUIET
 
 from pip_assistant.ears.segmenter import FRAME_S, Segmenter
@@ -12,45 +12,33 @@ def run_frames(seg, frames):
     return out
 
 
-def test_wake_at_end_of_sentence_keeps_the_question_before_it():
+def test_phrase_lookback_keeps_the_speech_before_the_start():
     seg = Segmenter()
-    run_frames(seg, [QUIET] * 20 + [LOUD] * 25)          # "what time is it, Pippletron" (2 s of speech)
-    seg.start("wake", word="pippletron", lookback="phrase")
-    utt = run_frames(seg, [QUIET] * 30)                  # then a pause (Pip waits ~2 s for more)
-    assert utt and utt.reason == "wake" and utt.had_speech
-    assert 2.0 <= utt.seconds <= 2.6                     # the speech before the name, plus a little
+    run_frames(seg, [QUIET] * 20 + [LOUD] * 25)          # 2 s of speech already under way (talked over, D-128)
+    seg.start("barge_in", lookback="phrase")
+    utt = run_frames(seg, [QUIET] * 12)                  # then a pause
+    assert utt and utt.reason == "barge_in" and utt.had_speech
+    assert 2.0 <= utt.seconds <= 2.6                     # the speech before, plus a little
 
 
-def test_wake_then_question_after_it():
-    seg = Segmenter()
-    run_frames(seg, [QUIET] * 10 + [LOUD] * 8)           # "Pippletron"
-    seg.start("wake", lookback="phrase")
-    utt = run_frames(seg, [QUIET] * 4 + [LOUD] * 20 + [QUIET] * 15)  # short pause, then the question
-    assert utt.had_speech and utt.seconds > (8 + 4 + 20) * FRAME_S - 0.1
+def test_a_pause_ends_it_and_a_short_gap_does_not():
+    seg = Segmenter(end_silence_s=0.7)
+    seg.start("room", lookback=0.4)
+    assert run_frames(seg, [LOUD] * 10 + [QUIET] * 4 + [LOUD] * 10) is None   # a 0.3 s gap between words
+    utt = run_frames(seg, [QUIET] * 9)
+    assert utt and utt.reason == "room" and utt.seconds > 20 * FRAME_S
+    assert utt.quiet_s == round(9 * FRAME_S, 2)
 
 
-def test_wake_with_nothing_said_gives_up():
-    seg = Segmenter(after_wake_s=1.0)
-    run_frames(seg, [QUIET] * 10)
-    seg.start("wake", lookback="phrase")
+def test_nothing_said_gives_up():
+    seg = Segmenter(wait_for_speech_s=1.0)
+    seg.start("follow_up", lookback=0.0)
     utt = run_frames(seg, [QUIET] * 20)
     assert utt and not utt.had_speech
 
 
-def test_name_then_pause_then_question_is_one_request():
-    seg = Segmenter(after_wake_s=2.0)
-    run_frames(seg, [QUIET] * 10 + [LOUD] * 8)           # "Pippletron"
-    seg.start("wake", lookback="phrase")
-    utt = run_frames(seg, [QUIET] * 14 + [LOUD] * 20 + [QUIET] * 15)  # 1.1 s pause, then the question
-    assert utt.seconds > (8 + 14 + 20) * FRAME_S - 0.1    # name, pause and question together
-
-
-def test_wake_during_room_capture_becomes_a_wake_request():
-    seg = Segmenter()
-    run_frames(seg, [QUIET] * 5)
+def test_nothing_runs_past_the_longest_request():
+    seg = Segmenter(max_s=2.0)
     seg.start("room", lookback=0.4)
-    run_frames(seg, [LOUD] * 10)
-    c = seg.capture
-    c["reason"], c["word"], c["after"] = "wake", "pippletron", c["had_speech"]
-    utt = run_frames(seg, [QUIET] * 12)
-    assert utt and utt.reason == "wake" and utt.word == "pippletron"
+    utt = run_frames(seg, [LOUD] * 40)
+    assert utt and utt.seconds <= 2.1

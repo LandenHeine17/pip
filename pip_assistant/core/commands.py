@@ -27,6 +27,7 @@ from datetime import datetime, timedelta
 from ..common import when
 from .alerts import Alerts, at_phrase
 from .names import NAME_WITH_GREETING as NAME
+from .names import only_name
 from .schedule import Schedule
 
 POLITE = re.compile(r"\b(please|can you|could you|would you|will you|can u|i want you to|i need you to|go ahead and|just)\b", re.I)
@@ -171,6 +172,7 @@ class Commands:
         self.call = None   # who's asking (core/modules.Call) during handle(); None = the dashboard, sees everything
         self.clock = clock
         self.awaiting: dict | None = None   # Pip asked a question ("For how long?") and waits for the answer
+        self.hushed_until = 0.0              # "Hey Pip" quieted a ringing alarm: what they say next decides (D-134)
 
     def now(self) -> datetime:
         return datetime.fromtimestamp(self.clock())
@@ -204,8 +206,18 @@ class Commands:
             await self.s.acknowledge("voice")
             return ""
         if NAME.search(text):
+            if only_name(text):
+                # Just "Hey Pip" (D-133, D-134): quiet, but not stopped yet: what they say next decides ("…snooze"
+                # snoozes, anything else is for him and stops it); if nothing does, saying his name stopped it, as
+                # it always has (Schedule.hush). None: pip-core takes it as him being called.
+                await self.s.hush()
+                self.hushed_until = self.clock() + self.s.hush_s
+                return None
             await self.s.acknowledge("name")
-            return None if t else ""
+            return None
+        if reason == "room" and self.clock() < self.hushed_until:
+            await self.s.acknowledge("name")   # "Hey Pip" … "what's the weather": for him, and the alarm is done
+            return None
         if reason != "room":
             return None  # said to Pip, but not an obvious stop/snooze: Claude works out what they want (D-94)
         return ""  # TV or chatter: recorded, but the alarm keeps ringing (FEAT-037)

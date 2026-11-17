@@ -91,14 +91,14 @@ async def test_claude_hears_who_is_talking_and_what_pip_remembers(tmp_path):
     bus, people, memory, conv, ears, got, tasks = await setup_bus(tmp_path, clock, FakeSTT("Pip, remember I like my coffee black"), raw)
     alex = people.add_person("Alex", "admin")
     await people.add_samples(alex["id"], [voice("alex")] * 2, "guided")
-    await ears.emit("heard.utterance", *utt("wake", voice("alex2")))
+    await ears.emit("heard.utterance", *utt("barge_in", voice("alex2")))
     await asyncio.sleep(0.4)
     [ask] = [x for x in got if x[0] == "thinker.ask"]
     assert ask[2]["people"].startswith("Speaking: Alex (") and "Household: Alex" in ask[2]["people"]
     assert [t for k, t, _ in got if k == "ears.say"] == ["Saved: Alex likes his coffee black."]
     assert memory.items()[0]["status"] == "active"
     conv.stt.text = "Pip, how do I take my coffee?"
-    await ears.emit("heard.utterance", *utt("wake", voice("alex")))
+    await ears.emit("heard.utterance", *utt("barge_in", voice("alex")))
     await asyncio.sleep(0.4)
     assert "Alex likes his coffee black" in [x for x in got if x[0] == "thinker.ask"][-1][2]["memories"]
     trace = json.dumps(bus.trace.recent())
@@ -154,7 +154,7 @@ async def test_introducing_yourself_out_loud_learns_your_voice(tmp_path):
                                                                   'ACTION {"do": "learn_voice", "name": "Alex"}')
     conv.enrol_speech_wait = 0.05
     people.add_person("Alex", "admin")
-    await ears.emit("heard.utterance", *utt("wake", voice("alex", 2.0)))
+    await ears.emit("heard.utterance", *utt("barge_in", voice("alex", 2.0)))
     await asyncio.sleep(0.2)
     assert conv.enrol_status()["name"] == "Alex"
     assert [t for k, t, _ in got if k == "ears.say"][0].startswith("Hi Alex! Let's learn your voice.")
@@ -164,7 +164,7 @@ async def test_introducing_yourself_out_loud_learns_your_voice(tmp_path):
         await asyncio.sleep(0.1)
     assert people.all()[0]["voice_samples"] == 6 and stt.calls == 1          # 5 sentences + the introduction
     stt.text = "Pip, who am I?"                # Claude is told who's speaking
-    await ears.emit("heard.utterance", *utt("wake", voice("alex2")))
+    await ears.emit("heard.utterance", *utt("barge_in", voice("alex2")))
     await asyncio.sleep(0.2)
     assert [x for x in got if x[0] == "thinker.ask"][-1][2]["people"].startswith("Speaking: Alex (")
     await finish(bus, tasks)

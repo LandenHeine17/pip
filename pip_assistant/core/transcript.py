@@ -41,6 +41,15 @@ class Transcript:
     def last_human(self) -> dict | None:
         return next((line for line in reversed(self._fresh()) if not line["ours"]), None)
 
+    def recent(self, seconds: float) -> list[dict]:
+        """People's lines from the last `seconds`, since Pip's own last line (what he said ends what came before)."""
+        out = []
+        for line in reversed(self._fresh()):
+            if line["ours"] or line["ts"] < self.clock() - seconds:
+                break
+            out.append(line)
+        return out[::-1]
+
     def last_ours(self) -> dict | None:
         return next((line for line in reversed(self._fresh()) if line["ours"]), None)
 

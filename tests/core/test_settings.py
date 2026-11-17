@@ -52,7 +52,6 @@ def test_fixed_choices_match_the_code():
     assert settings_schema.RINGTONES == list(RINGTONES)
     assert settings_schema.MOODS == list(INTERVALS)
     assert "en_US-lessac-medium" in settings_schema.choices("ears.voice")
-    assert {"pippletron", "hey_pip"} <= set(settings_schema.choices("ears.wake_words"))
 
 
 # ---------------------------------------------------------------- validate
@@ -60,7 +59,7 @@ def test_validate_rejects_wrong_values_in_plain_words():
     errors = settings_schema.validate({
         "ears.barge_in": "yes", "web.port": 80.5, "social.mood": "grumpy", "ears.speech_rate": 3,
         "trace.keep_hours": 0, "social.quiet_hours": "late", "alarms.ringtones": {"timer": "siren"},
-        "ears.wake_thresholds": {"pippletron": 1.5}, "ears.wake_words": [], "thinker.location": "  ",
+        "thinker.location": "  ",
         "no.such": 1, "alarms.ringtones.extra": "x"})
     assert errors["ears.barge_in"] == "Should be on or off."
     assert errors["web.port"] == "Should be a whole number."
@@ -69,8 +68,6 @@ def test_validate_rejects_wrong_values_in_plain_words():
     assert errors["trace.keep_hours"] == "Should be at least 1."
     assert errors["social.quiet_hours"] == "Should look like 23:00-07:00."
     assert "timer:" in errors["alarms.ringtones"] and "classic" in errors["alarms.ringtones"]
-    assert "pippletron:" in errors["ears.wake_thresholds"]
-    assert errors["ears.wake_words"] == "Needs at least one."
     assert errors["thinker.location"] == "Can't be empty."
     assert errors["no.such"] == errors["alarms.ringtones.extra"] == "There's no such setting."
     assert settings_schema.validate({"alarms.ringtones": {"party": "classic"}})["alarms.ringtones"].startswith("Unknown name")
@@ -78,11 +75,10 @@ def test_validate_rejects_wrong_values_in_plain_words():
 
 def test_validate_accepts_good_values_and_tidies_them():
     changes = {"ears.speech_rate": 1, "social.quiet_hours": "", "ears.voice": "en_GB-alan-medium",
-               "ears.wake_thresholds": {"hey_pip": 0.6}, "stt.spare_models": ["a", "a", ""]}
+               "stt.spare_models": ["a", "a", ""]}
     assert settings_schema.validate(changes) == {}
     c = settings_schema.clean(changes)
     assert c["ears.speech_rate"] == 1.0 and isinstance(c["ears.speech_rate"], float)
-    assert c["ears.wake_thresholds"] == {"pippletron": 0.8, "hey_pip": 0.6}
     assert c["stt.spare_models"] == ["a"]
     assert settings_schema.validate({"ears.voice": "not a voice"})      # any Piper-style name is fine, nonsense isn't
 
@@ -128,8 +124,7 @@ def test_save_writes_only_non_defaults_and_keeps_modules(tmp_path):
 
 def test_save_round_trips_every_kind_of_value(tmp_path):
     f = tmp_path / "settings.toml"
-    changes = {"ears.wake_thresholds": {"pippletron": 0.85, "hey_pip": 0.5},
-               "alarms.ringtones": {"timer": "gentle", "alarm": "classic", "reminder": "chimes", "event": "chimes"},
+    changes = {"alarms.ringtones": {"timer": "gentle", "alarm": "classic", "reminder": "chimes", "event": "chimes"},
                "stt.spare_models": ["x-1", "y"], "ears.barge_in": False, "stt.word_list": "Pip,\tline\nnext",
                "mic.clap_max_ms": 300}
     settings_schema.save(changes, f)

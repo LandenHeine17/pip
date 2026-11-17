@@ -62,7 +62,7 @@ async def test_claude_action_is_carried_out_and_confirmed_by_pip(tmp_path):
     raw = 'ACTION {"do": "add", "kind": "event", "title": "dentist", "at": "2026-11-06T14:00"}'
     bus, sched, conv, ears, got, tasks = await setup_bus(
         tmp_path, clock, FakeSTT("Pip, set a thing on the calendar in two days to go to the dentist at 2"), answer=raw)
-    d, p = utt("wake")
+    d, p = utt("barge_in")
     await ears.emit("heard.utterance", d, private=p)
     await asyncio.sleep(0.4)
     assert [t for k, t, _ in got if k == "ears.say"] == ["Added dentist, Friday at 2 PM."]
@@ -246,12 +246,13 @@ async def test_a_look_up_is_dropped_if_they_say_his_name_meanwhile(tmp_path, mon
     look = 'ACTION {"do": "look", "kind": "web", "query": "huskers score"}'
     bus, conv, ears, got, asks, tasks = await setup(
         tmp_path, "Pip, did the Huskers win?", social={"join_in": False}, modules=reg, schedule=Schedule(tmp_path / "pip.db"),
-        replies={"direct": [look, "Yep, 24 to 17."]})
+        replies={"direct": [look, "It's noon."]})
     await ears.emit("heard.utterance", *room())
     await asyncio.sleep(0.4)
     assert conv.fetching and conv.state == "thinking"            # the face: looking it up
-    await ears.emit("heard.wake", {"word": "hey_pip"})
-    await asyncio.sleep(1.0)
-    assert len(asks) == 1 and "Yep, 24 to 17." not in says(got) and not conv.fetching
+    conv.stt.text = "Pip, who sang that song?"                    # called again: a new request (D-134)
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(1.6)
+    assert len(asks) == 2 and "It's noon." in says(got) and not conv.fetching   # the look-up's round never came
     await finish(bus, tasks)
 

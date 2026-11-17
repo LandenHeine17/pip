@@ -4,7 +4,7 @@
     bus.on("ears.say", handle_say)            # commands/requests addressed to this program
     bus.subscribe("timer.*", handle_timer)    # events from others
     asyncio.create_task(bus.run())             # connects (and reconnects) forever
-    await bus.emit("heard.wake", {"word": "pippletron"})
+    await bus.emit("heard.started", {"reason": "room"})
     reply = await bus.request("thinker", "thinker.ask", {...}, timeout=20)
 """
 import asyncio

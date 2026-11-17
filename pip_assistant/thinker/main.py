@@ -1,6 +1,7 @@
 """pip-thinker: turns what someone said into Pip's answer, using Claude (M1a step 3).
 
-Takes:  thinker.ask (request; data.answer_id, data.kind = direct / follow_up / mentioned / join; private: text, transcript
+Takes:  thinker.ask (request; data.answer_id, data.kind = direct / follow_up / follow_up_likely / name_after
+        (+ data.before: how many lines came before his name, D-134) / mentioned / join; private: text, transcript
         (the room conversation), schedule, people, memories, mood, looked_up: all filled in by pip-core)
         → streams answer.sentence events, then replies with the whole answer (and any ACTION line, privately)
         thinker.ask with data.kind = preview (private: personality, question): the Settings page's "Try it".
@@ -146,7 +147,7 @@ class Thinker:
     name = "Pip"   # fills {name} in the personality; settings ([pip] name) override it in __init__
     usage = None
     paused_until = 0.0
-    KIND = {"direct": "answer", "follow_up": "answer", "follow_up_likely": "answer", "mentioned": "mention", "join": "join", "preview": "preview"}
+    KIND = {"direct": "answer", "follow_up": "answer", "follow_up_likely": "answer", "name_after": "answer", "mentioned": "mention", "join": "join", "preview": "preview"}
 
     # ---------------------------------------------------------------- the usage meter (D-69, PIP-NEW-089)
     def show_usage(self) -> None:
@@ -288,6 +289,11 @@ class Thinker:
                              "you asked a question), without your name. It's most likely for you: answer it. But if "
                              "it's clearly said to someone else in the room, or doesn't make sense as something said "
                              "to you (it may be misheard), reply with just PASS and nothing else."),
+        "name_after": ("The last line is only your name. The {before} line(s) said just before it are probably "
+                       "what they want from you: they said it, then called you (or called you "
+                       "again because you missed it). Answer the most recent of them that makes sense as a question "
+                       "or request for you; use the earlier ones as context. If none of it is for you, reply with "
+                       "just: Yes?"),
         "join": ("Nobody spoke to you directly, and there's a pause in the conversation. Would you say something "
                  "right now? Go by your own sense of when to join in. {mood}\n\nIf you'll stay quiet, reply with "
                  "just PASS. If you'll speak, reply with SAY: followed by exactly the words you'd say out loud - "
@@ -307,14 +313,15 @@ class Thinker:
 
     @classmethod
     def user_text(cls, text: str, transcript: list[str] | None = None, now: str | None = None, schedule: str = "",
-                  people: str = "", memories: str = "", kind: str = "direct", mood: str = "", looked_up: str = "") -> str:
+                  people: str = "", memories: str = "", kind: str = "direct", mood: str = "", looked_up: str = "",
+                  before: int = 0) -> str:
         """What Claude reads: the time, who's here, what's set and remembered, the room conversation, and what's asked."""
         now = now or cls.time_now()
         head = "; ".join(x for x in (now, people, schedule, memories) if x)
         lines = list(transcript or [])
         if not lines and text:
             lines = [f"Someone: {text}"]
-        ask = cls.ASK.get(kind, cls.ASK["direct"]).format(mood=mood)
+        ask = cls.ASK.get(kind, cls.ASK["direct"]).format(mood=mood, before=int(before or 1))
         convo = "\n".join(lines) if lines else "(nothing yet)"
         look = f"\n\nYou asked to look this up first (now answer with it; don't look again): {looked_up}" if looked_up else ""
         return f"[{head}]\n\nThe conversation so far, oldest first:\n{convo}{look}\n\n{ask}"
@@ -361,7 +368,7 @@ class Thinker:
         user = self.user_text(msg.private.get("text", ""), msg.private.get("transcript"),
                               schedule=msg.private.get("schedule", ""), people=msg.private.get("people", ""),
                               memories=msg.private.get("memories", ""), kind=kind, mood=msg.private.get("mood", ""),
-                              looked_up=msg.private.get("looked_up", ""))
+                              looked_up=msg.private.get("looked_up", ""), before=msg.data.get("before") or 0)
         try:
             text, info = await self._ask(self.claude, kind, aid, system, user, sentence, searching, held=kind == "join")
             if info.get("only_notes") and aid not in self.__dict__.setdefault("was_cancelled", set()) \
@@ -389,7 +396,7 @@ class Thinker:
         return msg.reply({k: v for k, v in info.items() if v is not None}, private=private, source="thinker")
 
     async def on_cancel(self, msg: Message):
-        """Stop an answer: the one named, or (no answer_id: a wake word, a new request) whatever answer is in
+        """Stop an answer: the one named, or (no answer_id: he was called by name, a new request) whatever answer is in
         progress. Never conversation notes or a Settings "Try it" without their id: those aren't answers, and a
         summary cut short would be saved as the notes (recall)."""
         aid = msg.data.get("answer_id")

@@ -11,7 +11,7 @@ The speakerphone's own mute button works as always, on top of both.
 
 What pip-ears does in each case (`ears.mic {mode}`):
 
-    on          normal: wake words, and everything heard goes to speech-to-text
+    on          normal: everything heard goes to speech-to-text (his name in the words calls him, D-134)
     claps_only  switched off by claps: the Pi only listens for two claps; nothing is recognised or sent
     off         switched off on the dashboard: nothing at all is listened to
 

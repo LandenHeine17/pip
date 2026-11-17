@@ -3,7 +3,7 @@
 Pip listens like Ziggletron (D-92): everything said in the room is transcribed and kept in a short
 room transcript (core/transcript.py), with who said it. Each line is then one of:
 
-    direct      the wake word, called by name ("Pip, …", "hey Pippletron"), the follow-up window
+    direct      called by name ("Pip, …", "hey Pippletron", "what's the weather, Pip?"), the follow-up window
                 after he spoke, or talking over him → he chimes and answers
     mentioned   his name came up but nobody called him ("ask Pip later") → Claude decides whether a
                 person would expect him to answer, and may stay quiet (PASS)
@@ -25,11 +25,13 @@ What people say and what Pip answers travel only in messages' `private` part, so
 written to the decision trace (D-34). The room transcript is kept in memory only (PIP-NEW-028 category 5).
 When listening is switched off (dashboard or two claps, core/mic.py, D-91) nothing is heard at all.
 
-Offline (Groq can't be reached): Whisper on the Pi transcribes instead, and Pip's own fixed-phrasing
+Offline (Groq can't be reached): Whisper on the Pi transcribes instead (room talk too, so his name still
+works, D-134), and Pip's own fixed-phrasing
 commands (core/commands.py) do the basics; for anything else he stays quiet (the face and dashboard show
 he's offline; D-83, D-115). They're also the fallback if Claude fails to answer. Groq's daily limit running
 out isn't offline: what's said to him is heard on the Pi and answered by Claude as usual (D-115).
-While an alarm rings, the obvious "stop", "okay", "snooze" or Pip's name silence it instantly; anything
+While an alarm rings, the obvious "stop", "okay" or "snooze" silence it instantly (his name alone quiets it
+while they say what they want); anything
 else said to Pip goes to Claude, which can stop or snooze it.
 
 Pip's state is published as `pip.state` {state, detail, words, ends_in, quiet} whenever it changes: one of 8 states
@@ -42,7 +44,7 @@ interrupted, joined, mic_off/mic_on, and state changes if switched on; no words)
 
 Where each part lives. This file keeps the face side (the "What the face shows" fields in __init__,
 refresh_state, situation, state_message, say) and the main flow from hearing to answering:
-on_wake → on_utterance (or on_room) → addressed → respond → answer → on_sentence → on_speech_finished.
+on_utterance (or on_room) → addressed → respond → answer → on_sentence → on_speech_finished.
 `Conversation` takes in the methods of these files as if they were its own (each is a small class it is
 built from, so `self.…` works the same everywhere):
 
@@ -70,7 +72,7 @@ from .hearing import Hearing
 from .joining import STALE_S, Joining, in_quiet_hours
 from .micctl import MicControl
 from .modules import Call
-from .names import NOT_PIP, PIP_NAMES, calls_pip, names_pip
+from .names import calls_pip, names_pip
 from .people import Match
 from .commands import HALLUCINATION, STOP, clean
 from .commands import sure as sure_command
@@ -86,8 +88,6 @@ log = logging.getLogger(__name__)
 TYPED: ContextVar[dict | None] = ContextVar("typed", default=None)
 
 SAYINGS = {
-    "not_caught": "Sorry, I didn't catch that. Could you say it again?",
-    "stt_failed": "Sorry, I couldn't make out what you said. My hearing service isn't answering.",
     "thinker_failed": "Sorry, my brain isn't answering right now. Try me again in a moment.",
     "command_failed": "Sorry, that didn't work. Nothing was set.",
     # Asking Pip to change himself (M1b, PIP-NEW-069): only people he recognises for sure may ask by voice
@@ -179,6 +179,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             schedule.watchers.append(self.refresh_state)
             schedule.watchers.append(self.ringing_changed)   # listening off: the mic comes on for an alarm (D-127)
         self.wait_after_name = c.get("wait_after_name_seconds", 5.0)
+        self.name_lookback = c.get("name_lookback_seconds", 30.0)
         self.unfinished_wait = c.get("unfinished_wait_seconds", 3.0)
         t = self.TURN_WAITS                                             # knowing when you're done (D-106)
         self.turn_short = c.get("turn_wait_short_seconds", t["short"])
@@ -212,7 +213,6 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.heard_worker: asyncio.Task | None = None
         self.answer_done = asyncio.Event()
         self.speech_done = asyncio.Event()
-        bus.core_listen("heard.wake", self.on_wake)
         bus.core_listen("heard.utterance", self.queue_utterance)
         bus.core_listen("heard.started", self.on_started)
         bus.core_listen("speech.interrupted", self.on_interrupted)
@@ -350,18 +350,6 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             await self.bus.publish(Message("event", "pip.state", source="core", data=self.state_message()))
 
     # ---------------------------------------------------------------- events
-    async def on_wake(self, msg: Message) -> None:
-        if self.ringing:
-            # Quiet, but not stopped yet: what they say next decides ("Hey Pip, snooze" snoozes); anything else,
-            # or nothing, stops it, as saying his name always has (FEAT-037, respond and Schedule.hush).
-            await self.schedule.hush()
-        self.answer_id = None  # a new request replaces anything in progress
-        self.requests += 1     # (a look-up under way, too)
-        self.drop_paused()
-        await self.command("thinker", "thinker.cancel")
-        await self.chime()
-        self.listening_for(8.0)
-
     async def on_started(self, msg: Message) -> None:
         """They started talking again in the window: keep waiting for the rest of a paused sentence."""
         self.last_started = time.monotonic()
@@ -556,8 +544,6 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         if reason == "room":
             return await self.on_room(msg)
         if self.stt is None and self.local_stt is None:
-            if reason == "wake":
-                await self.say(SAYINGS["stt_failed"], "error")
             return
         pcm = base64.b64decode(msg.private.get("audio_b64", ""))
         if not await self.has_voice(pcm, reason):
@@ -566,7 +552,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             await self.resume_paused("no voice")
             await self._finish_pending()
             return
-        if self.enrolling and reason in ("follow_up", "wake", "barge_in"):
+        if self.enrolling and reason in ("follow_up", "barge_in"):
             self.transcribing = False
             self.refresh_state()
             return await self._enrol_sample(pcm)
@@ -584,8 +570,6 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             log.warning("speech-to-text failed: %s", e)
             self.drop_paused()
             await self.bus.publish(Message("event", "stt.failed", data={"error": type(e).__name__}))
-            if reason == "wake":
-                await self.say(SAYINGS["stt_failed"], "error")
             await self._finish_pending()
             return
         stt_s = round(time.perf_counter() - t0, 2)
@@ -605,14 +589,10 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
                 await self.say(reply, "alarm answered")
                 await self._finish_pending()
                 return
-            if reason == "wake" and self.ringing:   # his name, then something else: the name stopped it (FEAT-037)
-                await self.schedule.acknowledge("name")
         if self.alarm_only:   # listening is off; the mic is on only for the alarm: nothing else is used (D-127)
             await self._finish_pending()
             return
         if not text.strip(" .?!,"):
-            if reason == "wake":
-                await self.say(SAYINGS["not_caught"], "not caught")
             await self._finish_pending()   # it was only a breath or an "um": a held turn is answered now
             return
         text = self.fix_names(text)
@@ -629,10 +609,6 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.hear(text, pcm=pcm)
         await self.feed(text, "direct" if kind == "direct" else "mentioned", self.speaker, stt_s=stt_s, offline=offline,
                         reason=reason)
-        if reason == "wake" and NOT_PIP.search(text) and not PIP_NAMES.search(text):
-            await self.bus.publish(Message("event", "wake.rejected", data={"why": "transcript names Ziggletron"}))
-            await self._finish_pending()
-            return
         await self.addressed(text, reason, stt_s=stt_s, offline=offline, heard_s=msg.data.get("seconds") or 0,
                              ended_at=self.speech_ended(msg), kind=kind, ask=ask)
 
@@ -738,13 +714,14 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             await self.note("offline_quiet")
             return
         await self.decided("answered", self.pending_why, **since)
-        await self.answer(text, reason, kind=data.get("kind") or "direct", ask=data.get("ask") or "")
+        await self.answer(text, reason, kind=data.get("kind") or "direct", ask=data.get("ask") or "",
+                          before=data.get("before") or 0)
 
     async def on_room(self, msg: Message) -> None:
         """Room speech: everything is transcribed and kept in the room transcript, like Ziggletron (D-92).
         Then: called by name or in the follow-up window → answer; name mentioned → Claude decides;
         otherwise → maybe join in after a pause."""
-        if self.stt is None and not (self.ringing and self.local_stt):
+        if self.stt is None and self.local_stt is None:
             return
         pcm = base64.b64decode(msg.private.get("audio_b64", ""))
         if not await self.has_voice(pcm, "room"):
@@ -810,7 +787,11 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             return
         self.speaker, self.last_pcm = speaker, pcm
         if not expected:
+            # Called by name (D-134: the name in the words is how he's called): a new request replaces anything in
+            # progress, an answer paused by being talked over and a look-up under way too.
             self.answer_id = None
+            self.requests += 1
+            self.drop_paused()
             await self.command("thinker", "thinker.cancel")
         await self.addressed(text, "expected" if expected else "transcript", offline=offline, chime=not expected,
                              heard_s=msg.data.get("seconds") or 0, ended_at=self.speech_ended(msg), kind=kind)
@@ -852,12 +833,13 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
 
     # ---------------------------------------------------------------- answering
     async def answer(self, text: str, reason: str, kind: str = "direct", mood: str = "", looked_up: str = "",
-                     asker: tuple | None = None, ask: str = "") -> None:
+                     asker: tuple | None = None, ask: str = "", before: int = 0) -> None:
         """Ask Claude. kind: "direct" (said to Pip), "mentioned" (his name came up: he may PASS), "follow_up" (right
         after his answer, but the voice can't tell whether it was for him: he may PASS, D-124) or "join"
         (nobody spoke to him: he may join in with "SAY: …" or PASS). Claude sees the room transcript.
         `ask`: how Claude is asked, when not by kind: "follow_up_likely" (a direct answer that Claude may still PASS:
-        said without his name, right after he answered that person, D-127).
+        said without his name, right after he answered that person, D-127) or "name_after" (only his name, right
+        after `before` lines were said: "what's the weather… Pip?", D-134).
         `looked_up`: what Claude asked Pip to look up first (ACTION look), for the second round.
         `asker`: (speaker, audio) of who asked. It's kept with this answer, so if someone else talks while
         Claude works, the actions and look-ups are still done as the person who asked."""
@@ -881,7 +863,8 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         t0 = time.perf_counter()
         try:
             told = self.for_claude(asker[0] if kind != "join" else None, kind)   # core/context.py
-            reply = await self.bus_request("thinker", "thinker.ask", {"answer_id": aid, "reason": reason, "kind": ask or kind},
+            reply = await self.bus_request("thinker", "thinker.ask", {"answer_id": aid, "reason": reason, "kind": ask or kind,
+                                                                    **({"before": before} if before else {})},
                                            {"text": text or "", "transcript": self.transcript.render(), "mood": mood,
                                             **told, "looked_up": looked_up}, timeout=60)
         except Exception as e:

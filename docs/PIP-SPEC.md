@@ -22,7 +22,7 @@ Pip is a playful companion living in a dorm room on a Raspberry Pi 5, with a USB
 | Which voice? | **Piper "lessac"** (starts in 0.3 s). Your favourite, Kokoro "puck", adds 2–3 s per answer on this Pi | D-73 |
 | Can self-changes be sandboxed? | Yes, with no installs: secrets, recordings, the repo and the internet were all blocked | — |
 | Local AI fallback usable? | Yes for simple questions: first word ~0.6 s, reply ~4.5 s. **Qwen 2.5 1.5B** chosen (Llama 3.2 1B said leaving cooked rice out overnight was fine). Both falsely claimed to set a timer, so the fallback may **never** claim actions; real actions use Pip's offline commands | D-05, D-75 |
-| Which wake word? | **Both "Pippletron" and "Hey Pip"** | D-74 |
+| Which wake word? | **Both "Pippletron" and "Hey Pip"** (until D-134, 2026-11-16: no wake-word detector now; his name in the transcript calls him) | D-74 |
 | Your test of Pip (step 2) | Pippletron 5/5 close and fine across the room; Hey Pip ~12/15 close, weaker far; talking over Pip stopped him every time, never by itself; no false wakes in chat; "Ziggletron" didn't wake him | — |
 | How fast does Pip answer? | First words about **2 s** after you finish (Groq 0.4 s + pre-started Claude 1.25 s + voice 0.3 s). Web searches take much longer (~19 s in M0), so weather comes from Open-Meteo instead and Pip says "Let me look that up" when he must search | — |
 | Does "Ziggletron" wake Pip? | With synthetic speech, "Ziggletron" woke the Pippletron detector 13/20 times at strictness 0.5 and 4/20 at 0.8 ("Pippletron" itself: 19/20 at 0.8). So Pippletron uses **0.8**, step 3 adds a transcript check, and a retrain with more "Ziggletron" examples is planned | — |
@@ -57,7 +57,7 @@ Live results are on the dashboard (`http://<pi-tailscale-ip>:8780`).
 
 ### Listening modes and privacy
 - **Pip listens like Ziggletron** (D-92, built 2026-11-07). Everything said in the room is transcribed by Groq (D-51) and kept in a short room transcript, in memory only, with who said it. Claude sees it, so Pip follows the conversation:
-  - **called** ("Pip, …", "thanks, Pip", the wake word, or right after he spoke) → he chimes and answers;
+  - **called** ("Pip, …", "what's the weather, Pip?", "thanks, Pip", or right after he spoke) → he chimes and answers. His name in the words is how he's called: there's no wake-word detector (D-134). **Just his name** ("what's the weather… Pip?", or "Hey Pip" again after he missed it) answers what was said in the 30 s before it, the most recent first; with nothing said before, he listens for the rest;
   - **mentioned** ("Pip's been glitchy") → Claude decides whether a person would expect him to answer, and usually stays quiet;
   - **neither** → after a short pause in a live conversation he **may join in**, at most every ~40 s ("normal" mood, a setting), never during private or tense talk, never after someone asked someone else a question, and not for 15 minutes after being told "not now" or talked over while joining in (D-124).
   - He can always **choose not to reply** ("never mind, we're good" gets silence).
@@ -206,7 +206,7 @@ Pip is always in **one of 8 states**, each with its own colour, shown by the fac
 ```mermaid
 stateDiagram-v2
     [*] --> Idle
-    Idle --> Listening: wake word or his name (chime)
+    Idle --> Listening: his name in what's said (chime)
     Listening --> Thinking: you've finished (thinking tone)
     Thinking --> Speaking: first words
     Speaking --> Listening: follow-up window (8 s)

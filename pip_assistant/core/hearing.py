@@ -5,7 +5,8 @@ they read and set its fields (`self.stt`, `self.offline_until`, …) like its ow
 
     has_voice      noise (a click, a cough) never reaches speech-to-text (D-85)
     transcribe     Groq first; Whisper on the Pi if Groq can't be reached (offline, D-83) or its daily
-                   limit is used up (not offline, D-115). Marks Pip online/offline (core/net.py).
+                   limit is used up (not offline, D-115), for room talk too: he's called by his name in the
+                   words (D-134). Marks Pip online/offline (core/net.py).
     identify       who's talking, from their voice (core/people.py)
     fix_names      household names spelled right ("Landon" → "Landen", D-93)
 """
@@ -48,16 +49,17 @@ class Hearing:
             return text, False
         except RateLimited:
             # Groq's daily limit is used up (D-115). The internet and Claude still work, so this isn't offline:
-            # what's said to Pip is heard by Whisper on the Pi and answered as usual; room talk waits (D-50).
+            # everything is heard by Whisper on the Pi instead, room talk too: Pip is called by his name in the words
+            # (D-134), so without it he couldn't be called at all.
             await self._stt_limited(True)
-            if self.local_stt is None or (reason == "room" and not self.ringing):
+            if self.local_stt is None:
                 raise
             return await self.local_stt.transcribe(pcm), False
         except Exception as e:
             if self.net is not None and self.stt is not None:
                 await self.net.failed()
-            if self.local_stt is None or (reason == "room" and not self.ringing):
-                raise  # room speech is never transcribed on the Pi (D-50), except to hear "stop" during an alarm
+            if self.local_stt is None:
+                raise  # (room speech too, since D-134: his name in the words is how he's called)
             await self.bus.publish(Message("event", "stt.offline", data={"error": type(e).__name__, "reason": reason}))
             self.offline_until = time.monotonic() + 120
             return await self.local_stt.transcribe(pcm), True
@@ -70,8 +72,8 @@ class Hearing:
 
     async def has_voice(self, pcm: bytes, reason: str) -> bool:
         """Noise (a click, a cough, a hiss) never reaches speech-to-text, which would hear "Thank you." (D-85)."""
-        if not self.voice_check or reason == "wake":
-            return True  # right after the wake word, someone was certainly talking
+        if not self.voice_check:
+            return True
         from ..common.voicecheck import voice_seconds
         try:
             secs = await voice_seconds(pcm)

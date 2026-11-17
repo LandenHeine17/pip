@@ -24,7 +24,7 @@ Pip is **five small programs** on the Pi, plus the screen's browser. All five ar
 ```mermaid
 flowchart TB
     subgraph Pi["Raspberry Pi 5"]
-        EARS["🎧 pip-ears<br/>microphone, wake words,<br/>'stop', voice output"]
+        EARS["🎧 pip-ears<br/>microphone, capturing speech,<br/>'stop', voice output"]
         CORE["🧠 pip-core<br/>the conductor: conversation,<br/>timers, memory, actions, log"]
         THINK["💭 pip-thinker<br/>Claude (offline Qwen<br/>fallback: not built yet)"]
         WEB["🖥️ pip-web<br/>dashboard, TV page, API"]
@@ -46,7 +46,7 @@ flowchart TB
 
 | Program | What it does | Why it's separate | Memory cap (`deploy/systemd/`) |
 |---|---|---|---|
-| **pip-ears** | Listens all the time: echo-cancelled audio from the speakerphone, speech detection, both wake words ("Pippletron", "Hey Pip"), talking over Pip (stops him instantly), mute detection; and a second plain USB microphone used only for the two-clap switch (D-91). Also plays everything Pip says (Piper voice) and alarm sounds, and turns Pip down when someone talks over him | Must react in milliseconds and never wait for the internet or the AI | 600 MB |
+| **pip-ears** | Listens all the time: echo-cancelled audio from the speakerphone, speech detection (everything said is captured and sent on: pip-core hears his name in the words, D-134), talking over Pip (stops him instantly), mute detection; and a second plain USB microphone used only for the two-clap switch (D-91). Also plays everything Pip says (Piper voice) and alarm sounds, and turns Pip down when someone talks over him | Must react in milliseconds and never wait for the internet or the AI | 600 MB |
 | **pip-core** | The conductor. Decides what to do with each thing heard; runs conversations, timers, reminders and alarms; holds memory, people and settings; runs actions; keeps the log of everything that happens; watches the other programs' health; recognises voices (TitaNet, step 5) | Everything goes through one place, so it's easy to follow and log | 700 MB (voice model + offline Whisper, D-87) |
 | **pip-thinker** | Talks to Claude through the Claude Code CLI (one fresh session per request, fixing Ziggletron's collision bug P-01). Counts every Claude request in the usage meter (`common/usage.py`, PIP-NEW-089) and announces when Claude's usage limit is reached. *Not built:* the offline Qwen fallback when Claude is unavailable (D-75; not now, D-128) | Slow and memory-hungry; must never hold up the conductor | 2 GB (room for Qwen, ~1.3 GB, if it's ever built) |
 | **pip-web** | The dashboard (phone/PC over Tailscale) and the TV page for the face, which gets only what it shows (D-110). Plain http on the Tailscale address, https at the Pi's Tailscale name (`tailscale serve`), and 127.0.0.1 for the monitor. No logins (D-116); a same-site check (`web/security.py`) stops other websites from changing Pip | Keeps network-facing code away from the core and from secrets | 300 MB |
@@ -61,7 +61,7 @@ All messages go through **pip-core**, over local connections that never leave th
 
 | Kind | Example | Direction |
 |---|---|---|
-| **Event:** something happened | `heard.wake {word: "pippletron"}` · `alert.ringing {id}` · `module.screen.changed` | Any program → core → anyone interested |
+| **Event:** something happened | `heard.utterance {reason: "room"}` · `alert.ringing {id}` · `module.screen.changed` | Any program → core → anyone interested |
 | **Command:** please do this | `ears.say {text}` · `ears.stop` · `ears.ring` | Core → one program |
 | **Request/reply:** ask and wait (with a timeout) | `thinker.ask {conversation, tools}` → reply streamed back sentence by sentence | Core ↔ one program |
 
@@ -77,12 +77,12 @@ sequenceDiagram
     participant Groq
     participant Think as pip-thinker
     You->>Ears: "Pippletron, throw ten minutes on for the laundry"
-    Ears->>Ears: wake word heard (on the Pi)
-    Ears->>Core: heard.wake + audio of the sentence
+    Ears->>Ears: speech, then a pause (on the Pi)
+    Ears->>Core: heard.utterance + audio of the sentence
     Core->>Core: voice check; who's speaking (on the Pi)
     Core->>Groq: audio → text (word list + household names)
     Groq-->>Core: "Pippletron, throw ten minutes on for the laundry"
-    Core->>Core: add to the room transcript
+    Core->>Core: add to the room transcript; his name is in it, so it's for him (D-134)
     alt A clearly worded command ("10 minute timer", D-123), or offline (D-83)
         Core->>Core: Pip's own phrasings: create timer
     else Any other wording, online (D-94)
@@ -245,11 +245,11 @@ The voice engine is a setting: `voice_engine` under `[ears]` in `defaults.toml` 
 
 | Where | What | In the repo? |
 |---|---|---|
-| `~/pip` (repo) | All code, modules, default settings, generic wake-word models (synthetic voices only), docs | Yes (public-safe) |
+| `~/pip` (repo) | All code, modules, default settings, docs | Yes (public-safe) |
 | `~/pip-data/settings.toml` | Your settings (location, room, mode, voice…), written by the Settings page | **No** |
 | `~/pip-data/secrets.toml` | API keys, and each module's own section (`[google]`: the Google client and each connected person's sign-in key; `[websearch]`, `[tuya]`). Only pip-core reads it (`core/stt.py` for the Groq key; modules through `core/modules.py`); a module only ever sees its own section | **No** |
 | `~/pip-data/pip.db` | One SQLite database: memories, people and voice profiles, timers/reminders, the Listening switches and preferences, the 48-hour decision trace, each module's own tables (`calendar_…`, `todos_…`, `google_…`, `screen_…`, `recall_notes`), self-changes (`builder_changes`) and the usage meter (`usage`) | **No** |
-| `~/pip-data/models/` | The voice recognition model (`speaker/`) and Pip's Piper voice (`voices/`). The wake-word models in use are the generic ones in the repo (`models/wake/`) | **No** |
+| `~/pip-data/models/` | The voice recognition model (`speaker/`) and Pip's Piper voice (`voices/`). | **No** |
 | `~/pip-app/` | The live copy Pip runs from (§10): `releases/<id>/` (one folder per installed version, with its own `.venv`), `current` (a link to the running one), `release-state.json`, `release.log` | **No** |
 | `~/pip-data/builder/` | Self-change workspaces (`work/<id>/`, deleted when the change ends) and install results (`releases/`) | **No** |
 | `~/pip-data/m0/` | M0's results, the Qwen model and wake-word training output, and your consented test recordings (`recordings/`, kept, D-72) | **No** |
@@ -323,7 +323,6 @@ flowchart TD
 | **Unix sockets + JSON** between programs | Standard library only; easy to log and to read |
 | **Starlette + Uvicorn** for pip-web | Small, well-known, supports live updates (WebSockets) |
 | **PipeWire's `pw-record` / `pw-play`** | Simple, proven with the speakerphone in M0; stopping playback is instant |
-| **openWakeWord (ONNX)** | Trained "Pippletron" and "Hey Pip" detectors from M0 |
 | **Piper** voice | 0.3 s to start speaking *(M0)*; the engine is swappable, but Kokoro isn't built |
 | **Groq Whisper Turbo + word list** | Best in M0 (D-48); local Whisper as the offline fallback |
 | **Claude Code CLI** (Pro plan) | D-05, D-17; one fresh session per request |
@@ -398,6 +397,8 @@ Built in small steps. Each step ends with something you can try.
 - **Stopping does what it says:** `thinker.cancel` with no answer id stops answers only; a cancelled answer isn't counted as an error or asked again; one warm Claude process at a time; pip-ears drops a sentence Piper was still making; "stop" or a new request drops a look-up's second round; "Let me check." followed by a look ACTION is looked up.
 - **Times:** calendar times with a time zone are converted; "12 tonight" is midnight and "quarter to 12 pm" 11:45 AM (`common/when.py`).
 - **Deploy:** `pip-tv` waits for tty1 before starting, and `install-tv.sh` restarts it with `--no-block`; `install.sh` stops if the voice-recognition model can't be downloaded; `[web] allowed_hosts` lets the dashboard answer to other names.
+
+**Called by name, like Ziggletron (2026-11-16, D-134):** the wake-word detector is gone (`ears/wake.py`, the `models/wake/` detectors, openWakeWord and four settings). Everything said is transcribed and his name in the words calls him (`calls_pip` in `on_room`); with Groq's limit used up or offline, room talk is transcribed on the Pi so that still works. **Just his name** answers what was said in the 30 s before it (`said_before_name`, `Transcript.recent`, Claude's `name_after`). While an alarm rings, his name alone quiets it and what's said next decides (`Commands.while_ringing`, `hushed_until`). A joined turn waits by its newest piece; Claude's effort was set to low (in the owner's settings file).
 
 ## 15. Review
 

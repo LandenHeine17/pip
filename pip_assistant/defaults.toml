@@ -14,10 +14,6 @@ restart_stuck = true                    # Restart a stuck program automatically 
 keep_hours = 48                    # How long the decision trace (what happened, never the words) is kept.
 
 [ears]
-wake_words = ["pippletron", "hey_pip"]  # Wake-word models to listen for (D-74).
-# How sure each detector must be (0–1): higher = fewer false wakes, more misses.
-# Pippletron is strict because "Ziggletron" sounds similar (M1a step 2 finding).
-wake_thresholds = { pippletron = 0.8, hey_pip = 0.5 }
 barge_in = true                         # Stop talking straight away when someone talks over Pip.
 barge_in_dbfs = -45.0                   # How loud speech over Pip must be to count (−96 silent … 0 max).
 barge_in_voice_check = true             # …and it must have a voice in it: a knock or a clap doesn't cut him off (D-122).
@@ -31,8 +27,6 @@ speech_dbfs = -50.0                # Louder than this counts as speech when cutt
 end_silence_seconds = 0.7          # A pause this long means you've finished speaking (Ziggletron: 0.7).
 max_utterance_seconds = 12.0       # Longest single request.
 wait_for_speech_seconds = 4.0      # In the follow-up window, how long to wait for you to start talking.
-after_wake_seconds = 0.7           # After the wake word, how long to wait for a question (else it came before the name).
-transcript_wake = true             # Transcribe everything said in the room, like Ziggletron (D-92). Off: only the wake word.
 
 [voices]
 # Recognising who's speaking (step 5, D-87). Voiceprints stay on the Pi and are never sent to Claude.
@@ -48,7 +42,7 @@ model = "whisper-large-v3-turbo"
 spare_models = ["whisper-large-v3"]   # Used when the model above has hit Groq's daily limit (2,000 a day each on the free plan, D-115).
 timeout_seconds = 6.0
 voice_check = true                 # Only send sounds with a human voice in them to speech-to-text (D-85: stops phantom "Thank you.").
-min_voice_seconds = 0.15           # Less voice than this (except right after the wake word) is treated as noise.
+min_voice_seconds = 0.15           # Less voice than this is treated as noise.
 drop_phantoms = true              # "Thank you.", "you", "Bye." alone, from a voice Pip doesn't know, are noise (2026-11-12).
 offline_model = "base.en"          # Whisper model on the Pi, used only when Groq can't be reached ("" = none). D-83
 # Words that help speech-to-text spell names and terms right (from the M0 benchmark).
@@ -82,7 +76,8 @@ own_commands = "sure"              # Pip's fixed-phrasing commands: "sure" = cle
 follow_up_seconds = 8.0            # After Pip answers, talk again within this time without saying his name…
 follow_up_anyone = false           # …anyone (true), or only the person he answered, by voice, unless he asked a question (D-124).
 carry_on_after_backchannel = true  # Talked over by only "yeah", a laugh or nothing: he carries on from where he was cut off (D-122).
-wait_after_name_seconds = 5.0      # Said only his name? Pip listens quietly this long for the rest (no "Yes?" talking over you).
+wait_after_name_seconds = 5.0      # Said only his name, with nothing said just before? Pip listens quietly this long for the rest.
+name_lookback_seconds = 30.0       # Said only his name ("what's the weather… Pip?"): what was said this long before counts (D-134).
 # Knowing when you're done talking (D-106, D-122). Each wait is counted from when you stop talking: the 0.7 s pause
 # ([listen]) and speech-to-text count towards it, so Pip holds only for what's left. If you start talking again he
 # keeps waiting and takes it all as one; then he chimes and answers.

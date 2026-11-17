@@ -106,17 +106,25 @@ class TurnTaking:
         talking, the pieces are joined. Then chime (if they called him by name) and answer.
         data["ended_at"]: when they stopped talking (time.monotonic()); the wait counts from then (D-122)."""
         ended = data.pop("ended_at", None) or time.monotonic()
-        merged = bool(self.pending)
+        merged, piece = bool(self.pending), text
         if self.pending:
             text = f"{self.pending} {text}"
             self.pending = ""
             chime = chime or self.pending_how[3]
             data["kind"] = self.pending_how[2].get("kind") or data.get("kind")   # the turn is still who it was for
             data["ask"] = self.pending_how[2].get("ask") or data.get("ask", "")
+            if data["ask"] == "name_after":
+                data["ask"] = ""   # "Pip… what's the weather": they went on after his name, an ordinary request
         if self.pending_task:
             self.pending_task.cancel()
             self.pending_task = None
-        if only_name(text):
+        before = self.said_before_name() if only_name(text) else 0
+        if before:
+            # Just his name, right after something was said: "what's the weather… Pip?", or calling him again after
+            # he missed it (D-134). Claude is asked about what came before, the most recent first. Held as a short
+            # turn like any other, so if they go on ("Pip… what's the time") it's joined and asked as usual.
+            data.update(ask="name_after", before=before)
+        elif only_name(text):
             # Just the name (often followed by a pause): the chime says he's listening. Don't talk over them.
             if chime:
                 await self.chime()
@@ -124,7 +132,9 @@ class TurnTaking:
             await self.command("ears", "ears.listen", {"seconds": self.wait_after_name})
             self.listening_for(self.wait_after_name)
             return
-        why = self.turn_kind(text, float(data.pop("heard_s", 0) or 0))
+        # A joined turn waits by its newest piece: the earlier pieces have had their wait (D-134; before, two short
+        # pieces read as "two sentences" and got the long wait).
+        why = self.turn_kind(piece, float(data.pop("heard_s", 0) or 0))
         budget = self.turn_wait(text, why=why)
         wait = round(max(0.0, budget - (time.monotonic() - ended)), 2)
         if wait > 1.0:
@@ -144,6 +154,11 @@ class TurnTaking:
             # D-122): keep holding until that speech arrives, as on_started does.
             wait = self.max_utterance + 4.0
         self.pending_task = asyncio.create_task(self._answer_pending(wait=wait))
+
+    def said_before_name(self) -> int:
+        """How many lines were said in the `name_lookback` seconds before his name (by anyone, since his own last
+        line), not counting his name itself: "what's the weather… Pip?" → 1. 0 = nothing: he listens for the rest."""
+        return sum(1 for line in self.transcript.recent(self.name_lookback) if not only_name(line["text"]))
 
     def turn_kind(self, text: str, heard_s: float = 0.0) -> str:
         """What kind of turn it sounds like: unfinished / long / short / statement."""

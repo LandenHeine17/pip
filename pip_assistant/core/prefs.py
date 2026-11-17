@@ -1,6 +1,6 @@
 """Small preferences changed on Pip's dashboard and kept across restarts (in ~/pip-data/pip.db).
 
-    chime        play the chime when he hears his name or a wake word (D-105). Default on.
+    chime        play the chime when he hears his name (D-105). Default on.
     clap_mic     which microphone listens for the two-clap switch (D-91): a PipeWire device name, or ""
                  for none. The speakerphone can't be used: its own noise filter erases claps.
     claps        whether two claps switch listening at all (default off, until the detector is tuned on

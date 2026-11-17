@@ -17,6 +17,10 @@ class SettingsError(ValueError):
     pass
 
 
+# Settings that were removed: an old settings.toml that still has them is fine, they're skipped.
+REMOVED = {"ears.wake_words", "ears.wake_thresholds", "listen.after_wake_seconds", "listen.transcript_wake"}   # D-134
+
+
 def _defaults() -> dict:
     return tomllib.loads(resources.files("pip_assistant").joinpath("defaults.toml").read_text())
 
@@ -25,6 +29,8 @@ def _merge(defaults: dict, user: dict, where: str = "") -> dict:
     out = dict(defaults)
     for key, value in user.items():
         name = f"{where}{key}"
+        if name in REMOVED:
+            continue
         if key not in defaults:
             raise SettingsError(f"Unknown setting '{name}'. Check the spelling against defaults.toml.")
         default = defaults[key]

@@ -151,10 +151,9 @@ Clock = clock_at(NOW)
 async def test_thinking_tone_plays_instantly_and_state_follows(tmp_path):
     clock = Clock()
     bus, sched, conv, ears, got, tasks = await setup_bus(tmp_path, clock, FakeSTT("Pip, what's the capital of Australia?"))
-    await ears.emit("heard.wake", {"word": "hey_pip"})
+    await ears.emit("heard.started", {"reason": "room"})
     await asyncio.sleep(0.05)
-    d, p = utt("wake")
-    await ears.emit("heard.utterance", d, private=p)
+    await ears.emit("heard.utterance", *room())
     await asyncio.sleep(0.02)
     assert "ears.tone" in [k for k, _, _ in got]                     # instantly, before the answer
     await ears.emit("speech.started", {})
@@ -162,8 +161,9 @@ async def test_thinking_tone_plays_instantly_and_state_follows(tmp_path):
     await ears.emit("speech.finished", {"interrupted": False})
     await asyncio.sleep(0.6)
     s = states(bus)
-    assert s == ["listening", "thinking", "speaking", "listening", "idle"]  # no flicker in between (for the face)
-    assert states(bus, details=True)[:3] == [("listening", "called"), ("listening", "hearing"), ("listening", "turn")]
+    # Until the words show his name it's room talk ("following", D-134: no wake word); then no flicker (for the face)
+    assert s == ["idle", "listening", "thinking", "speaking", "listening", "idle"]
+    assert states(bus, details=True)[:3] == [("idle", "following"), ("listening", "turn"), ("thinking", "asking")]
     assert ("listening", "follow_up") in states(bus, details=True)
     assert "One sec." not in [t for k, t, _ in got]
     await finish(bus, tasks)
@@ -174,7 +174,7 @@ async def test_no_tone_for_pips_own_commands_or_when_off(tmp_path):
     bus, sched, conv, ears, got, tasks = await setup_bus(
         tmp_path, clock, FakeSTT("Pip, set a timer for ten minutes"),
         cfg={"conversation": {"follow_up_seconds": 0.3}, "thinker": {"thinking_tone": "off"}})
-    d, p = utt("wake")
+    d, p = utt("barge_in")
     await ears.emit("heard.utterance", d, private=p)
     await asyncio.sleep(0.2)
     conv.stt.text = "Pip, what's the capital of Australia?"

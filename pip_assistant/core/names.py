@@ -13,7 +13,6 @@ import re
 # His names and how speech-to-text tends to write them.
 WORDS = r"pip|pipp|pips|pippy|pippie|pippletron|pipple ?tron|pippa ?tron|piple ?tron|pipletron"
 PIP_NAMES = re.compile(rf"\b({WORDS})\b", re.I)
-NOT_PIP = re.compile(r"\b(zig+le ?tron|zig+y|zig+)\b", re.I)    # Ziggletron's names: never Pip
 # His name with a greeting before it, as taken off the start of a command ("hey Pip, …").
 NAME_WITH_GREETING = re.compile(rf"\b(hey |hi |ok |okay )?({WORDS})\b[,.!]?", re.I)
 
