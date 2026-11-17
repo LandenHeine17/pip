@@ -110,8 +110,14 @@ def clock(text: str, now: datetime | None = None, alarm: bool = False) -> dateti
         hour, minute, half = 0, 0, "am"
     elif m := re.search(r"\b(quarter|half|15|30) (past|after|to|till|of) (\d{1,2})\b(?:\s*(am|pm))?", t):
         h, mins = int(m.group(3)), 30 if m.group(1) in ("half", "30") else 15
-        hour, minute = (h, mins) if m.group(2) in ("past", "after") else ((h - 1) % 12 or 12, 60 - mins)
         half = m.group(4)
+        if m.group(2) in ("past", "after"):
+            hour, minute = h, mins
+        elif half:   # "quarter to 12 pm" is 11:45 AM: am/pm belongs to the hour it's before
+            h24 = (h % 12 + (12 if half == "pm" else 0) - 1) % 24
+            hour, minute, half = h24 % 12 or 12, 60 - mins, "pm" if h24 >= 12 else "am"
+        else:
+            hour, minute = (h - 1) % 12 or 12, 60 - mins
     else:
         # "7:30", "7 30" and "730" (speech-to-text often writes it that way)
         for m in re.finditer(r"\b(at|for|by|until|till|from)?\s*(\d{1,2})(?:[:.](\d{2})|\s(\d{2})|(\d{2}))?"
@@ -130,6 +136,8 @@ def clock(text: str, now: datetime | None = None, alarm: bool = False) -> dateti
             break
     if hour is None:
         return None
+    if half is None and hour == 12 and re.search(r"\b(tonight|at night)\b", t):
+        half = "am"   # "12 tonight", "12:30 tonight": midnight, not noon
     if half is None and hour < 12:
         if 1 <= hour <= 4 and re.search(r"\b(tonight|at night)\b", t):
             half = "am"   # "tonight at 1": after midnight, not 1 PM tomorrow

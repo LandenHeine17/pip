@@ -110,3 +110,27 @@ def test_removing_someone_deletes_the_notes_they_were_in(setup):
     assert asyncio.run(reg.forget_person("c", "Caleb")) == 1
     [left] = rec.notes()
     assert left["people"] == ""
+
+
+def test_notes_being_written_when_everything_is_deleted_are_not_kept(setup):
+    """Review fixes (2026-11-16): "Delete everything" (or removing someone) while Claude writes the notes: they
+    used to land afterwards, with that person's name in them."""
+    reg, rec, clock, asked = setup
+    hear(rec, clock)
+
+    async def go():
+        release = asyncio.Event()
+
+        async def slow(lines):
+            await release.wait()
+            return "Talked about chips."
+        rec.ctx.summarize = slow
+        writing = asyncio.create_task(rec.write_notes())
+        await asyncio.sleep(0)
+        await rec.forget_person("c", "Caleb")
+        release.set()
+        return await writing
+    assert asyncio.run(go()) is None and rec.notes() == []
+    hear(rec, clock)
+    asyncio.run(rec.forget_person("c", "Caleb"))
+    assert rec.lines == []                                  # what they said, not yet in notes, goes too

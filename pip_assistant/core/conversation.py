@@ -89,7 +89,6 @@ SAYINGS = {
     "not_caught": "Sorry, I didn't catch that. Could you say it again?",
     "stt_failed": "Sorry, I couldn't make out what you said. My hearing service isn't answering.",
     "thinker_failed": "Sorry, my brain isn't answering right now. Try me again in a moment.",
-    "no_speech": "",  # wake word but then nothing: stay quiet
     "command_failed": "Sorry, that didn't work. Nothing was set.",
     # Asking Pip to change himself (M1b, PIP-NEW-069): only people he recognises for sure may ask by voice
     "change_asked": "Okay, I'll write up a plan. It'll be on the dashboard to approve.",
@@ -198,7 +197,6 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.pending = ""           # what they've said so far, held until they've finished their turn (D-106)
         self.pending_task = None    # answers it once the wait is over
         self.pending_how = ("direct", False, {}, False)   # (reason, offline, data, chime) for the held turn
-        self.sentences = 0
         self.spoken: list[str] = []  # sentences of the current answer actually sent to be spoken
         # Messages typed on the dashboard (`typed`, TYPED): one at a time; their answers by answer id (whose
         # sentences come back from pip-thinker outside the request), and whether the last thing he answered was one
@@ -875,7 +873,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.answer_id, self.answer_kind, self.join_spoke = aid, kind, False
         self.join_count = self.transcript.count
         self.join_asked_at = time.monotonic()
-        self.sentences, self.spoken = 0, []   # this answer's sentences actually said
+        self.spoken = []   # this answer's sentences actually said
         self.filler_said = None
         self.looking_up = bool(looked_up)
         self.refresh_state()  # thinking (direct answers only)

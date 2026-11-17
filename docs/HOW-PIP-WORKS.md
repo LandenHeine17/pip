@@ -246,8 +246,8 @@ Every new feature is a module: a folder in `pip_assistant/modules/`. Pip finds i
    - `tv(shown)` with a `[monitor.<kind>]` table and `static/monitor.js`: a box on the monitor ("put the shopping list up").
    - `dashboard(action, args)` with `static/index.html`: its own page, with a button on the dashboard.
    - `room_heard(text, call)`: hears everything (room talk, and what's said to or about Pip: `call.kind`) and may return something for him to say; for speech to Pip that replaces asking Claude (`modules/six_seven/` is just this). `modules_answer` in `core/conversation.py` offers it at any hour; Pip says the answer only when he's free to talk. To make the monitor's face react, `ctx.publish("reaction", {"reaction": "pleased"})`. Read the words, keep nothing.
-   - `tasks()`: background jobs (syncing, checking a website).
-   - Its data goes in its own tables (`ctx.db()`, named `<name>_…`); its secrets in its own section of `secrets.toml` (`ctx.secrets`).
+   - `tasks()`: background jobs (syncing, checking a website). One that fails is started again after 30 s, then longer, up to 10 minutes (`Registry._guard`).
+   - Its data goes in its own tables (`ctx.db()`, named `<name>_…`): it can't read or change any other table, nor reach one through a trigger, a view or an attached database. Its secrets are in its own section of `secrets.toml` (`ctx.secrets`).
 4. **Tests:** `test_<name>.py` in the folder, like the template's. `tests/helpers.py` has `registry()`, which loads real modules the way pip-core does, and the other shared fakes; `tests/fakes/` has a pretend Google.
 5. **Try it:** run its tests (`uv run pytest pip_assistant/modules/shopping`, memory-capped), add it to `docs/PROJECT-MAP.md` if it's a new kind of thing, commit, then `sh deploy/install.sh`. To switch it off without deleting it: `enabled = false` under `[modules.shopping]` in `~/pip-data/settings.toml`.
 

@@ -249,16 +249,28 @@ class ModuleContext:
         self._transport = transport  # tests: a fake internet
 
     def db(self) -> sqlite3.Connection:
-        """Its own connection to pip.db. Tables must be named <module>_… (checked)."""
+        """Its own connection to pip.db, to its own tables only: named <module>_… (checked). It can't read or
+        change anyone else's (memories, voices, another module's), nor reach them sideways: a trigger or a view
+        on them, another database attached, or PRAGMAs that change the file itself."""
         con = connect(self._db_path)
         prefix = self.name + "_"
+        tabled = (sqlite3.SQLITE_CREATE_TABLE, sqlite3.SQLITE_DROP_TABLE, sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE,
+                  sqlite3.SQLITE_DELETE, sqlite3.SQLITE_CREATE_INDEX, sqlite3.SQLITE_DROP_INDEX, sqlite3.SQLITE_READ,
+                  sqlite3.SQLITE_CREATE_TEMP_TABLE, sqlite3.SQLITE_CREATE_TEMP_INDEX)
+        never = (sqlite3.SQLITE_ATTACH, sqlite3.SQLITE_DETACH, sqlite3.SQLITE_CREATE_VIEW, sqlite3.SQLITE_CREATE_TEMP_VIEW,
+                 sqlite3.SQLITE_CREATE_TRIGGER, sqlite3.SQLITE_CREATE_TEMP_TRIGGER, sqlite3.SQLITE_CREATE_VTABLE)
+        safe_pragmas = {"table_info", "table_xinfo", "index_list", "index_info", "foreign_keys", "busy_timeout",
+                        "journal_mode", "user_version", "synchronous"}
 
-        def guard(action, table, arg2, *_):
-            if action == sqlite3.SQLITE_ALTER_TABLE:   # here SQLite gives ("main", table): adding a column later
-                table = arg2
-            if action in (sqlite3.SQLITE_CREATE_TABLE, sqlite3.SQLITE_DROP_TABLE, sqlite3.SQLITE_INSERT,
-                          sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE, sqlite3.SQLITE_ALTER_TABLE,
-                          sqlite3.SQLITE_CREATE_INDEX) and table and not table.startswith((prefix, "sqlite_")):
+        def guard(action, arg1, arg2, *_):
+            if action in never:
+                return sqlite3.SQLITE_DENY
+            if action == sqlite3.SQLITE_PRAGMA:   # (reading one is fine; writable_schema and the like aren't)
+                return sqlite3.SQLITE_OK if (arg1 or "").lower() in safe_pragmas else sqlite3.SQLITE_DENY
+            # The table: ALTER gives ("main", table), CREATE/DROP INDEX (index, table), the rest (table, column)
+            table = arg2 if action in (sqlite3.SQLITE_ALTER_TABLE, sqlite3.SQLITE_CREATE_INDEX, sqlite3.SQLITE_DROP_INDEX,
+                                       sqlite3.SQLITE_CREATE_TEMP_INDEX) else arg1
+            if (action in tabled or action == sqlite3.SQLITE_ALTER_TABLE) and table and not table.startswith((prefix, "sqlite_")):
                 return sqlite3.SQLITE_DENY
             return sqlite3.SQLITE_OK
         con.set_authorizer(guard)
@@ -468,17 +480,35 @@ class Registry:
     # ---------------------------------------------------------------- background jobs
     def start(self) -> None:
         for name, m in self.modules.items():
-            for job in m.tasks():
-                self._tasks.append(asyncio.create_task(self._guard(name, job)))
+            for i, job in enumerate(m.tasks()):
+                self._tasks.append(asyncio.create_task(self._guard(name, job, m, i)))
 
-    @staticmethod
-    async def _guard(name, job):
-        try:
-            await job
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            log.exception("module %s background job stopped", name)
+    RESTART_AFTER = (30.0, 600.0)   # a job that fails is started again after 30 s, then longer, up to 10 minutes
+
+    @classmethod
+    async def _guard(cls, name, job, module=None, index=0):
+        """Run a module's background job (a sync loop, …). If it fails, it's started again after a while: one
+        error (no internet, the database busy) mustn't stop Google syncing until pip-core restarts."""
+        wait = cls.RESTART_AFTER[0]
+        while True:
+            try:
+                await job
+                return   # it finished by itself
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                log.exception("module %s background job failed; starting it again in %.0f s", name, wait)
+            if module is None:
+                return
+            await asyncio.sleep(wait)
+            wait = min(wait * 2, cls.RESTART_AFTER[1])
+            fresh = module.tasks()   # a new coroutine for this job (the others are closed unused)
+            for j, other in enumerate(fresh):
+                if j != index and hasattr(other, "close"):
+                    other.close()
+            if index >= len(fresh):
+                return
+            job = fresh[index]
 
     def stop(self) -> None:
         for t in self._tasks:

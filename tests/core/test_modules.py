@@ -67,6 +67,14 @@ def test_a_module_can_only_write_its_own_tables(tmp_path):
     sqlite3.connect(tmp_path / "pip.db").execute("CREATE TABLE people (id TEXT)")
     with pytest.raises(sqlite3.DatabaseError):
         db.execute("ALTER TABLE people ADD COLUMN x TEXT")             # someone else's table: no
+    # Review fixes (2026-11-16): nor read them, or reach them sideways
+    for sql in ("SELECT * FROM people", "CREATE TRIGGER dice_t AFTER INSERT ON people BEGIN DELETE FROM people; END",
+                "CREATE VIEW dice_v AS SELECT * FROM people", f"ATTACH '{tmp_path / 'x.db'}' AS x",
+                "PRAGMA writable_schema = 1"):
+        with pytest.raises(sqlite3.DatabaseError):
+            db.execute(sql)
+    db.execute("CREATE INDEX dice_by_n ON dice_rolls (n)")
+    assert [r[0] for r in db.execute("SELECT n FROM dice_rolls")] == [4] and db.execute("PRAGMA table_info(dice_rolls)").fetchall()
 
 
 def test_claudes_action_reaches_the_module_that_declares_it(tmp_path):
@@ -124,3 +132,34 @@ def test_the_dashboard_serves_module_pages_and_passes_requests_privately():
     assert kind == "module.request" and data == {"module": "todos", "action": "add"} and private == {"title": "milk"}
     assert r == {"echo": {"title": "milk"}}
     assert client.get("/pip.css").status_code == 200
+
+
+async def test_a_failed_background_job_is_started_again(monkeypatch):
+    """Review fixes (2026-11-16): one error in a sync loop used to stop it until pip-core restarted."""
+    import asyncio
+
+    from pip_assistant.core.modules import Registry
+
+    runs = []
+
+    class Flaky:
+        def tasks(self):
+            return [self.loop(), self.other()]
+
+        async def loop(self):
+            runs.append(1)
+            if len(runs) == 1:
+                raise RuntimeError("database is locked")
+            await asyncio.sleep(10)
+
+        async def other(self):
+            await asyncio.sleep(10)
+
+    monkeypatch.setattr(Registry, "RESTART_AFTER", (0.01, 0.02))
+    m = Flaky()
+    first, second = m.tasks()
+    second.close()
+    task = asyncio.create_task(Registry._guard("flaky", first, m, 0))
+    await asyncio.sleep(0.1)
+    assert len(runs) == 2 and not task.done()
+    task.cancel()

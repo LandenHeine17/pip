@@ -79,6 +79,9 @@ class ClaudeActions:
         out += " For any other day, or the details of those, look it up first (ACTION look)."
         labels = []
         for c in cals.values():
+            acc = accounts.get(c["account_id"] or "")
+            if acc and acc["sharing"] != "everyone" and acc["person_id"] != call.person_id:
+                continue   # an account shared "only me": not even its calendars' names, unless it's theirs
             tags = [t for t, on_ in (("household", c["id"] == self.sync.household()), ("read-only", not c["writable"]),
                                      ("hidden", not c["ticked"]), ("shared with them", c["account_id"] and c["writable"] and not c["owner"])) if on_]
             labels.append(self.label(c, accounts, names) + (f" ({', '.join(tags)})" if tags else ""))
@@ -127,7 +130,10 @@ class ClaudeActions:
     # ---------------------------------------------------------------- Claude's actions
     def _time(self, value, call: Call) -> datetime:
         try:
-            at = datetime.fromisoformat(str(value)).replace(tzinfo=None, second=0, microsecond=0)
+            at = datetime.fromisoformat(str(value))
+            if at.tzinfo is not None:   # "…T15:00Z": the same moment here (it used to be taken as 15:00 local)
+                at = at.astimezone()
+            at = at.replace(tzinfo=None, second=0, microsecond=0)
         except ValueError:
             raise Invalid("bad time")
         if not call.now - timedelta(days=1) < at < call.now + timedelta(days=366):

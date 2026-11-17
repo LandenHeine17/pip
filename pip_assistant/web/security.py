@@ -103,7 +103,7 @@ class SameSite:
         host = headers.get("host", "")
         problem = None
         if not host_allowed(host, self.allowed_hosts):
-            problem = (421, "Unknown host name. Use Pip's own address, or add the name to the dashboard's allowed hosts.")
+            problem = (421, "Unknown host name. Use Pip's own address, or add the name to allowed_hosts under [web] in ~/pip-data/settings.toml.")
         elif scope["type"] == "websocket" or scope.get("method", "GET").upper() in CHANGING:
             page = headers.get("origin") or headers.get("referer")
             kind = headers.get("content-type", "").split(";")[0].strip().lower()

@@ -19,7 +19,7 @@ explain = "Other names for the plugs, like: Smart plug = light, lamp; Fan plug =
 
 [settings.refresh_minutes]
 default = 10
-explain = "How often Pip asks Tuya whether each plug is on (it also checks right after switching one)."
+explain = "How often Pip asks Tuya whether each plug is on. A plug switched in the Smart Life app or by its button shows its old state until then (Pip knows at once about the ones he switches)."
 
 [claude]
 instructions = """

@@ -184,3 +184,15 @@ def test_a_bad_box_in_an_arrangement_changes_nothing(env):
     before = mod.screen.view
     said = say(reg, "arrange_screen", boxes=[{"type": "clock"}, 7])
     assert "each box" in said.lower() and mod.screen.view == before
+
+
+async def test_delete_everything_empties_the_notes_boxes(env):
+    """Review fixes (2026-11-16): the notes boxes' words (Claude's long answers can go there, D-130) are in
+    Settings → Your data, and "Delete everything" empties them, the undo history too."""
+    reg, mod, _ = env
+    say(reg, "add_box", type="notes", title="Pancakes", lines=["1 cup flour, 1 egg"])
+    say(reg, "change_box", box="Pancakes", lines=["1 cup flour, 2 eggs"])
+    assert reg.export_data()["screen"]["notes_boxes"][0]["lines"] == ["1 cup flour, 2 eggs"]
+    assert await mod.wipe_data() >= 1
+    assert all(not b.get("lines") for b in mod._notes_boxes()) and mod.screen.history == []
+    assert "eggs" not in str(mod.screen.state())

@@ -13,7 +13,9 @@ The dashboard's front page has a "Smart plugs" card with an On/Off button for ea
 the same way (`dashboard` "switch" → do_plug).
 
 What Claude reads with every message (`summary`): each plug's name and whether it's on, from the last check.
-The plugs and their states are fetched at startup, every `refresh_minutes` and right after switching.
+The plugs and their states are fetched at startup and every `refresh_minutes` (10): a plug switched in the
+Smart Life app or by its own button shows its old state until then. After Pip switches one, he keeps what he
+set for 30 s, as Tuya's list takes a few seconds to catch up.
 
 Tuya's API (https://developer.tuya.com/en/docs/cloud/): every request is signed with HMAC-SHA256 of the
 project's access secret (`sign`); a token (`/v1.0/token`) is fetched first and kept until it expires. The keys
@@ -202,7 +204,9 @@ class Tuya(Module):
         """Ask Tuya to switch one plug (raises if it can't), and remember it's now on/off."""
         p = self.plugs[pid]
         await self.request("POST", f"/v1.0/iot-03/devices/{pid}/commands", {"commands": [{"code": p["switch"], "value": on}]})
-        p["on"], self.switched[pid] = on, self.ctx.clock()
+        self.switched[pid] = self.ctx.clock()
+        if pid in self.plugs:   # (a refresh may have replaced the list meanwhile: update the one in use now)
+            self.plugs[pid]["on"] = on
         await self.ctx.publish("changed", {"plugs": len(self.plugs)})   # the front page's card redraws
 
     async def do_plug(self, plan: tuple[str, bool, str], call: Call) -> str:

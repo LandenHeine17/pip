@@ -20,6 +20,7 @@ itself can reach it, and the same-site check (web/security.py) stops other websi
 import asyncio
 import collections
 import json
+import logging
 import mimetypes
 import socket
 from importlib import resources
@@ -37,6 +38,8 @@ from ..common import vitals
 from ..common.weather import Weather
 from . import source
 from .security import SameSite, module_get_allowed
+
+log = logging.getLogger("pip-web")
 
 TRACE_KEEP = 300
 
@@ -158,9 +161,28 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
     async def alerts(request):
         return await core_get("core.alerts")
 
+    class NotAnObject(Exception):
+        pass
+
+    async def json_object(request) -> dict:
+        """The request's JSON body, which must be an object (raises NotAnObject: answered with a 400)."""
+        try:
+            body = await request.json()
+        except ValueError:
+            raise NotAnObject("That request isn't JSON")
+        if not isinstance(body, dict):
+            raise NotAnObject("That request isn't a JSON object")
+        return body
+
+    def bad(e: Exception) -> JSONResponse:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
     async def alert_action(request):
         """Shut off / snooze / cancel / new timer. Labels travel privately."""
-        body = await request.json()
+        try:
+            body = await json_object(request)
+        except NotAnObject as e:
+            return bad(e)
         private = {k: str(body.pop(k))[:200] for k in ("label", "text") if k in body}
         data = {k: body[k] for k in ("action", "id", "minutes") if k in body}
         r, failed = await ask("core.alert_action", data, private)
@@ -172,7 +194,10 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
 
     async def core_action(request, kind: str, private_keys: tuple, data_keys: tuple):
         """Names and memory texts are personal: they travel in the private part, never logged."""
-        body = await request.json()
+        try:
+            body = await json_object(request)
+        except NotAnObject as e:
+            return bad(e)
         private = {k: str(body.pop(k))[:300] for k in private_keys if k in body}
         data = {k: body[k] for k in data_keys if k in body}
         r, failed = await ask(kind, data, private, timeout=30)
@@ -192,7 +217,10 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
 
     async def mic(request):
         """GET: is Pip listening? POST {"value": true/false}: the dashboard's Listening switch (D-91)."""
-        data = {"value": bool((await request.json()).get("value"))} if request.method == "POST" else {}
+        try:
+            data = {"value": bool((await json_object(request)).get("value"))} if request.method == "POST" else {}
+        except NotAnObject as e:
+            return bad(e)
         r, failed = await ask("core.mic", data)
         return failed or JSONResponse(r.data)
 
@@ -201,7 +229,10 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         POST {"key", "value"}: change one."""
         data = {}
         if request.method == "POST":
-            body = await request.json()
+            try:
+                body = await json_object(request)
+            except NotAnObject as e:
+                return bad(e)
             data = {"key": str(body.get("key", "")), "value": body.get("value")}
         r, failed = await ask("core.prefs", data, timeout=10)
         return failed or JSONResponse(r.data)
@@ -270,11 +301,9 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         async def handler(request):
             if request.method == "POST":
                 try:
-                    body = await request.json()
-                except ValueError:
-                    return JSONResponse({"error": "That request isn't JSON"}, status_code=400)
-                if not isinstance(body, dict):
-                    return JSONResponse({"error": "That request isn't a JSON object"}, status_code=400)
+                    body = await json_object(request)
+                except NotAnObject as e:
+                    return bad(e)
             else:
                 body = {"action": get}
             r, failed = await ask(msg_type, {}, body, timeout=timeout, target=target)
@@ -290,12 +319,15 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         try:
             r = await bus.request("core", "core.tv", timeout=3)
             out.update(r.private or {})
+        except Exception:
+            out["error"] = "pip-core not reachable"
+        try:
             if layout := out.get("layout"):   # the screen's layout (D-111)
                 sections = layout["view"]["sections"]
                 state.screen([x["type"] for x in sections],
                              any(x["type"] == "conversation" and x.get("room", True) for x in sections))
-        except Exception:
-            out["error"] = "pip-core not reachable"
+        except (KeyError, TypeError, AttributeError):   # a layout that's wrong isn't an outage: show what came
+            log.warning("the screen's layout couldn't be read")
         out["weather"] = await weather.screen_within(1.0)   # never hold the page up for a slow weather service
         if "health" in state.tv_boxes:
             out["vitals"] = vitals_now()
@@ -435,7 +467,7 @@ async def main() -> None:
     listen(bus, state)
     # Only pages from Pip himself may change things: no logins (D-116), so a same-site check stops any other
     # website open on your phone from doing it (FEAT-072, web/security.py). The tests use build_app directly.
-    app = SameSite(build_app(bus, state, cfg))
+    app = SameSite(build_app(bus, state, cfg), allowed_hosts=cfg["web"].get("allowed_hosts", []))
     w = cfg["web"]
     server = uvicorn.Server(uvicorn.Config(app, log_level="warning", proxy_headers=False,
                                            timeout_graceful_shutdown=3))  # live pages would otherwise hold a stop for 90 s

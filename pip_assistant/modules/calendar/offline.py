@@ -8,8 +8,9 @@ and for commands typed on the dashboard).
                                                                       they use items / get / move / cancel below)
 
 Privacy is the calendar's own rule (Calendar.may_hear): whoever is asking only hears about, and only changes,
-the events they may (private events nobody by voice; an "only me" account's events only their owner). The
-dashboard's typed commands (`call` None) see everything.
+the events they may (private events nobody by voice; an "only me" account's events only their owner). Pip
+always asks as someone (the dashboard's chat box as the person picked, D-131); `call` None, which sees
+everything, is only for tests and tools.
 """
 import re
 from datetime import datetime, timedelta

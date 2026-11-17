@@ -48,6 +48,7 @@ class Recall(Module):
         self.db.commit()
         self.lines: list[tuple[float, str, str]] = []   # (when, who, text): the conversation now, in memory only
         self.busy = False
+        self.wiped = 0   # counts deletions (all, or a person's): notes being written across one are dropped
         self.actions = {"look:recall": Action(self.check_look, self.do_look)}
 
     # ---------------------------------------------------------------- hearing
@@ -68,8 +69,9 @@ class Recall(Module):
         if len(lines) < MIN_LINES:
             return None
         rendered = [f"[{time.strftime('%H:%M', time.localtime(t))}] {w}: {x}" for t, w, x in lines]
+        wiped = self.wiped
         notes = (await self.ctx.summarize(rendered)).strip()
-        if not notes:
+        if not notes or self.wiped != wiped:   # "delete everything" or a person removed meanwhile: not saved
             return None
         people = ", ".join(sorted({w.rstrip("?") for _, w, _ in lines if w != "Someone"}))
         cur = self.db.execute("INSERT INTO recall_notes (began, ended, people, notes) VALUES (?, ?, ?, ?)",
@@ -106,7 +108,8 @@ class Recall(Module):
                 last_prune = self.ctx.clock()
 
     # ---------------------------------------------------------------- reading
-    def notes(self, since: float = 0.0, until: float | None = None, limit: int = 500) -> list[dict]:
+    def notes(self, since: float = 0.0, until: float | None = None, limit: int = -1) -> list[dict]:
+        """Newest first; all of them unless `limit` (the page asks for at most 500)."""
         until = until if until is not None else self.ctx.clock() + 1
         rows = self.db.execute("SELECT id, began, ended, people, notes FROM recall_notes WHERE ended >= ? AND began <= ? "
                                "ORDER BY began DESC LIMIT ?", (since, until, limit)).fetchall()
@@ -169,13 +172,15 @@ class Recall(Module):
         n = len(self.notes())
         self.db.execute("DELETE FROM recall_notes")
         self.db.commit()
-        self.lines = []
+        self.lines, self.wiped = [], self.wiped + 1
         return n
 
     async def forget_person(self, person_id: str, name: str) -> int:
         """They're removed from the household: notes of conversations they took part in are deleted."""
         if not name:
             return 0
+        self.wiped += 1
+        self.lines = [x for x in self.lines if x[1].rstrip("?") != name]   # what they said, not yet in notes
         ids = [n["id"] for n in self.notes() if name in [p.strip() for p in n["people"].split(",")]]
         for i in ids:
             self.db.execute("DELETE FROM recall_notes WHERE id = ?", (i,))
@@ -185,7 +190,7 @@ class Recall(Module):
     # ---------------------------------------------------------------- its page
     async def dashboard(self, action: str, args: dict) -> dict:
         if action == "list":
-            return {"notes": self.notes(), "keep_days": self.ctx.settings["keep_days"], "waiting": len(self.lines)}
+            return {"notes": self.notes(limit=500), "keep_days": self.ctx.settings["keep_days"], "waiting": len(self.lines)}
         if action == "delete":
             self.db.execute("DELETE FROM recall_notes WHERE id = ?", (int(args.get("id") or 0),))
             self.db.commit()
@@ -194,7 +199,7 @@ class Recall(Module):
         if action == "delete_all":
             self.db.execute("DELETE FROM recall_notes")
             self.db.commit()
-            self.lines = []
+            self.lines, self.wiped = [], self.wiped + 1
             await self.ctx.publish("changed")
             return {"ok": True}
         return {"error": f"unknown action {action}"}

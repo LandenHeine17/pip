@@ -537,7 +537,19 @@ async def test_offline_an_only_me_calendar_is_heard_and_changed_only_by_its_owne
     ev = next(iter(cal.store.all_events()))
     with pytest.raises(Invalid):                                   # Claude can't act on it for Landen either
         say(reg, "cancel:event", {"id": ev["id"]}, me(landen))
+    told_landen = reg.summary(me(landen))
+    assert "interview" not in told_landen and "Sam" not in told_landen.split("Calendars:")[-1]   # not even its name
+    assert "Sam" in reg.summary(me(sam)).split("Calendars:")[-1]
     assert "interview" in await cmds.handle("what's on the calendar today", me(sam))
     assert "interview" in await cmds.handle("what's on the calendar today")                   # the dashboard
     await cmds.handle("delete interview from the calendar", me(sam))
     assert not list(cal.store.all_events())
+
+
+async def test_a_time_with_a_time_zone_is_the_same_moment_here(env):
+    """Review fixes (2026-11-16): "…T21:00Z" from Claude is 3 PM in Lincoln (it was taken as 9 PM)."""
+    reg, cal, fake, people, sched, clock = env
+    say(reg, "add:event", {"title": "call", "at": "2026-11-07T21:00:00Z"})
+    [ev] = cal.store.all_events()
+    assert ev["start"] == datetime.fromisoformat("2026-11-07T21:00:00+00:00").timestamp()
+

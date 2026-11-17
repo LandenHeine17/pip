@@ -28,7 +28,11 @@ def test_durations(text, secs):
     ("tuesday at 8", datetime(2026, 11, 10, 8, 0)),
     ("at noon", datetime(2026, 11, 5, 12, 0)), ("7 pm tomorrow", datetime(2026, 11, 5, 19, 0)),
     ("quarter to 8", datetime(2026, 11, 4, 19, 45)), ("at 10 tonight", datetime(2026, 11, 4, 22, 0)),
-    ("for 10 minutes", None), ("set a timer for 10 minutes", None)])
+    ("for 10 minutes", None), ("set a timer for 10 minutes", None),
+    # review fixes (2026-11-16): midnight, and am/pm on the hour it's before
+    ("at 12 tonight", datetime(2026, 11, 5, 0, 0)), ("at 12:30 tonight", datetime(2026, 11, 5, 0, 30)),
+    ("quarter to 12 pm", datetime(2026, 11, 5, 11, 45)), ("quarter to 12 am", datetime(2026, 11, 4, 23, 45)),
+    ("quarter to 1 pm", datetime(2026, 11, 5, 12, 45))])
 def test_clock_times(text, expect):
     assert when.clock(text, NOW) == expect
 

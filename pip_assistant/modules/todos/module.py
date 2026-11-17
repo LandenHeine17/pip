@@ -152,8 +152,9 @@ class Todos(Module):
         return f"Added {t['title']} to {whose}{due}."
 
     def check_ref(self, a: dict, call: Call) -> dict:
+        """A to-do they may hear about (one shared "only me" is someone else's: as if it weren't there)."""
         t = self._match(a.get("id"))
-        if not t:
+        if not t or not self.visible(t, call, {x["id"]: x for x in self.store.lists()}, self._accounts()):
             raise Invalid("unknown to-do")
         return t
 

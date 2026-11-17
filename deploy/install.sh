@@ -40,7 +40,12 @@ fi
 SPK=~/pip-data/models/speaker/nemo_en_titanet_small.onnx
 if [ ! -f "$SPK" ]; then
   mkdir -p ~/pip-data/models/speaker
-  curl -sSfL -o "$SPK.part" https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_small.onnx && mv "$SPK.part" "$SPK"
+  # (set -e doesn't stop on a failure inside "a && b": say so and stop, rather than install without it)
+  if ! { curl -sSfL -o "$SPK.part" https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/nemo_en_titanet_small.onnx && mv "$SPK.part" "$SPK"; }; then
+    rm -f "$SPK.part"
+    echo "Couldn't download the voice-recognition model (no internet?). Pip wasn't updated; try again." >&2
+    exit 2
+  fi
 fi
 # Pip's voice (Piper, D-73): the one chosen in settings ([ears] voice), downloaded once from the Piper
 # voices collection into ~/pip-data/models/voices (common/voices.py, the same code the Settings page uses).

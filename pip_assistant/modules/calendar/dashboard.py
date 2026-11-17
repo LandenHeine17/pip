@@ -135,6 +135,8 @@ class DashboardPage:
             s.remove_event(str(args.get("id")))
             return {"ok": True}
         if action == "tick":
+            if not s.calendar(str(args.get("id"))):
+                return {"error": "That calendar is gone (refresh the page)."}
             s.upsert_calendar(str(args.get("id")), ticked=int(bool(args.get("value"))))
             for ev in s.db.execute("SELECT * FROM calendar_events WHERE calendar_id = ?", (str(args.get("id")),)).fetchall():
                 s.sync_alerts(dict(ev))

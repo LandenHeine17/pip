@@ -140,7 +140,7 @@ class Asking:
 
     @property
     def call(self):
-        """Who's asking (core/modules.Call), or None for the dashboard's typed commands (they see everything)."""
+        """Who's asking (core/modules.Call); None (tests and tools only) sees everything."""
         return self._cmds.call
 
     def now(self) -> datetime:
@@ -214,7 +214,7 @@ class Commands:
     async def handle(self, text: str, call=None) -> str | None:
         """A request for Pip. Returns what to say, "" for nothing, or None if it's not a command.
         `call`: who's asking (core/modules.Call), so a module's items they mayn't hear about (calendar events) are
-        left out; None (the dashboard's typed commands) sees everything."""
+        left out; None (tests and tools only: Pip always passes one, D-131) sees everything."""
         self.call = call
         try:
             return await self._handle(text)

@@ -108,3 +108,23 @@ async def test_the_to_do_sync_shows_on_the_google_page_without_hiding_a_calendar
     assert acc["last_sync"] and acc["error"] == "calendar: ConnectError"
     g.synced(acc["id"], "", "calendar")
     assert g.accounts()[0]["error"] == ""
+
+
+async def test_someone_elses_only_me_to_do_cant_be_ticked_off_or_changed(env):
+    """Review fixes (2026-11-16): a to-do on a list shared "only me" is as if it weren't there for anyone else,
+    even when Claude still has its id from its owner's earlier turn."""
+    reg, todos, fake, people = env
+    landen, sam = people.add_person("Landen", "admin"), people.add_person("Sam")
+    fake.lists["S1"] = {"title": "My Tasks", "owner": "sam@example.com"}
+    fake.tasks["S1"] = {"t1": {"id": "t1", "title": "pick up prescription", "status": "needsAction", "etag": '"a"',
+                               "updated_ts": 0}}
+    acc = await connect(reg.modules["google"], fake, sam["id"], "sam@example.com")
+    await todos.sync.run_once()
+    await reg.modules["google"].dashboard("sharing", {"id": acc["id"], "value": "me"})
+    [t] = todos.store.items()
+    ref = {"id": "#t" + t["id"][:5]}
+    with pytest.raises(Invalid):
+        say(reg, "complete_task", ref, me(landen))
+    with pytest.raises(Invalid):
+        say(reg, "change_task", {**ref, "title": "x"}, me(landen))
+    assert say(reg, "complete_task", ref, me(sam)) == "Ticked off pick up prescription."

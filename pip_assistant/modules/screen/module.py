@@ -47,6 +47,29 @@ class ScreenModule(Module):
         except RuntimeError:   # no loop running (tests)
             pass
 
+    # ---------------------------------------------------------------- Settings → Your data (D-129)
+    def _notes_boxes(self) -> list[dict]:
+        """Every notes box kept: on the saved screens, in the undo history and in a fix waiting for an okay."""
+        views = list(self.screen.saved.values()) + [v for _, v in self.screen.history]
+        if self.screen.pending and isinstance(self.screen.pending.get("view"), dict):
+            views.append(self.screen.pending["view"])
+        return [b for v in views for b in v.get("sections", []) if b.get("type") == "notes"]
+
+    def export_data(self) -> dict:
+        """What's written in the notes boxes (Claude's long answers can go there, D-130)."""
+        on = [b for b in self.screen.view.get("sections", []) if b.get("type") == "notes"]
+        return {"notes_boxes": [{"title": b.get("title", ""), "lines": list(b.get("lines", []))} for b in on]}
+
+    async def wipe_data(self) -> int:
+        """"Delete everything": the notes boxes' words go (the boxes stay, empty), and the undo history with them."""
+        boxes = self._notes_boxes()
+        n = sum(1 for b in boxes if b.get("lines"))
+        for b in boxes:
+            b["lines"] = []
+        self.screen.history, self.screen.pending = [], None
+        self._changed()
+        return n
+
     # ---------------------------------------------------------------- what Claude reads
     def summary(self, call: Call) -> str:
         if call.kind == "join":   # join-in checks run every ~40 s: nothing about the screen (D-102)
