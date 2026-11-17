@@ -4,8 +4,7 @@ Online, a clearly worded command ("timer ten minutes", "stop") is done here stra
 anything else goes to Claude in natural language, and Claude acts through ACTION lines (core/actions.py).
 Offline these rules do everything (PIP-NEW-044, D-83): timers, alarms, reminders, "what time is it", "stop", and what modules add (the calendar). What they still do
 online: `while_ringing` (the obvious "stop", "okay", "snooze" or his name silence a ringing alarm
-instantly; anything else said to Pip while it rings goes to Claude) and the dashboard's box for typing
-a command. Replies are short (D-79). If a cancel matches nothing he says so; if it could mean
+instantly; anything else said or typed to Pip while it rings goes to Claude). Replies are short (D-79). If a cancel matches nothing he says so; if it could mean
 several, he asks which (FEAT-042).
 
 This file only *understands* the words (the phrase rules below, and the questions Pip asks back,

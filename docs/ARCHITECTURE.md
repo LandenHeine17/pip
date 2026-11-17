@@ -44,11 +44,11 @@ flowchart TB
     PHONE["Your phone / PC<br/>(over Tailscale)"] <-.-> WEB
 ```
 
-| Program | What it does | Why it's separate | Memory cap *(est.)* |
+| Program | What it does | Why it's separate | Memory cap (`deploy/systemd/`) |
 |---|---|---|---|
 | **pip-ears** | Listens all the time: echo-cancelled audio from the speakerphone, speech detection, both wake words ("Pippletron", "Hey Pip"), talking over Pip (stops him instantly), mute detection; and a second plain USB microphone used only for the two-clap switch (D-91). Also plays everything Pip says (Piper voice) and alarm sounds, and turns Pip down when someone talks over him | Must react in milliseconds and never wait for the internet or the AI | 600 MB |
-| **pip-core** | The conductor. Decides what to do with each thing heard; runs conversations, timers, reminders and alarms; holds memory, people and settings; runs actions; keeps the log of everything that happens; watches the other programs' health; recognises voices (TitaNet, step 5) | Everything goes through one place, so it's easy to follow and log | 700 MB (was 400; voice model + offline Whisper, D-87) |
-| **pip-thinker** | Talks to Claude through the Claude Code CLI (one fresh session per request, fixing Ziggletron's collision bug P-01). Counts every Claude request in the usage meter (`common/usage.py`, PIP-NEW-089) and announces when Claude's usage limit is reached. *Not built:* the offline Qwen fallback when Claude is unavailable (D-75; not now, D-128) | Slow and memory-hungry; must never hold up the conductor | 2.0 GB (Qwen needs ~1.3 GB while loaded) |
+| **pip-core** | The conductor. Decides what to do with each thing heard; runs conversations, timers, reminders and alarms; holds memory, people and settings; runs actions; keeps the log of everything that happens; watches the other programs' health; recognises voices (TitaNet, step 5) | Everything goes through one place, so it's easy to follow and log | 700 MB (voice model + offline Whisper, D-87) |
+| **pip-thinker** | Talks to Claude through the Claude Code CLI (one fresh session per request, fixing Ziggletron's collision bug P-01). Counts every Claude request in the usage meter (`common/usage.py`, PIP-NEW-089) and announces when Claude's usage limit is reached. *Not built:* the offline Qwen fallback when Claude is unavailable (D-75; not now, D-128) | Slow and memory-hungry; must never hold up the conductor | 2 GB (room for Qwen, ~1.3 GB, if it's ever built) |
 | **pip-web** | The dashboard (phone/PC over Tailscale) and the TV page for the face, which gets only what it shows (D-110). Plain http on the Tailscale address, https at the Pi's Tailscale name (`tailscale serve`), and 127.0.0.1 for the monitor. No logins (D-116); a same-site check (`web/security.py`) stops other websites from changing Pip | Keeps network-facing code away from the core and from secrets | 300 MB |
 | **pip-builder** | Self-changes (D-118): keeps the record of each change, runs Claude Code in a sandbox to plan and build it, checks it, and puts it live through a versioned install once you've approved it twice on the Changes page (§9) | Untrusted code must be fenced off from your data | 300 MB for the program; each sandbox job 2 GB, only while running |
 | *Screen browser* | Chromium in kiosk mode on the monitor (system service `pip-tv`, `deploy/tv/`), showing the TV page `/tv` from pip-web's local address | How Ziggletron's face worked; Pip's replaces it (D-110) | (existing) |
@@ -83,31 +83,32 @@ sequenceDiagram
     Core->>Groq: audio → text (word list + household names)
     Groq-->>Core: "Pippletron, throw ten minutes on for the laundry"
     Core->>Core: add to the room transcript
-    alt Online (any wording, D-94)
+    alt A clearly worded command ("10 minute timer", D-123), or offline (D-83)
+        Core->>Core: Pip's own phrasings: create timer
+    else Any other wording, online (D-94)
         Core->>Think: ask Claude (room transcript, what's set, memories)
         Think-->>Core: ACTION add timer · laundry · 600 s
         Core->>Core: check it, create the timer, check it really happened
-    else Offline (D-83)
-        Core->>Core: Pip's own simple phrasings: create timer
     end
     Core->>Ears: say "Laundry timer's on, 10 minutes."
     Ears-->>You: Piper voice
     Core->>Core: log to the trace; update screen and dashboard
 ```
 
-**Time budget** for a typical answer (target ≤ 2.5 s to first word, AC):
+**Where the time goes** (measured over 48 h before D-122, `tools/latency.py`; the target is ≤ 2.5 s to the first word):
 
 | Step | Time |
 |---|---|
-| End of speech detected | ~0.5 s (adaptive pause) |
-| Groq transcription | 0.45 s *(M0)* |
-| Claude's first sentence | 1–2 s *(est., to measure in M1a)* |
-| Piper starts speaking | 0.3 s *(M0)* |
-| **Total** | **~2.3–3.3 s** (clearly worded commands skip Claude since D-123; other wordings go through Claude, D-94; offline commands: ~2.5 s with Whisper on the Pi) |
+| End of speech detected | 0.7 s pause |
+| Groq transcription | 0.4 s |
+| "Are you done?" wait | 1.55 s then; since D-122 one budget counted from the end of speech (1.0 s for a question, in all) |
+| Claude's first sentence | 2.0 s |
+| Piper starts speaking | 0.3 s |
+| **Total** | **5.4 s** before D-122. Clearly worded commands skip Claude (D-123). Offline, Whisper on the Pi takes ~2.4 s instead of Groq. The new figure is still to be measured |
 
 ## 5. Why "stop" and alarms always work
 
-- **Talking over Pip stops him inside pip-ears**, before anything is understood: no internet, no AI, no waiting. Only a voice does it (D-122), and since D-128 his voice first drops for about half a second: if the voice keeps going he stops, if it was a short laugh or "yeah" he carries on. Then what you said is understood: "stop", "shut up", "never mind" get silence and he goes back to idle (D-105); anything else is answered. While an alarm rings, "stop" and "snooze" work instantly on the Pi (D-94).
+- **Talking over Pip stops him inside pip-ears**, before anything is understood: no internet, no AI, no waiting. Only a voice does it (D-122), and since D-128 his voice first drops for about half a second: if the voice keeps going he stops, if it was a short laugh or "yeah" he carries on. Then what you said is understood: "stop", "shut up", "never mind" get silence and he goes back to idle (D-105); anything else is answered. While an alarm rings, "stop" and "snooze" work instantly on the Pi (D-94), and "Hey Pip" quiets it at once: what's said next decides ("snooze" snoozes; anything else, or nothing for 20 s, stops it).
 - **Alarms** live in the core's scheduler, which never does slow work itself: thinking happens in pip-thinker, and network calls have short timeouts. When an alarm is due, the core tells pip-ears to ring, and pip-ears plays it even if the core then gets stuck. A missed heartbeat makes the watchdog restart the stuck program (PIP-NEW-079).
 - **Timers and alarms survive restarts and power cuts**: they're saved in the database the moment they're created.
 
@@ -129,7 +130,7 @@ What else leaves the Pi:
 | To | What | When |
 |---|---|---|
 | Groq | Audio of everything said in the room while Pip is listening, plus the household's first names as spelling hints | As it happens |
-| Claude | The room transcript (last 40 lines), memories, what's set, the calendar's today and tomorrow plus counts for the week (the rest only when Claude looks it up, D-102) and open to-dos (only what the speaker may hear; never private events or ignored calendars), the allowed actions. Join-in checks get only the rest of today | Each answer, mention or join-in check (at most every ~40 s) |
+| Claude | The room transcript (last 40 lines), memories, what's set, the last day's conversation notes (D-128), the smart plugs and whether each is on, the calendar's today and tomorrow plus counts for the week (the rest only when Claude looks it up, D-102) and open to-dos (only what the speaker may hear; never private events or ignored calendars), the allowed actions. Join-in checks get only the rest of today | Each answer, mention or join-in check (at most every ~40 s) |
 | Open-Meteo | "Lincoln, Nebraska" | Weather updates |
 | Tuya (smart plugs, D-132, until the plugs' own network) | Which plug to switch on or off; the list of plugs and whether each is on | When a plug is switched, and every 10 minutes |
 | Brave Search | The search words Claude chose (the websearch module, D-125; needs the owner's key) | Only when Claude looks something up on the web |
@@ -145,11 +146,11 @@ Every new feature is a **module**: a folder with a short description file and a 
 
 | Kind | What it adds | Examples |
 |---|---|---|
-| **Skill** | Things Pip can do or answer | calendar, to-dos, (later) shopping list, dice |
-| **Widget** | A box on the TV screen | clock, timers, weather, now playing |
-| **Provider** | A service other modules use, behind a standard interface | Google accounts; (later) speech-to-text, voices, brains |
-| **Device adapter** | A kind of device (M3) | ESPHome over MQTT, Tuya (Eightree plugs) |
-| **Plugin** | Anything else, owner-written, with declared permissions | — |
+| **Skill** | Things Pip can do or answer | calendar, todos, recall, six_seven, the template's dice |
+| **Widget** | Boxes on the TV screen | screen (the layout and its boxes); any module can also add a kind of box (`[monitor.<kind>]`) |
+| **Provider** | A service Pip or other modules use | google (accounts), websearch (look-ups) |
+| **Device** | A kind of device (M3) | tuya (the plugs, through Tuya's cloud for now, D-132); later ESPHome over MQTT and local Tuya |
+| **Plugin** | Anything else, with declared permissions | none yet |
 
 ### 7.2 What a module looks like
 
@@ -225,11 +226,12 @@ flowchart LR
 | `people_links(id)` | links on the dashboard's People card | (Google: "Connect Google", "Google settings") |
 | `account_panel` (module.toml) | its part of a Google account's settings page | its calendars, the household calendar |
 | `dashboard(action, args)`, `tasks()`, `find(ref)` | its page's requests, background jobs, its items' short ids | the month view; syncing every two minutes |
+| `export_data()`, `wipe_data()`, `forget_person(id, name)` | its part of Settings → Your data (download, delete everything) and of removing a person (D-129) | (recall: the notes; screen: the notes boxes; google: the person's accounts) |
 | `api` | a small documented object other modules may use (`api.py`) | `events_on(day, call)`, `add_event(…)`, both keeping its privacy rule |
 
 `tools/check_map.py` (run before every commit) and `tests/core/test_plugins.py` (run by the builder too) fail if a program names a module.
 
-What a module gets (its **context**), and nothing more: its settings (`[modules.<name>]` in `~/pip-data/settings.toml` overrides the defaults; `enabled = false` switches it off); **its own tables** in `pip.db`, named `<name>_…` (writing anything else is refused); **its own section of `secrets.toml`**; an internet client limited to the hosts in its permissions; **heads-ups for its own items** (`ctx.alerts`: add, cancel, not pip-core's whole schedule); **who's in the household** (`ctx.people`: id, name and role only, never voices); whether Pip is online; the kinds of box every module adds to the monitor (`ctx.boxes`, for the screen module); and the small `api` of each module it `needs`. Its requests from the dashboard and its events travel privately (never logged).
+What a module gets (its **context**), and nothing more: its settings (`[modules.<name>]` in `~/pip-data/settings.toml` overrides the defaults; `enabled = false` switches it off); **its own tables** in `pip.db`, named `<name>_…` (`ctx.db()`: reading or writing any other table is refused, and so are triggers, views, attached databases and PRAGMAs that change the file); **its own section of `secrets.toml`**; an internet client limited to the hosts in its permissions; **heads-ups for its own items** (`ctx.alerts`: add, cancel, not pip-core's whole schedule); **who's in the household** (`ctx.people`: id, name and role only, never voices); whether Pip is online; the kinds of box every module adds to the monitor (`ctx.boxes`, for the screen module); one-off conversation notes from Claude (`ctx.summarize`, only with the `claude:summarize` permission); its own events (`ctx.publish`, sent as `module.<name>.<kind>`); and the small `api` of each module it `needs`. A background job (`tasks()`) that fails is started again after 30 s, then longer, up to 10 minutes (`Registry._guard`). Its requests from the dashboard and its events travel privately (never logged).
 
 **Keep what Claude reads short** (D-102): it goes with every request, including join-in checks every ~40 s. A module's summary is told whether it's for a join-in check (`call.kind == "join"`) and should send even less then. Anything bigger is a **look-up**: the module declares an action `look:<kind>`, Claude replies `ACTION {"do": "look", "kind": …}`, Pip fetches it and asks Claude again with the result (once). An action that has to wait for the internet (e.g. making a Google calendar) may be `async`. A module that adds columns to its own tables later uses `ALTER TABLE` on its own tables (allowed); test it against an old database too.
 
@@ -245,14 +247,14 @@ The voice engine is a setting: `voice_engine` under `[ears]` in `defaults.toml` 
 |---|---|---|
 | `~/pip` (repo) | All code, modules, default settings, generic wake-word models (synthetic voices only), docs | Yes (public-safe) |
 | `~/pip-data/settings.toml` | Your settings (location, room, mode, voice…), written by the Settings page | **No** |
-| `~/pip-data/secrets.toml` | API keys, and each module's own section (e.g. `[google]`: the Google client and each connected person's sign-in key). Only pip-core reads it (`core/stt.py` for the Groq key; modules through `core/modules.py`); a module only ever sees its own section | **No** |
-| `~/pip-data/pip.db` | One SQLite database: memories, people and voice profiles, timers/reminders, the 48-hour decision trace, each module's own tables (`calendar_…`, `todos_…`, `google_…`, `screen_…`, `recall_notes`), self-changes (`builder_changes`) and the usage meter (`usage`) | **No** |
+| `~/pip-data/secrets.toml` | API keys, and each module's own section (`[google]`: the Google client and each connected person's sign-in key; `[websearch]`, `[tuya]`). Only pip-core reads it (`core/stt.py` for the Groq key; modules through `core/modules.py`); a module only ever sees its own section | **No** |
+| `~/pip-data/pip.db` | One SQLite database: memories, people and voice profiles, timers/reminders, the Listening switches and preferences, the 48-hour decision trace, each module's own tables (`calendar_…`, `todos_…`, `google_…`, `screen_…`, `recall_notes`), self-changes (`builder_changes`) and the usage meter (`usage`) | **No** |
 | `~/pip-data/models/` | The voice recognition model (`speaker/`) and Pip's Piper voice (`voices/`). The wake-word models in use are the generic ones in the repo (`models/wake/`) | **No** |
 | `~/pip-app/` | The live copy Pip runs from (§10): `releases/<id>/` (one folder per installed version, with its own `.venv`), `current` (a link to the running one), `release-state.json`, `release.log` | **No** |
 | `~/pip-data/builder/` | Self-change workspaces (`work/<id>/`, deleted when the change ends) and install results (`releases/`) | **No** |
 | `~/pip-data/m0/` | M0's results, the Qwen model and wake-word training output, and your consented test recordings (`recordings/`, kept, D-72) | **No** |
 
-- **A fresh clone** starts with default settings and generic models, runs a first-time setup (API keys, location, room), and works without anyone's personal data (PIP-NEW-096).
+- **A fresh clone** starts with default settings and generic models (keys go in `~/pip-data/secrets.toml`, the location and the rest on the Settings page; there's no setup wizard), and works without anyone's personal data (PIP-NEW-096).
 - **SD-card friendly:** small batched writes and size-capped logs.
 - **No conversation text** is stored except the short-lived conversation context in memory (D-53 feed is live-only). The recall module keeps only short notes of each conversation (topics, plans, who was there; never the words), for 30 days (D-128).
 - **Ziggletron's data:** his 80 memories (into the inbox, for approval) and his personality text were brought over once, read-only, in step 8 (D-117). Nothing else (D-117 narrowed D-07).
@@ -265,7 +267,8 @@ The voice engine is a setting: `voice_engine` under `[ears]` in `defaults.toml` 
   - Anything that changes something must be sent as JSON, and from Pip's own pages (the browser says which page sent it). Browsers won't let another site do that.
   - A module's page may only *read* with a plain link (GET); its changes must be sent the other way (POST).
 - **Voice alone is never enough** for admin things (settings, approving changes): those need the dashboard (PIP-NEW-027).
-- **Secrets:** only pip-core reads them; pip-web and pip-thinker never see them.
+- **Secrets:** only pip-core reads them; pip-web and pip-thinker never see them. The commit check (`tools/check_secrets.py`) blocks keys and tokens (API keys, `client_secret`, `access_secret`, `refresh_token`, `local_key`, Google keys), phone numbers and Tailscale addresses.
+- **Logs:** what people said never goes in the journal; the web libraries' own request lines (which would show search words and calendar addresses) are switched off in every program (`setup_logging` in `common/program.py`).
 - **Self-changes** (built in M1b, D-118, PIP-NEW-069–076). Fixes Ziggletron's self-edit holes (tests run with full rights, the agent could write `.git`, spoken words in commits, leftover branches, no rollback):
   - **The workspace** is a plain copy of the code with **no `.git`** (`~/pip-data/builder/work/<id>/`), and its Python environment is made *before* the agent starts, so the agent can't plant git hooks or change packages.
   - **The agent sandbox** (Claude Code, `builder/sandbox.py`): a systemd job where the home folder is empty except the change's own folder and the Claude login file (mounted, never copied); 2 GB, 2 CPUs, 10 min to plan, 30 min to build. It needs the network to reach Claude. Planning may only read; building may edit files and run **one** command: `tools/sandbox-test`. No web search, no other tools.
@@ -278,7 +281,9 @@ The voice engine is a setting: `voice_engine` under `[ears]` in `defaults.toml` 
 ## 10. Updates, restarts and recovery
 
 - Each program is a **systemd service**: started at boot, restarted if it crashes, memory-capped.
-- **Watchdog:** each program sends a heartbeat. A missed heartbeat means it's stuck, so it gets restarted and logged (PIP-NEW-079) If pip-core itself was held up, nobody is restarted for it, and restarts never make pip-core wait. A program whose listening, speaking or other main loop dies exits, so systemd restarts it, instead of sending heartbeats while deaf or mute (`common/program.py serve`).
+- **Watchdog** (`core/health.py`, PIP-NEW-079): each program sends a heartbeat. A missed heartbeat means it's stuck, so it gets restarted (`--no-block`, so pip-core never waits) and logged. If pip-core itself was held up, every heartbeat looks old, so that check is skipped.
+- **No silent deafness:** a program whose listening, speaking or other main loop dies exits, so systemd restarts it, instead of sending heartbeats while deaf or mute (`serve()` in `common/program.py`). While pip-core is away, the others drop what they'd send instead of failing.
+- **Module jobs** (a Google sync) that fail are started again after 30 s, then longer, up to 10 minutes.
 - **Versioned installs** (built in M1b, PIP-NEW-080, D-118). Pip runs from a separate live copy, never straight from the repo. Every update, by you or by a self-change, goes through `pip_assistant/release.py`:
 
 ```mermaid
@@ -341,7 +346,7 @@ pip/                          (the repo)
 ├── models/                   generic, public-safe models
 ├── deploy/                   systemd service files (deploy/systemd/, incl. pip-builder.service), install.sh (installs the committed HEAD as a release); the monitor's kiosk (deploy/tv/, install-tv.sh); https (install-https.sh)
 ├── tools/                    the commit checks, and sandbox-test (tests with no network and no home folder)
-├── tests/                    cross-program and replay tests
+├── tests/                    tests, sorted by the program they test (a module's own are next to it)
 ├── docs/                     PIP-SPEC, HOW-PIP-WORKS, ARCHITECTURE, DECISIONS, REQUIREMENTS, PROJECT-MAP
 └── m0/                       measurement tools (kept for re-runs)
 ```
@@ -382,7 +387,17 @@ Built in small steps. Each step ends with something you can try.
 - **Conversation rework (2026-11-12, D-122–D-124)**, from the owner's conversational-behaviour spec, measured first with `tools/latency.py` (5.4 s from the end of speech to Pip's voice): the "are you done?" wait counts from the end of speech; only a voice cuts him off, and a "yeah" doesn't end his answer; speech waits in its own queue so nothing else from pip-ears waits behind speech-to-text; clearly worded commands skip Claude; follow-ups only from the person he answered; joining in steps back more. No new program and no change to the message bus's design.
 - **Fixes from the first evening of use (2026-11-12, D-126):** a laugh over him no longer ends his answer, a lone phantom "Thank you." from an unknown voice is noise, Claude's notes to itself are never said (and a reply of only notes is asked again), old talk is marked as old in the transcript. The Settings page gained a Taking turns group with live previews. All inside existing programs.
 
-**M2 built 2026-11-13 (D-128, D-129):** explaining himself (`core/selfknow.py`: the trace, settings, health, memories, his own docs and code; `common/capabilities.py`), conversation memory (the `recall` module, notes kept 30 days, written through the module-neutral `ctx.summarize` → `thinker.summarize`), smarter memory (contradictions flagged, "that was Sam, not me"), conversation polish (ducking in pip-ears, "hold on"; "Want the rest?" was removed again by D-130: he says the whole answer, and a long one can also go in a notes box), a richer face (expressions, corner icons from `face_status`, `[face]` appearance settings read by pip-web), and your data (`core/yourdata.py`; modules join in through `export_data`, `wipe_data` and `forget_person`). No new program. Not built, by the owner's choice: the offline Qwen fallback (D-75), spoken problem notices, Room-Aware mode. **Next: M3** (smart home).
+**M2 built 2026-11-13 (D-128, D-129):** explaining himself (`core/selfknow.py`: the trace, settings, health, memories, his own docs and code; `common/capabilities.py`), conversation memory (the `recall` module, notes kept 30 days, written through the module-neutral `ctx.summarize` → `thinker.summarize`), smarter memory (contradictions flagged, "that was Sam, not me"), conversation polish (ducking in pip-ears, "hold on"; "Want the rest?" was removed again by D-130: he says the whole answer, and a long one can also go in a notes box), a richer face (expressions, corner icons from `face_status`, `[face]` appearance settings read by pip-web), and your data (`core/yourdata.py`; modules join in through `export_data`, `wipe_data` and `forget_person`). No new program. Not built, by the owner's choice: the offline Qwen fallback (D-75), spoken problem notices, Room-Aware mode.
+
+**M3 (smart home) started 2026-11-15:** the `tuya` module switches the smart plugs through Tuya's cloud, a stopgap until the Pi hosts a Wi-Fi network for them (D-132), with an On/Off card on the dashboard's front page (a new kind of `home()` card); and a chat box on the front page (D-131): typed messages go through `core.chat` → `Conversation.typed`, the same path as speech.
+
+**Review fixes (2026-11-16, D-133)**, from a review of the whole code, inside the existing programs:
+- **Typed messages and alarms:** a typed message is its own request (the `TYPED` context variable in `core/conversation.py`, `asker_now`, `typed_answers`), so Pip talking to the room meanwhile is unaffected and actions are done as the person picked; while ringing, typed "snooze" and "okay" work like spoken. "Hey Pip" quiets a ringing alarm (`Schedule.hush`, 20 s) and what's said next decides.
+- **Staying up:** `serve()` exits when a main loop dies; `BusClient.emit`/`command` drop while disconnected; the watchdog skips its check after pip-core's own stall and restarts `--no-block`; the hub answers core requests in their own task and answers or forgets requests of programs that went away; failed module jobs restart (30 s → 10 min); the `ctx.db` fence also blocks reading other tables, triggers, views, ATTACH and schema PRAGMAs.
+- **Privacy:** httpx/httpcore request lines are kept out of the journal; `tools/check_secrets.py` catches more kinds of key and Tailscale addresses; "only me" sharing also covers ticking off and changing to-dos and the calendar names Claude reads; conversation notes being written across "Delete everything" or a person's removal are dropped; the screen's notes boxes are part of Your data.
+- **Stopping does what it says:** `thinker.cancel` with no answer id stops answers only; a cancelled answer isn't counted as an error or asked again; one warm Claude process at a time; pip-ears drops a sentence Piper was still making; "stop" or a new request drops a look-up's second round; "Let me check." followed by a look ACTION is looked up.
+- **Times:** calendar times with a time zone are converted; "12 tonight" is midnight and "quarter to 12 pm" 11:45 AM (`common/when.py`).
+- **Deploy:** `pip-tv` waits for tty1 before starting, and `install-tv.sh` restarts it with `--no-block`; `install.sh` stops if the voice-recognition model can't be downloaded; `[web] allowed_hosts` lets the dashboard answer to other names.
 
 ## 15. Review
 
