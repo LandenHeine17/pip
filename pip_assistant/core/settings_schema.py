@@ -66,6 +66,10 @@ SCHEMA = {
     "conversation.name_lookback_seconds": _s(L, "Before just his name", "Said only his name (\"what's the weather… "
                                              "Pip?\"): what anyone said this many seconds before is taken as the "
                                              "question, the most recent first (D-134).", "float", ["core"], min=5, max=120),
+    "conversation.name_alone_wait_seconds": _s(L, "Wait after just his name", "Said only his name? He chimes and "
+                                               "waits this many seconds (from when you stopped) for the question; if "
+                                               "none comes, he answers what was said before his name.", "float",
+                                               ["core"], min=1, max=8),
     # ---- Taking turns: when Pip answers, when he stops, who he answers (D-106, D-122-D-124)
     "conversation.turn_wait_short_seconds": _s(T, "After a question", "Seconds from when you stop talking before Pip "
                                                "answers a question or short request. The end-of-speech pause and "

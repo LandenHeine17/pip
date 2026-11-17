@@ -103,7 +103,9 @@ async def test_just_his_name_after_a_question_answers_it(tmp_path):
     asked_how.clear()
     await room_line(ears, conv, "what's the capital of Australia")
     await room_line(ears, conv, "Pip?")
-    await asyncio.sleep(1.3)                                          # the short turn wait, then Claude
+    await asyncio.sleep(1.0)
+    assert asked_how == [] and ("ears.chime", None, None) in got      # chimes at once, waits for a question…
+    await asyncio.sleep(1.8)                                          # …none came: what was said before it
     assert asked_how == [("name_after", 1)]
     assert [t for k, t, _ in got if k == "ears.say"] == ["Canberra is the capital.", "Not Sydney!"]
     assert ("ears.chime", None, None) in got
@@ -117,7 +119,7 @@ async def test_calling_him_again_after_he_missed_it(tmp_path):
     asked_how.clear()
     await room_line(ears, conv, "Hey Pipe, what's the weather")
     await room_line(ears, conv, "Hey Pip.")
-    await asyncio.sleep(1.3)
+    await asyncio.sleep(2.8)
     assert asked_how == [("name_after", 1)]
     await finish(bus, tasks)
 
@@ -162,4 +164,22 @@ async def test_room_talk_without_the_name_is_ignored(tmp_path):
                     private={"audio_b64": audio_b64()})
     await asyncio.sleep(0.3)
     assert got == [] and "room.heard" in [r["type"] for r in bus.trace.recent()]
+    await finish(bus, tasks)
+
+
+async def test_hey_pip_a_pause_then_the_question_isnt_answered_with_old_talk(tmp_path):
+    """2026-11-16, the first night of D-134: the room was talking, someone said "Hey Pip", paused a second and asked.
+    He answered the old talk a second after his name, over their question. Now he waits for the question."""
+    bus, conv, ears, got, tasks = await setup(tmp_path, "")
+    conv.joining.heard = lambda: None
+    asked_how.clear()
+    await room_line(ears, conv, "we watched the game last night")
+    await room_line(ears, conv, "Hey Pip.")
+    await asyncio.sleep(1.2)                                          # a pause after his name…
+    assert asked_how == []
+    await ears.emit("heard.started", {"reason": "room"})              # …then the question
+    await asyncio.sleep(0.5)
+    await room_line(ears, conv, "what's the weather like?")
+    await asyncio.sleep(1.3)
+    assert asked_how == [("direct", None)] and asked[-1] == "Hey Pip. what's the weather like?"
     await finish(bus, tasks)

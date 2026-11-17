@@ -122,8 +122,13 @@ class TurnTaking:
         if before:
             # Just his name, right after something was said: "what's the weather… Pip?", or calling him again after
             # he missed it (D-134). Claude is asked about what came before, the most recent first. Held as a short
-            # turn like any other, so if they go on ("Pip… what's the time") it's joined and asked as usual.
+            # turn, so if they go on ("Pip… what's the time") it's joined and asked as usual. The chime says he heard;
+            # he waits `name_alone_wait` from when they stopped before using what came before: "Hey Pip" is often
+            # followed by a pause and then the question, and answering old talk then talks over it (2026-11-16).
             data.update(ask="name_after", before=before)
+            if chime:
+                await self.chime()
+                chime = False
         elif only_name(text):
             # Just the name (often followed by a pause): the chime says he's listening. Don't talk over them.
             if chime:
@@ -136,6 +141,8 @@ class TurnTaking:
         # pieces read as "two sentences" and got the long wait).
         why = self.turn_kind(piece, float(data.pop("heard_s", 0) or 0))
         budget = self.turn_wait(text, why=why)
+        if data.get("ask") == "name_after":
+            budget = max(budget, self.name_alone_wait)
         wait = round(max(0.0, budget - (time.monotonic() - ended)), 2)
         if wait > 1.0:
             await self.note("waiting", seconds=round(wait, 1))

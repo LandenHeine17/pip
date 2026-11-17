@@ -176,7 +176,7 @@ async def test_a_sentence_still_being_made_when_he_is_stopped_is_dropped():
     e = ears_main.Ears.__new__(ears_main.Ears)
     e.bus, e.speaker, e.queue = Bus(), Speaker(), asyncio.Queue()
     e.voice = type("V", (), {"rate": 22050})()
-    e.stops, e.speaking, e.voiced, e.said_n = 0, False, False, 0
+    e.stops, e.speaking, e.voiced, e.said_n, e.ducked_at = 0, False, False, 0, 0.0
     e.unduck = lambda: None
     making = asyncio.get_running_loop().create_future()
     await e.queue.put(("speech", making))
@@ -192,3 +192,37 @@ async def test_a_sentence_still_being_made_when_he_is_stopped_is_dropped():
     await asyncio.sleep(0.05)
     assert played == [50]
     loop.cancel()
+
+
+async def test_talking_over_his_last_words_is_kept_from_its_start():
+    """2026-11-16: someone started a question over his last words; he only lowered his voice (D-128), finished, and the
+    question was captured only from then on, so its start was lost and Claude passed on the rest."""
+    import numpy as np
+    from pip_assistant.ears import main as ears_main
+    from pip_assistant.ears.segmenter import Segmenter
+
+    emitted = []
+
+    class Bus:
+        async def emit(self, kind, data):
+            emitted.append((kind, data))
+
+    class Speaker:
+        gain = ears_main.DUCK_GAIN
+
+        async def play(self, audio, rate, on_level=None):
+            return True
+
+    e = ears_main.Ears.__new__(ears_main.Ears)
+    e.bus, e.speaker, e.queue, e.seg = Bus(), Speaker(), asyncio.Queue(), Segmenter()
+    e.voice = type("V", (), {"rate": 22050})()
+    e.stops, e.speaking, e.voiced, e.said_n, e.quiet_since = 0, False, False, 0, None
+    e.ducked_at = ears_main.time.monotonic() - 1.0   # lowered 1 s ago: someone is talking over him
+    done = asyncio.get_running_loop().create_future()
+    done.set_result(np.ones(50, np.int16))
+    await e.queue.put(("speech", done))
+    loop = asyncio.create_task(e.speak_loop())
+    await asyncio.sleep(0.05)
+    loop.cancel()
+    assert ("heard.started", {"reason": "follow_up"}) in emitted
+    assert e.seg.capturing and e.seg.capture["reason"] == "follow_up" and e.ducked_at == 0.0

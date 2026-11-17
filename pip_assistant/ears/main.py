@@ -255,10 +255,17 @@ class Ears:
             if not finished or self.queue.empty():
                 # spoken: whether his voice played in this run, or only sounds (a chime, a tone)
                 spoken, self.speaking, self.voiced = self.voiced, False, False
+                ducked_at = self.ducked_at
                 self.unduck()
                 await self.bus.emit("speech.finished", {"interrupted": not finished, "spoken": spoken})
                 if not finished:
                     self._clear_queue()
+                elif ducked_at and not self.seg.capturing:
+                    # Someone started talking over his last words (he'd only lowered his voice) and he finished:
+                    # keep what they said from its start, not just from now (2026-11-16: the start of a question
+                    # was lost, and Claude passed on what was left).
+                    self.seg.start("follow_up", lookback=0.4 + time.monotonic() - ducked_at)
+                    await self.bus.emit("heard.started", {"reason": "follow_up"})
 
     def _mouth(self, level: float) -> None:
         """How loud Pip's voice is right now, ~10 times a second, for the face's mouth (never traced)."""

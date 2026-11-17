@@ -180,6 +180,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             schedule.watchers.append(self.ringing_changed)   # listening off: the mic comes on for an alarm (D-127)
         self.wait_after_name = c.get("wait_after_name_seconds", 5.0)
         self.name_lookback = c.get("name_lookback_seconds", 30.0)
+        self.name_alone_wait = c.get("name_alone_wait_seconds", 2.5)
         self.unfinished_wait = c.get("unfinished_wait_seconds", 3.0)
         t = self.TURN_WAITS                                             # knowing when you're done (D-106)
         self.turn_short = c.get("turn_wait_short_seconds", t["short"])

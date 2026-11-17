@@ -78,6 +78,7 @@ follow_up_anyone = false           # …anyone (true), or only the person he ans
 carry_on_after_backchannel = true  # Talked over by only "yeah", a laugh or nothing: he carries on from where he was cut off (D-122).
 wait_after_name_seconds = 5.0      # Said only his name, with nothing said just before? Pip listens quietly this long for the rest.
 name_lookback_seconds = 30.0       # Said only his name ("what's the weather… Pip?"): what was said this long before counts (D-134).
+name_alone_wait_seconds = 2.5      # …but first he waits this long after his name (from when you stopped) in case the question comes next.
 # Knowing when you're done talking (D-106, D-122). Each wait is counted from when you stop talking: the 0.7 s pause
 # ([listen]) and speech-to-text count towards it, so Pip holds only for what's left. If you start talking again he
 # keeps waiting and takes it all as one; then he chimes and answers.
