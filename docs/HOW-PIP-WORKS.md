@@ -5,7 +5,7 @@ This guide is for someone who wants to open Pip's code and change it. It explain
 What Pip *does* is in [`PIP-SPEC.md`](PIP-SPEC.md), why it was designed this way is in [`ARCHITECTURE.md`](ARCHITECTURE.md), and the owner's decisions are in [`DECISIONS.md`](DECISIONS.md). [`PROJECT-MAP.md`](PROJECT-MAP.md) lists every file.
 
 
-> **Interactive version:** the dashboard's **Guide** button (`/guide`) walks through all of this in the real code: chapters with diagrams you can click, and step-by-step tours (a request from the wake word to the timer ringing, the face, modules, making a module…) that show each function live from the version that's running. Its code links are checked by `tests/web/test_guide.py`: if you rename a function the guide points at, that test tells you which link to update in `web/static/guide.html`.
+> **Interactive version:** the dashboard's **Guide** button (`/guide`) walks through all of this in the real code: chapters with diagrams you can click, and step-by-step tours (a request from your words to the timer ringing, the face, modules, making a module…) that show each function live from the version that's running. Its code links are checked by `tests/web/test_guide.py`: if you rename a function the guide points at, that test tells you which link to update in `web/static/guide.html`.
 
 ## 1. The five programs
 

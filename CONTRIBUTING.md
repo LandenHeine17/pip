@@ -24,7 +24,7 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
 - **The owner reads docs, not code** (D-71). If a change affects how something works, update the plain-language docs and diagrams in the same change.
 - **Dependencies:** use releases at least two weeks old. System (apt) packages only with the owner's OK.
 - **Pip's own changes** (asked by voice or on the dashboard) go through the **Changes page** and pip-builder (D-118), never by hand-editing what's running. If you're Pip's coding agent: you work on a plain copy with no git, the only command you can run is `tools/sandbox-test`, and edits to `pyproject.toml`, `uv.lock`, `deploy/systemd/`, the commit checks (`tools/check_*`, `tools/install_hooks.sh`), `tools/sandbox-test`, `.claude/` or `.gitignore` are refused (`FORBIDDEN` in `builder/checks.py`).
-- **Third-party code we run** (e.g. openWakeWord) is pinned, and any local fixes are saved as patches in `m0/patches/`.
+- **Third-party code we run** is pinned, and any local fixes are saved as patches in `m0/patches/` (e.g. the openWakeWord fix used for M0's wake-word training).
 
 ## 3. Long-running or heavy jobs (on the Pi)
 
