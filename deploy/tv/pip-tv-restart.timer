@@ -1,0 +1,8 @@
+[Unit]
+Description=Restart Pip's face on the monitor at 4 am (a fresh browser once a day, while nobody's watching)
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+
+[Install]
+WantedBy=timers.target

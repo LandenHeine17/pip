@@ -10,6 +10,12 @@ Tuned on the owner's recordings from that microphone (Session F, 2026-11-08, `re
 
 On those recordings: every double clap is heard (7 of 7); a single clap, three or more claps, talking,
 snaps, knocks and a door are not. Tongue clicks can look like claps (the owner said that's fine).
+
+Switching him OFF is stricter (owner, 2026-11-17: he often switched himself off with nobody clapping). Of the
+switch-offs undone within a minute (false ones), almost all came while people were talking, or were long
+or slow claps; the claps that switched him back on were short, close together, in a quiet moment. So to switch
+off, the claps must also come with nobody talking just before, each at most `clap_off_max_ms` long and at most
+`clap_off_gap_max_ms` apart (`off_refused`). Switching back on keeps the rules above.
 """
 import math
 from collections import deque
@@ -94,7 +100,8 @@ class ClapDetector:
             # (owner's feedback, 2026-11-10: Pip sometimes switched himself off). Numbers only, never sound.
             a, b = (self.shapes.get(c, {}) for c in self.claps)
             self.last = {"peak_dbfs": [a.get("peak_dbfs"), b.get("peak_dbfs")], "jump_db": [a.get("jump_db"), b.get("jump_db")],
-                         "ms": [a.get("ms"), b.get("ms")], "gap_ms": (self.claps[1] - self.claps[0]) * 10}
+                         "ms": [a.get("ms"), b.get("ms")], "gap_ms": (self.claps[1] - self.claps[0]) * 10,
+                         "ago_ms": (self.t - self.claps[0]) * 10}   # the first clap began this long ago
             self.claps, self.shapes = [], {}
             return True
         if self.claps and self.t - self.claps[-1] > self.gap_max + self.settle:
@@ -102,3 +109,18 @@ class ClapDetector:
         if len(self.shapes) > 8:
             self.shapes = {k: v for k, v in self.shapes.items() if k in self.claps}
         return False
+
+
+def off_refused(shape: dict, talked_between, cfg: dict | None = None) -> str:
+    """Why two claps may not switch listening OFF ("" if they may). talked_between(ago_from, ago_to): did the
+    speakerphone hear someone talking between those many seconds ago? Checked over the `clap_off_quiet_seconds`
+    before the first clap."""
+    c = cfg or {}
+    if shape.get("gap_ms", 0) > c.get("clap_off_gap_max_ms", 800):
+        return "too_far_apart"
+    if max(shape.get("ms") or [0]) > c.get("clap_off_max_ms", 200):
+        return "too_long"
+    first = shape.get("ago_ms", 0) / 1000
+    if talked_between(first + c.get("clap_off_quiet_seconds", 1.5), first + 0.15):
+        return "talking"
+    return ""

@@ -225,6 +225,24 @@ def test_narrating_the_request_is_not_said():
     assert sp.feed("Your alarm's at 7:30. ") + sp.flush() == ["Your alarm's at 7:30."]
 
 
+def test_talking_about_the_people_or_planning_the_answer_is_not_said():
+    """owner, 2026-11-17: it narrated the people and planned its answer out loud (more since effort low)."""
+    for reply, said in [("Sounds like Sam wants the weather. It's 40 and cloudy.", ["It's 40 and cloudy."]),
+                        ("Landen just said my name after asking about dinner. Pasta, obviously.", ["Pasta, obviously."]),
+                        ("I'll keep it light. Ha, nice try.", ["Ha, nice try."]),
+                        ("Let me answer the weather one. It's sunny.", ["It's sunny."]),
+                        ("Quick and playful. Nope!", ["Nope!"]),
+                        ("Sure thing. PASS", ["Sure thing."]),                  # PASS is never said
+                        ("He's right, it's Tuesday.", ["He's right, it's Tuesday."]),   # ordinary answers untouched
+                        ("Sounds like a plan!", ["Sounds like a plan!"]),
+                        ("I'll go with the blue one.", ["I'll go with the blue one."])]:
+        sp = SentenceSplitter()
+        assert sp.feed(reply + " ") + sp.flush() == said, reply
+    for reply in ("They're talking to each other. PASS", "Not for me. PASS", "This is just banter. PASS"):
+        sp = SentenceSplitter()
+        assert sp.feed(reply) + sp.flush() == [] and sp.passed, reply   # a note, then PASS: he stays quiet
+
+
 async def test_a_reply_of_only_notes_is_asked_again(monkeypatch):
     """owner, 2026-11-12: "Caleb's asking what I think of... Keep it short and cheeky." and nothing else."""
     from pip_assistant.common.messages import Message

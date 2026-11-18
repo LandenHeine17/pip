@@ -79,6 +79,21 @@ def test_a_switch_records_how_the_claps_measured():
     d = ClapDetector()
     x = np.concatenate([quiet(1), clap(), quiet(0.4), clap(), quiet(1.2)])
     assert sum(d.feed(x[i:i + 1280]) for i in range(0, len(x), 1280)) == 1
-    assert set(d.last) == {"peak_dbfs", "jump_db", "ms", "gap_ms"}
+    assert set(d.last) == {"peak_dbfs", "jump_db", "ms", "gap_ms", "ago_ms"}
     assert all(p >= -12 for p in d.last["peak_dbfs"]) and all(j >= 25 for j in d.last["jump_db"])
     assert 150 <= d.last["gap_ms"] <= 1500 and all(m <= 250 for m in d.last["ms"])
+
+
+def test_switching_off_needs_short_close_claps_in_a_quiet_moment():
+    """Owner, 2026-11-17: he often switched himself off with nobody clapping. Of the switch-offs undone within a
+    minute, almost all came while people were talking, or were long or slow claps. Switching on isn't affected."""
+    from pip_assistant.ears.clap import off_refused
+    crisp = {"peak_dbfs": [-5.0, -4.5], "jump_db": [28.9, 28.4], "ms": [70, 70], "gap_ms": 280, "ago_ms": 1100}
+    quiet_room = lambda a, b: False                                   # noqa: E731
+    assert off_refused(crisp, quiet_room) == ""
+    talks = []
+    assert off_refused(crisp, lambda a, b: talks.append((a, b)) or True) == "talking"
+    assert talks == [(1.1 + 1.5, 1.1 + 0.15)]                         # the 1.5 s before the first clap
+    assert off_refused({**crisp, "gap_ms": 1130}, quiet_room) == "too_far_apart"
+    assert off_refused({**crisp, "ms": [240, 90]}, quiet_room) == "too_long"
+    assert off_refused({**crisp, "ms": [240, 90]}, quiet_room, {"clap_off_max_ms": 250}) == ""   # a setting

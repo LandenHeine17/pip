@@ -68,6 +68,10 @@ clap_max_ms = 250                  # A clap is over within this; anything longer
 clap_gap_min_ms = 150              # The two claps come at least this far apart…
 clap_gap_max_ms = 1500             # …and at most this far,
 clap_settle_ms = 700               # …and then nothing more for this long (three claps or applause don't count).
+# Switching OFF is stricter (2026-11-17: false switch-offs came mostly while people talked). Switching on isn't.
+clap_off_quiet_seconds = 1.5       # Nobody talking for this long before the first clap…
+clap_off_max_ms = 200              # …each clap at most this long…
+clap_off_gap_max_ms = 800          # …and at most this far apart.
 
 [conversation]
 own_commands = "sure"              # Pip's fixed-phrasing commands: "sure" = clearly worded ones (stop, snooze, a timer for a

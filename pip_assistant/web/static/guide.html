@@ -302,7 +302,7 @@ tour: [
   {title: "\"Hold on\"", text: "\"Hold on\" or \"one sec\" over him: the answer waits (up to 30 s) with a listening window open; \"go on\" carries on.", ref: "core/conversation.py#Conversation.hold_paused"},
   {title: "\"That was Sam, not me\"", text: "Claude's correct_speaker action: the line before is relabelled, and if Pip knows the person correcting for sure, that line's audio teaches him Sam's voice.", ref: "core/acting.py#Acting.correct_speaker"},
   {title: "Explaining himself", text: "\"Why didn't you answer?\": Claude asks to look, and pip-core reads the last 10 minutes of the decision trace (times and labels, never words) into plain sentences.", ref: "core/selfknow.py#why"},
-  {title: "Two claps", text: "A plain USB mic listens only for claps. Two sharp, loud sounds 0.15–1.5 s apart, then nothing, switch listening off or on (D-91). Each switch now records how the claps measured, to tune false switch-offs.", ref: "ears/clap.py#ClapDetector"},
+  {title: "Two claps", text: "A plain USB mic listens only for claps. Two sharp, loud sounds 0.15–1.5 s apart, then nothing, switch listening off or on (D-91). Each switch records how the claps measured. Switching <b>off</b> is stricter (D-135): short claps, close together, with nobody talking just before; ones refused are traced as <code>mic.clap_ignored</code>.", ref: "ears/clap.py#off_refused"},
   {title: "What the claps change", text: "pip-core flips the clap switch, tells ears (which then listens only for claps), plays the mic-off tone and shows it on the face and dashboard. The dashboard's Listening switch is separate, and both must be on.", ref: "core/micctl.py#MicControl.on_clapped"},
 ]},
 

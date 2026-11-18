@@ -22,15 +22,33 @@ URL = re.compile(r"https?://\S+|\[([^\]]+)\]\([^)]+\)")
 
 # Claude sometimes says its thinking out loud before the answer: "Caleb's asking about upgrading me." or
 # "Honest answer, short: ..." (owner, 2026-11-12). The rules tell it not to; this catches it when it still does.
-NARRATION = re.compile(r"^(?:[A-Z][a-z]+|someone|they|he|she)(?:'s| is| are)\s+(?:asking|wondering|saying|telling|"
-                       r"talking|curious|checking|bringing up)\b", re.I)
+# owner, 2026-11-17: it still talked about the people ("They're talking to each other", "Sounds like Sam wants…")
+# and planned its answer ("I'll keep it light", "Not for me") out loud, more often since its effort went to low.
+WHO = r"(?:[A-Z][a-z]+|someone|somebody|they|he|she|both of them|everyone|the (?:user|person|speaker|room|group))"
+NARRATION = re.compile(
+    rf"^(?:{WHO}(?:'s|'re| is| are| was| were)?(?: just| still| now| probably| clearly)?\s+(?:asking|asked|wondering|"
+    r"saying|said|telling|told|talking|chatting|joking|curious|checking|bringing up|discussing|arguing|laughing|"
+    r"wants?|wanted|mentioned|mentioning|called|calling|referring|responding|replying|continuing|venting|"
+    r"complaining|describing|explaining|reacting|addressing|directing|commenting)\b"
+    rf"|(?:sounds|seems|looks) like {WHO}(?:'s|'re| is| are)?\s"
+    r"|(?:this|that|it)(?:'s| is| was)(?: just)? (?:room talk|small talk|banter|chatter|(?:a )?(?:casual|side|private) "
+    r"(?:chat|conversation)|not (?:for|directed at|aimed at|meant for|addressed to) me)"
+    r"|not (?:for|directed at|aimed at|meant for|addressed to) me\b"
+    r"|(?:my name|pip) (?:came up|was (?:said|mentioned|called))"
+    r"|(?:the )?(?:last|latest|previous) (?:line|message|question|request)\b)", re.I)
+# Planning the answer out loud: "I'll keep it short", "I should answer the weather one", "Let me respond to that"
+PLAN = re.compile(r"^(?:I(?:'ll| will| should| need to| can| could| want to| shall)|let me|let's|time to|"
+                  r"(?:best|better|no need) to)\s+(?:just\s+)?(?:answer|respond|reply|address|acknowledge|keep (?:it|this)|"
+                  r"stay (?:quiet|out|silent)|pass\b|play along|chime in|jump in|mention|tease|focus on)", re.I)
+QUIET = re.compile(r"^\W*PASS\W*$")   # its "stay quiet" word, said as a sentence after a note
 LABEL = re.compile(r"^(?:[A-Za-z']+[ ,-]*){1,5}:\s+(?=\S)")   # "Honest answer, short: " (no digits: never "7:30")
 TONE = r"short|brief|cheeky|funny|light|casual|simple|quick|playful|snappy|punchy|witty|sassy|honest|teasing|chill"
 LABEL_WORDS = re.compile(rf"\b(answer|version|take|reply|response|truth|summary|{TONE})\b", re.I)
 # A note to itself about how to answer: "Keep it short and cheeky.", "Be playful here.", "One-liner."
 SELF_NOTE = re.compile(rf"^(?:(?:keep|make|play) (?:it|this)|be|stay|go|aim for)\s+(?:(?:a bit|a little|very|really|"
                        rf"super|pretty|nice and)\s+)*(?:{TONE}|one[- ]liner)(?:(?:,|,? and|,? but)\s+(?:{TONE}))*"
-                       rf"(?: here| about it| with it| then)?[.!]?$|^one[- ]liner[.!]?$", re.I)
+                       rf"(?: here| about it| with it| then)?[.!]?$|^one[- ]liner[.!]?$"
+                       rf"|^(?:{TONE})(?:(?:,|,? and|,? but) (?:{TONE}))+[.!]?$", re.I)
 
 
 def unnarrate(sentence: str) -> str:
@@ -68,6 +86,7 @@ class SentenceSplitter:
         self.stopped = False
         self.cut = 0   # pieces given out so far
         self.notes = 0   # sentences before the answer that were only Claude's notes to itself (not said)
+        self.passed = False   # its notes ended in PASS: it meant to stay quiet
 
     def feed(self, piece: str) -> list[str]:
         if self.stopped:
@@ -94,8 +113,11 @@ class SentenceSplitter:
         and labels before the answer. If nothing but notes comes, `notes` says so and pip-thinker asks again."""
         kept = []
         for s in out:
+            if QUIET.match(s):            # "PASS" after a note ("Not for me. PASS"), or tacked on the end
+                self.passed = self.passed or (self.cut == 0 and not kept)
+                continue
             if self.cut == 0 and not kept:
-                if NARRATION.match(s) or SELF_NOTE.match(s):
+                if NARRATION.match(s) or SELF_NOTE.match(s) or PLAN.match(s):
                     self.notes += 1
                     continue
                 s = unnarrate(s)
@@ -249,12 +271,14 @@ class ClaudeCLI:
                 info["action"] = "".join(pieces)
             elif mode == "speak" and (after := trailing_action("".join(pieces))):
                 info["action"] = after   # said in full first; pip-core does it afterwards (D-130)
-            info["passed"] = mode == "pass"
             for s in split.flush():
                 full.append(s)
                 await on_sentence(s)
-            if mode == "speak" and not full and split.notes:
+            if mode == "speak" and not full and split.passed:
+                mode = "pass"               # notes, then PASS: it chose to stay quiet
+            elif mode == "speak" and not full and split.notes:
                 info["only_notes"] = True   # it only planned its answer out loud: pip-thinker asks again
+            info["passed"] = mode == "pass"
             await proc.wait()
             if answer_id in self.killed:
                 info["cancelled"] = True   # stopped on purpose: whatever came out is all there is, not a failure

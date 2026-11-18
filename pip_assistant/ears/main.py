@@ -28,6 +28,7 @@ import asyncio
 import base64
 import logging
 import time
+from collections import deque
 
 import numpy as np
 
@@ -35,7 +36,7 @@ from ..common.messages import Message
 from ..common.program import make_bus, serve, start
 from ..common.voicecheck import voice_seconds_sync
 from .audio import Microphone, Speaker, chime, level_dbfs, mic_tone, microphones, ringtone, thinking_tone
-from .clap import ClapDetector
+from .clap import ClapDetector, off_refused
 from .segmenter import Segmenter
 from .voice import make_voice
 
@@ -60,10 +61,12 @@ class Ears:
                       "mic_off": mic_tone(False, self.voice.rate)}
         self.mic_mode = "off"      # until pip-core says (D-91)
         self.claps = ClapDetector(cfg.get("mic", {}))
+        self.cfg_mic = cfg.get("mic", {})
         self.clap_mic = ""         # which microphone listens for claps (pip-core says; "" = none, D-91)
         self.clap_task: asyncio.Task | None = None
         self.claps_live = False    # False: trial (only reported), until "Two claps switch listening" is ticked
         self.quiet_after = 0.0     # Pip's own sound reaches the clap microphone: ignore it until a moment after
+        self.talk_at: deque[float] = deque(maxlen=600)   # when the speakerphone last heard speech (clap switch-off rule)
         self.seg = Segmenter(speech_dbfs=li["speech_dbfs"], end_silence_s=li["end_silence_seconds"],
                              max_s=li["max_utterance_seconds"], wait_for_speech_s=li["wait_for_speech_seconds"])
         self.queue: asyncio.Queue = asyncio.Queue()
@@ -93,7 +96,11 @@ class Ears:
                 continue
             if self.claps.feed(frame):
                 shape = dict(self.claps.last)   # how loud and far apart: numbers only, kept in the trace
-                if self.claps_live:
+                why = off_refused(shape, self.talked_between, self.cfg_mic) if self.mic_mode == "on" else ""
+                if why:   # they'd switch him off, but by the look of it nobody clapped (owner, 2026-11-17)
+                    log.info("two claps ignored (%s) %s", why, shape)
+                    await self.bus.emit("mic.clap_ignored", {**shape, "why": why})
+                elif self.claps_live:
                     log.info("heard two claps %s", shape)
                     await self.bus.emit("mic.clapped", shape)
                 else:   # trial: the clap switch isn't ticked yet, just show it was heard (D-91)
@@ -116,6 +123,11 @@ class Ears:
         self.bus.status["clap_mic"] = bool(device)
         return {"ok": True}
 
+    def talked_between(self, ago_from: float, ago_to: float) -> bool:
+        """Did the speakerphone hear speech between `ago_from` and `ago_to` seconds ago?"""
+        now = time.monotonic()
+        return any(now - ago_from <= t <= now - ago_to for t in self.talk_at)
+
     async def on_mics(self, msg: Message):
         mics = await asyncio.get_running_loop().run_in_executor(None, microphones)
         return {"mics": mics, "speakerphone": next((m["name"] for m in mics if "Speaker_Phone" in m["name"]), "")}
@@ -131,6 +143,8 @@ class Ears:
             await self._update_state(frame)
             if self.mic_mode != "on":
                 continue  # switched off by claps: only the clap microphone is listened to
+            if self.seg.is_speech(db):
+                self.talk_at.append(time.monotonic())   # for the clap switch-off rule (ears/clap.py)
             if self.speaking and self.cfg["barge_in"]:
                 await self.heard_over(frame, db)
             elif not self.seg.capturing and self.seg.is_speech(db) and not self.speaking:

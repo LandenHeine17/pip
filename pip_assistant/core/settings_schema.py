@@ -217,6 +217,13 @@ SCHEMA = {
                               min=300, max=5000),
     "mic.clap_settle_ms": _s(A, "Quiet after claps", "…and then nothing more for this long (ms): three claps or "
                              "applause don't count.", "int", ["ears"], min=100, max=3000),
+    "mic.clap_off_quiet_seconds": _s(A, "Quiet before claps (to switch off)", "To switch listening off, nobody may be "
+                                     "talking for this long (s) before the first clap. 0 = no such rule.", "float",
+                                     ["ears"], min=0, max=10),
+    "mic.clap_off_max_ms": _s(A, "Clap length (to switch off)", "To switch listening off, each clap is over within "
+                              "this (ms).", "int", ["ears"], min=50, max=1000),
+    "mic.clap_off_gap_max_ms": _s(A, "Longest gap (to switch off)", "To switch listening off, the claps come at most "
+                                  "this far apart (ms).", "int", ["ears"], min=150, max=5000),
     "programs.expected": _s(A, "Programs", "Programs pip-core expects to hear from.", "list", ["core"],
                             choices=["ears", "thinker", "web", "builder"]),
     "programs.heartbeat_seconds": _s(A, "Heartbeat", "How often (seconds) each program says \"I'm alive\".", "float",

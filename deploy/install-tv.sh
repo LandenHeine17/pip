@@ -2,7 +2,8 @@
 # Put Pip's face on the monitor (step 7, D-110): installs deploy/tv/pip-tv.service as a system service and
 # switches Ziggletron's screen service (ziggletron-tv) off, as the owner chose. Ziggletron's own files are
 # not touched. Needs sudo. Run it once, and again after deploy/tv/pip-tv.service changes:   sh deploy/install-tv.sh
-# To undo:   sudo systemctl disable --now pip-tv && sudo rm /etc/systemd/system/pip-tv.service
+# To undo:   sudo systemctl disable --now pip-tv pip-tv-restart.timer
+#            sudo rm /etc/systemd/system/pip-tv.service /etc/systemd/system/pip-tv-restart.*
 #            (and, to give the screen back to Ziggletron:  sudo systemctl enable --now ziggletron-tv)
 set -eu
 cd "$(dirname "$0")/.."
@@ -32,7 +33,9 @@ fi
 sed -e "s|@USER@|$USER|" -e "s|@PORT@|$port|" -e "s|@REPO@|$repo|" deploy/tv/pip-tv.service |
     sudo tee /etc/systemd/system/pip-tv.service >/dev/null
 sudo usermod -aG video,render,input "$USER"
+sudo cp deploy/tv/pip-tv-restart.service deploy/tv/pip-tv-restart.timer /etc/systemd/system/   # the 4 am fresh browser
 sudo systemctl daemon-reload
 sudo systemctl enable pip-tv
+sudo systemctl enable --now pip-tv-restart.timer
 sudo systemctl restart --no-block pip-tv   # picks up a changed service file; --no-block: on another console it waits for tty1, and this script shouldn't
 echo "Pip's face is on the monitor: http://127.0.0.1:$port/tv (it waits for pip-web if Pip isn't running yet). If you're on another console, it appears when you switch back (Ctrl+Alt+F1)."

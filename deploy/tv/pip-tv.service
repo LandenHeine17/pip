@@ -27,8 +27,9 @@ TimeoutStartSec=infinity
 ExecStart=/usr/bin/cage -d -s -- @REPO@/deploy/tv/tv-kiosk.sh
 Restart=always
 RestartSec=5
-# A fresh browser once a day, so months of running can't slowly use up the memory.
-RuntimeMaxSec=1d
+# A fresh browser once a day, so months of running can't slowly use up the memory: pip-tv-restart.timer does it at
+# 4 am, when nobody's watching (owner, 2026-11-17). This is only the backstop, if that timer ever doesn't run.
+RuntimeMaxSec=2d
 
 [Install]
 WantedBy=multi-user.target

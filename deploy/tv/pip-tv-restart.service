@@ -1,0 +1,6 @@
+[Unit]
+Description=A fresh browser for Pip's face on the monitor (daily, from pip-tv-restart.timer)
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl try-restart pip-tv.service
