@@ -35,7 +35,6 @@ DECIDED = {
     "held_more_speech": "waited: they kept talking, so he took it as one turn",
     "waited_unfinished": "waited longer: it sounded unfinished",
     "discarded": "dropped an answer that was no longer wanted",
-    "follow_up_other_voice": "took it as room talk: a different voice from the person he'd answered",
     "join_suppressed": "stayed out of the conversation for a while (told \"not now\" or talked over)",
     "resumed_after_backchannel": "carried on after only a \"yeah\", a laugh or nothing",
 }
@@ -63,9 +62,8 @@ def describe(row: dict) -> str | None:
         return f"{what}{why}{after}"
     if ty == "answer.passed":
         return {"direct": "Claude decided it didn't need a reply (or it was \"never mind\" / \"stop\")",
-                "mentioned": "his name came up, but Claude decided it wasn't said to him",
-                "follow_up": "Claude decided the line after his answer wasn't for him"}.get(d.get("kind"),
-                                                                                         "Claude chose not to answer")
+                "mentioned": "his name came up, but Claude decided it wasn't said to him"}.get(d.get("kind"),
+                                                                                       "Claude chose not to answer")
     if ty == "answer.failed":
         return "Claude didn't answer (an error), so he said so"
     if ty == "answer.offline":

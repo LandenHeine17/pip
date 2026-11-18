@@ -435,7 +435,6 @@ const DEPENDS = {
   "ears.barge_in_voice_check": [() => on("ears.barge_in"), "Only used when \"Stop when talked over\" is on."],
   "conversation.carry_on_after_backchannel": [() => on("ears.barge_in"), "Only used when \"Stop when talked over\" is on."],
   "ears.duck_before_stop": [() => on("ears.barge_in"), "Only used when \"Stop when talked over\" is on."],
-  "conversation.follow_up_anyone": [() => n("conversation.follow_up_seconds") > 0, "Only used when there's a follow-up window."],
   "listen.wait_for_speech_seconds": [() => n("conversation.follow_up_seconds") > 0, "Only used when there's a follow-up window."],
   "social.mood": [() => on("social.join_in"), "Only used when \"Join in\" is on."],
   "social.step_back_minutes": [() => on("social.join_in"), "Only used when \"Join in\" is on."],
@@ -492,14 +491,6 @@ const PREVIEW = {
       ["A knock or a clap", voice ? out("keeps talking", "good") : duck ? short : resumed]];
     return `<div style="margin-bottom:4px">While Pip is answering, if someone talks over him…</div>
       <div class="scen">${rows.map(([a, b]) => `<span>${esc(a)}</span>${b}`).join("")}</div>`;
-  },
-  "conversation.follow_up_anyone": () => {
-    const w = n("conversation.follow_up_seconds"), anyone = on("conversation.follow_up_anyone");
-    const ok = `<span class="out good">answers</span>`, room = `<span class="out">room talk: stays out (unless it calls him)</span>`;
-    return `<div style="margin-bottom:4px">Caleb: "Pip, what's the weather?" · Pip answers · then within ${secs(w)}, without his name…</div>
-      <div class="scen"><span>Caleb: "And tomorrow?"</span>${ok}
-        <span>Landen: "Should we go out?"</span>${anyone ? ok : room}
-        <span>Landen, after Pip asked a question</span>${ok}</div>`;
   },
   "conversation.own_commands": () => {
     const mode = val("conversation.own_commands");

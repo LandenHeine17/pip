@@ -294,25 +294,7 @@ async def test_talking_again_during_speech_to_text_keeps_the_turn_open(tmp_path)
     await finish(bus, tasks)
 
 
-# ---------------------------------------------------------------- D-124: follow-ups are for the person he answered
-def test_who_a_follow_up_is_for(tmp_path):
-    from pip_assistant.core.conversation import Conversation
-    from pip_assistant.core.people import Match
-    c = Conversation(Bus(tmp_path / "s", Trace(tmp_path / "pip.db"), Health([], restart=False)), {"conversation": {}})
-    alex, sam = Match("a", "Alex", "sure", 0.8), Match("s", "Sam", "sure", 0.8)
-    c.follow = {"asker": alex, "question": False, "until": time.monotonic() + 5}
-    assert c.in_follow_up()
-    assert c.follow_up_for(Match("a", "Alex", "probably", 0.4)) == "likely"     # the same voice (D-127: Claude may PASS)
-    assert c.follow_up_for(sam) == "room"                                       # clearly someone else
-    assert c.follow_up_for(Match()) == "follow_up"                              # can't tell: Claude decides
-    c.follow["asker"] = None
-    assert c.follow_up_for(alex) == "follow_up"
-    c.follow["question"] = True                                                  # he asked: anyone may answer
-    assert c.follow_up_for(sam) == "likely"
-    c.follow["question"], c.follow_anyone = False, True                          # the setting: anyone, as before
-    assert c.follow_up_for(sam) == "likely"
-
-
+# ---------------------------------------------------------------- D-136: anyone's reply right after he spoke is for him
 async def answered_then(tmp_path, monkeypatch, then_voice, asker):
     bus, conv, ears, got, asks, tasks = await setup(tmp_path, "Pip, when does the bus come?", social={"join_in": False},
                                                     conversation={"follow_up_seconds": 5.0})
@@ -333,28 +315,32 @@ async def answered_then(tmp_path, monkeypatch, then_voice, asker):
     return bus, conv, asks, tasks
 
 
-async def test_the_same_voice_carries_on_without_his_name(tmp_path, monkeypatch):
+@pytest.mark.parametrize("asker, then_voice", [("alex", "alex"), ("alex", "sam"), (None, None)])
+async def test_anyones_reply_right_after_he_spoke_is_taken_as_for_him(tmp_path, monkeypatch, asker, then_voice):
+    """D-136 (owner, 2026-11-18): the same person, someone else, or a voice he can't tell: all asked as "follow_up",
+    said to him unless Claude PASSes (before, someone else's voice was room talk, D-124)."""
     from pip_assistant.core.people import Match
-    alex = Match("a", "Alex", "sure", 0.8)
-    bus, conv, asks, tasks = await answered_then(tmp_path, monkeypatch, alex, alex)
-    assert [k for k, _ in asks] == ["direct", "follow_up_likely"]     # D-127: for him, but Claude may PASS
+    voices = {"alex": Match("a", "Alex", "sure", 0.8), "sam": Match("s", "Sam", "sure", 0.8), None: None}
+    bus, conv, asks, tasks = await answered_then(tmp_path, monkeypatch, voices[then_voice], voices[asker])
+    assert [k for k, _ in asks] == ["direct", "follow_up"]
     await asyncio.sleep(0.2)                                          # (the fake Claude PASSes: he stays quiet)
     assert any(r["type"] == "answer.passed" for r in bus.trace.recent()) and conv.follow is None
     await finish(bus, tasks)
 
 
-async def test_someone_elses_voice_after_an_answer_is_room_talk(tmp_path, monkeypatch):
-    from pip_assistant.core.people import Match
-    bus, conv, asks, tasks = await answered_then(tmp_path, monkeypatch, Match("s", "Sam", "sure", 0.8),
-                                                 Match("a", "Alex", "sure", 0.8))
-    assert [k for k, _ in asks] == ["direct"] and conv.transcript.lines[-1]["text"] == "and on Sunday"
-    assert [r["data"]["decision"] for r in bus.trace.recent() if r["type"] == "turn.decision"][0] == "follow_up_other_voice"
+async def test_chattiness_is_set_by_voice_and_kept(tmp_path):
+    """D-136: "Pip, set chattiness to high" → the chatty mood, kept across restarts (prefs)."""
+    from pip_assistant.core.prefs import Prefs
+    prefs = Prefs(tmp_path / "pip.db")
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, social={"mood": "normal"}, prefs=prefs)
+    assert conv.joining.mood == "normal"
+    await conv.claude_action('ACTION {"do": "set_chattiness", "level": "high"}', 0.0)
+    assert conv.joining.mood == "chatty" and prefs.get("mood") == "chatty"
+    await conv.claude_action('ACTION {"do": "set_chattiness", "level": "loud"}', 0.0)   # not a level: unchanged
+    assert conv.joining.mood == "chatty"
     await finish(bus, tasks)
-
-
-async def test_an_unknown_voice_after_an_answer_lets_claude_decide(tmp_path, monkeypatch):
-    bus, conv, asks, tasks = await answered_then(tmp_path, monkeypatch, None, None)
-    assert [k for k, _ in asks] == ["direct", "follow_up"]
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, social={"mood": "normal"}, prefs=prefs)
+    assert conv.joining.mood == "chatty"                              # after a restart
     await finish(bus, tasks)
 
 

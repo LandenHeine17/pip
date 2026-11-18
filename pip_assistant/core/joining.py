@@ -78,6 +78,13 @@ class Joining:
             self.paused_until = max(self.paused_until, self.clock() + 3600)
         self.cancel_wait()
 
+    def set_mood(self, mood: str) -> bool:
+        """How chatty he is: quiet, normal or chatty (D-136). False if it isn't one of those."""
+        if mood not in MOODS:
+            return False
+        self.mood = mood
+        return True
+
     @property
     def interval(self) -> float:
         return INTERVALS[self.mood]

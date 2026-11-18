@@ -40,8 +40,8 @@ def test_why_is_told_from_the_trace_without_words(tmp_path):
 
 
 def test_settings_are_read_out_with_their_labels():
-    t = selfknow.settings_text({"conversation": {"turn_wait_short_seconds": 1.4, "follow_up_anyone": True}})
-    assert "After a question: 1.4 s" in t and "Follow-ups from anyone: on" in t
+    t = selfknow.settings_text({"conversation": {"turn_wait_short_seconds": 1.4}, "social": {"join_in": False}})
+    assert "After a question: 1.4 s" in t and "Join in: off" in t
 
 
 async def test_claude_looking_up_why_gets_the_trace(tmp_path):

@@ -1,6 +1,6 @@
 """pip-thinker: turns what someone said into Pip's answer, using Claude (M1a step 3).
 
-Takes:  thinker.ask (request; data.answer_id, data.kind = direct / follow_up / follow_up_likely / name_after
+Takes:  thinker.ask (request; data.answer_id, data.kind = direct / follow_up / name_after
         (+ data.before: how many lines came before his name, D-134) / mentioned / join; private: text, transcript
         (the room conversation), schedule, people, memories, mood, looked_up: all filled in by pip-core)
         → streams answer.sentence events, then replies with the whole answer (and any ACTION line, privately)
@@ -75,7 +75,8 @@ introduces themselves ("I'm Sam", "it's Landen here") or asks you to learn their
 ACTION {{"do": "learn_voice", "name": "Sam"}} (use the spelling from the household list if it's them). Pip then \
 greets them and walks them through it (sentences on the dashboard), or remembers a visitor for the visit. \
 If they ask to learn their voice and you don't know who's speaking, ask their name first. "Who am I?" is \
-answered from who's speaking. If they say you got who said something wrong ("that was Sam, not me"), reply \
+answered from who's speaking. If they ask you to talk more or less, or set your chattiness (low, normal \
+or high), reply with ONLY: ACTION {{"do": "set_chattiness", "level": "high"}}. If they say you got who said something wrong ("that was Sam, not me"), reply \
 with ONLY: ACTION {{"do": "correct_speaker", "name": "Sam"}}. People who live here are added on your dashboard. Never say you can't learn \
 or recognise voices. You can't yet send messages, or control devices other \
 than any listed below; if asked, say that's coming soon. Never claim to have done something.
@@ -147,7 +148,7 @@ class Thinker:
     name = "Pip"   # fills {name} in the personality; settings ([pip] name) override it in __init__
     usage = None
     paused_until = 0.0
-    KIND = {"direct": "answer", "follow_up": "answer", "follow_up_likely": "answer", "name_after": "answer", "mentioned": "mention", "join": "join", "preview": "preview"}
+    KIND = {"direct": "answer", "follow_up": "answer", "name_after": "answer", "mentioned": "mention", "join": "join", "preview": "preview"}
 
     # ---------------------------------------------------------------- the usage meter (D-69, PIP-NEW-089)
     def show_usage(self) -> None:
@@ -280,22 +281,21 @@ class Thinker:
                       "question or request for you, or clearly invites you in. If they're talking about you, or "
                       "to each other, or you're not sure, reply with just PASS and nothing else. Otherwise reply "
                       "with exactly what you'll say."),
-        "follow_up": ("The last line came right after you spoke, without your name, and it may not be for you: "
-                      "someone else may be talking to the room. Reply only if it's clearly for you - it follows on "
-                      "from what you said, answers your question, or asks you something. If it's for someone else, "
-                      "or you're not sure, reply with just PASS and nothing else. Otherwise reply with exactly what "
-                      "you'll say."),
-        "follow_up_likely": ("The last line came right after you answered, from the person you answered (or after "
-                             "you asked a question), without your name. It's most likely for you: answer it. But if "
-                             "it's clearly said to someone else in the room, or doesn't make sense as something said "
-                             "to you (it may be misheard), reply with just PASS and nothing else."),
+        "follow_up": ("The last line came right after you spoke, without your name. Take it as said to you, "
+                      "whoever said it, and reply: answer it, and if it reacts to what you said (agrees, jokes back, "
+                      "teases you, pushes back), reply briefly in kind - keep the conversation going. Reply with just "
+                      "PASS and nothing else only if it's clearly said to someone else in the room, they told you to "
+                      "stop or never mind, or it doesn't make sense as something said to you (it may be misheard)."),
         "name_after": ("The last line is only your name. The {before} line(s) said just before it are probably "
                        "what they want from you: they said it, then called you (or called you "
                        "again because you missed it). Answer the most recent of them that makes sense as a question "
                        "or request for you; use the earlier ones as context. If none of it is for you, reply with "
                        "just: Yes?"),
         "join": ("Nobody spoke to you directly, and there's a pause in the conversation. Would you say something "
-                 "right now? Go by your own sense of when to join in. {mood}\n\nIf you'll stay quiet, reply with "
+                 "right now? Joining in is welcome: you're part of the room. If you have something fun, useful or "
+                 "kind to add to what they just said (a joke, a fact, an opinion, an offer to help), say it, short. "
+                 "Stay quiet if it's private or serious, they're in the middle of something, or you'd only repeat "
+                 "them. {mood}\n\nIf you'll stay quiet, reply with "
                  "just PASS. If you'll speak, reply with SAY: followed by exactly the words you'd say out loud - "
                  "nothing before or after them. (Don't use ACTION here.)"),
     }

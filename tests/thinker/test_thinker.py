@@ -232,6 +232,7 @@ def test_talking_about_the_people_or_planning_the_answer_is_not_said():
                         ("I'll keep it light. Ha, nice try.", ["Ha, nice try."]),
                         ("Let me answer the weather one. It's sunny.", ["It's sunny."]),
                         ("Quick and playful. Nope!", ["Nope!"]),
+                        ("Sam asks what color the can is. Dark red.", ["Dark red."]),   # present tense (D-136)
                         ("Sure thing. PASS", ["Sure thing."]),                  # PASS is never said
                         ("He's right, it's Tuesday.", ["He's right, it's Tuesday."]),   # ordinary answers untouched
                         ("Sounds like a plan!", ["Sounds like a plan!"]),

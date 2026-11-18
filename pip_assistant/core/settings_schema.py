@@ -96,11 +96,9 @@ SCHEMA = {
                                                   "\"yeah\", \"mhm\", a laugh or nothing: he picks up from the "
                                                   "sentence he was cut off in. Off: anything over him ends his answer.",
                                                   "bool", ["core"]),
-    "conversation.follow_up_seconds": _s(T, "Follow-up window", "After Pip answers, you can talk again within this "
-                                         "many seconds without saying his name.", "float", ["core"], min=0, max=30),
-    "conversation.follow_up_anyone": _s(T, "Follow-ups from anyone", "Off: without his name, only the person Pip just "
-                                        "answered (by voice) carries on, or anyone if he asked a question; someone "
-                                        "else is room talk (D-124). On: anyone in the window counts.", "bool", ["core"]),
+    "conversation.follow_up_seconds": _s(T, "Follow-up window", "After Pip speaks, anyone can talk again within "
+                                         "this many seconds without saying his name; Claude stays quiet if it "
+                                         "wasn't for him (D-136).", "float", ["core"], min=0, max=30),
     "listen.wait_for_speech_seconds": _s(T, "Wait for you to start", "In the follow-up window, how many seconds to "
                                          "wait for you to start talking.", "float", ["ears"], min=1, max=15),
     "conversation.own_commands": _s(T, "Pip's own commands", "\"sure\": clearly worded commands (stop, snooze, "
@@ -112,7 +110,8 @@ SCHEMA = {
     "social.join_in": _s(C, "Join in", "Pip listens to the room and decides for himself when to join in (D-92). "
                          "Off: he only answers when called or his name comes up.", "bool", ["core"]),
     "social.mood": _s(C, "Mood", "How often he considers joining in: quiet (every 2 min), normal (40 s), "
-                      "chatty (15 s).", "str", ["core"], choices=MOODS),
+                      "chatty (15 s). Saying \"Pip, set chattiness to low / normal / high\" overrides this "
+                      "(D-136).", "str", ["core"], choices=MOODS),
     "social.quiet_hours": _s(C, "Quiet hours", "Never joins in (or says welcome back) at these times, like "
                              "23:00-07:00 (D-66). Empty = no quiet hours.", "str", ["core"],
                              pattern=r"(([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d)?", example="23:00-07:00"),

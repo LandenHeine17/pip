@@ -51,7 +51,8 @@ word_list = "Pip, Hey Pip, Pippletron, Pippy, Pips, Ziggletron. Raspberry Pi, ES
 [social]
 # Pip listens to the room like Ziggletron and decides for himself when to join in (D-92).
 join_in = true                     # Off: he only answers when called or his name comes up.
-mood = "normal"                    # How often he considers joining in: quiet (2 min), normal (40 s), chatty (15 s).
+mood = "chatty"                    # How often he considers joining in: quiet (2 min), normal (40 s), chatty (15 s).
+                                   # Saying "Pip, set chattiness to low / normal / high" overrides this (D-136).
 pause_seconds = 1.2                # The room must pause this long first.
 live_conversation_seconds = 60.0   # Only if someone spoke within this long.
 quiet_hours = "23:00-07:00"        # Never joins in (or says welcome back) at these times (D-66).
@@ -77,8 +78,7 @@ clap_off_gap_max_ms = 800          # …and at most this far apart.
 own_commands = "sure"              # Pip's fixed-phrasing commands: "sure" = clearly worded ones (stop, snooze, a timer for a
                                    # length, what time is it) at once, everything else to Claude (D-123); "offline" = only
                                    # without internet (D-94); "always" = try them first, as before step 6.
-follow_up_seconds = 8.0            # After Pip answers, talk again within this time without saying his name…
-follow_up_anyone = false           # …anyone (true), or only the person he answered, by voice, unless he asked a question (D-124).
+follow_up_seconds = 8.0            # After Pip speaks, anyone can talk again within this time without saying his name (D-136).
 carry_on_after_backchannel = true  # Talked over by only "yeah", a laugh or nothing: he carries on from where he was cut off (D-122).
 wait_after_name_seconds = 5.0      # Said only his name, with nothing said just before? Pip listens quietly this long for the rest.
 name_lookback_seconds = 30.0       # Said only his name ("what's the weather… Pip?"): what was said this long before counts (D-134).

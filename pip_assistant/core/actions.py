@@ -60,8 +60,9 @@ class Invalid(ValueError):
     pass
 
 
-HERE = ("stop_alarm", "snooze", "learn_voice", "request_change", "correct_speaker")   # done by Conversation, not apply()
+HERE = ("stop_alarm", "snooze", "learn_voice", "request_change", "correct_speaker", "set_chattiness")   # done by Conversation, not apply()
 SUMMARY_MAX = 300
+CHATTINESS = {"low": "quiet", "quiet": "quiet", "normal": "normal", "medium": "normal", "high": "chatty", "chatty": "chatty"}
 
 
 def check_here(items: list[dict]) -> list[tuple]:
@@ -87,6 +88,11 @@ def check_here(items: list[dict]) -> list[tuple]:
             if not name or len(name) > 30:
                 raise Invalid("no name")
             plan.append(("correct_speaker", name.split()[0].title() if name.islower() else name.split()[0]))
+        elif do == "set_chattiness":   # D-136: low / normal / high → the joining-in moods
+            level = CHATTINESS.get(str(a.get("level") or "").strip().lower())
+            if not level:
+                raise Invalid("chattiness level")
+            plan.append(("set_chattiness", level))
         elif do == "request_change":
             summary = re.sub(r"\s+", " ", str(a.get("summary") or "")).strip()
             if len(summary) < 5 or len(summary) > SUMMARY_MAX:

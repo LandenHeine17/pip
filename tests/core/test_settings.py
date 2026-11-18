@@ -164,7 +164,7 @@ async def test_restart_waits_until_pip_is_quiet_and_core_goes_last(tmp_path):
     conv = FakeConv()
     conv.state, conv.speaking = "speaking", True
     a, calls = api(tmp_path, conv)
-    r = await a.handle({"action": "set", "changes": {"social.mood": "chatty", "ears.speech_rate": 1.1}})
+    r = await a.handle({"action": "set", "changes": {"social.mood": "quiet", "ears.speech_rate": 1.1}})
     assert r["ok"] and r["applying"] == ["ears", "core"]
     await asyncio.sleep(0.05)
     assert calls == []                                   # still talking
@@ -210,9 +210,9 @@ async def test_without_systemd_it_only_says_a_restart_is_needed(tmp_path):
 
 async def test_unchanged_values_restart_nothing_and_reset_goes_back(tmp_path):
     a, calls = api(tmp_path)
-    r = await a.handle({"action": "set", "changes": {"social.mood": "normal"}})
+    r = await a.handle({"action": "set", "changes": {"social.mood": "chatty"}})   # the default (D-136)
     assert r["ok"] and r["changed"] == [] and r["applying"] == []
-    await a.handle({"action": "set", "changes": {"social.mood": "chatty"}})
+    await a.handle({"action": "set", "changes": {"social.mood": "normal"}})
     await asyncio.wait_for(a.task, 1)
     r = await a.handle({"action": "reset", "key": "social.mood"})
     assert r["changed"] == ["social.mood"]

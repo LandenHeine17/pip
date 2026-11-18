@@ -26,9 +26,9 @@ URL = re.compile(r"https?://\S+|\[([^\]]+)\]\([^)]+\)")
 # and planned its answer ("I'll keep it light", "Not for me") out loud, more often since its effort went to low.
 WHO = r"(?:[A-Z][a-z]+|someone|somebody|they|he|she|both of them|everyone|the (?:user|person|speaker|room|group))"
 NARRATION = re.compile(
-    rf"^(?:{WHO}(?:'s|'re| is| are| was| were)?(?: just| still| now| probably| clearly)?\s+(?:asking|asked|wondering|"
-    r"saying|said|telling|told|talking|chatting|joking|curious|checking|bringing up|discussing|arguing|laughing|"
-    r"wants?|wanted|mentioned|mentioning|called|calling|referring|responding|replying|continuing|venting|"
+    rf"^(?:{WHO}(?:'s|'re| is| are| was| were)?(?: just| still| now| probably| clearly)?\s+(?:asking|asks|asked|wondering|wonders|"
+    r"saying|said|telling|told|talking|chatting|joking|jokes|teasing|teases|curious|checking|bringing up|discussing|arguing|laughing|"
+    r"wants?|wanted|mentioned|mentions|mentioning|called|calling|referring|responding|replying|continuing|venting|"
     r"complaining|describing|explaining|reacting|addressing|directing|commenting)\b"
     rf"|(?:sounds|seems|looks) like {WHO}(?:'s|'re| is| are)?\s"
     r"|(?:this|that|it)(?:'s| is| was)(?: just)? (?:room talk|small talk|banter|chatter|(?:a )?(?:casual|side|private) "

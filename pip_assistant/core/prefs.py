@@ -5,6 +5,8 @@
                  for none. The speakerphone can't be used: its own noise filter erases claps.
     claps        whether two claps switch listening at all (default off, until the detector is tuned on
                  recordings from that microphone: Session F is recorded with this off).
+    mood         how chatty he is, set by voice ("set chattiness to high", D-136): quiet / normal / chatty, or ""
+                 for the Settings page's [social] mood.
     state_bars   show each change in what Pip is doing ("Waiting to see if you're done", D-112) as a bar in the
                  dashboard's Conversation, for understanding him. Default off.
 
@@ -14,7 +16,7 @@ from pathlib import Path
 from ..common.db import connect
 
 SCHEMA = "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"   # shared with core/mic.py
-DEFAULTS = {"chime": True, "clap_mic": "", "claps": False, "state_bars": False}
+DEFAULTS = {"chime": True, "clap_mic": "", "claps": False, "mood": "", "state_bars": False}
 
 
 class Prefs:

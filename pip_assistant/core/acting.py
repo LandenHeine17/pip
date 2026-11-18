@@ -117,6 +117,12 @@ class Acting:
                     said.append(text)
                     done += ok
                     continue
+                elif step[0] == "set_chattiness":   # how often he joins in, kept across restarts (D-136)
+                    self.joining.set_mood(step[1])
+                    if self.prefs is not None:
+                        self.prefs.set("mood", step[1])
+                    said.append({"quiet": "Okay, I'll keep it low-key.", "normal": "Okay, back to normal.",
+                                 "chatty": "Okay, I'll chime in more."}[step[1]])
                 elif step[0] == "correct_speaker":
                     said.append(await self.correct_speaker(step[1], speaker))
                 elif step[0] == "learn_voice":
