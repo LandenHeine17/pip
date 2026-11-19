@@ -12,7 +12,7 @@ Pip is the second-generation household voice assistant replacing Ziggletron. It 
 - A day after installing D-137: run `tools/latency.py` (Nov 16: median 4.8 s, Claude 2.6 s); expect about 1–1.5 s less from the turn holds alone. Pip now uses Opus: watch Claude's usage limit (the dashboard's usage meter).
 - Try undoing a self-change (AC-SM-06, daytime; steps on the progress dashboard).
 - Clear the journal of web addresses logged before 2026-11-16 (needs sudo): `sudo journalctl --vacuum-time=1d`.
-- After installing D-135: run `sudo sh ~/pip/deploy/install-tv.sh` once (the 4 am monitor restart timer); count `mic.clap_ignored` by `why` after a few days and ask whether real switch-offs were lost.
+- After installing D-135: run `sh ~/pip/deploy/install-tv.sh` once (without sudo: it asks for the password itself) (the 4 am monitor restart timer); count `mic.clap_ignored` by `why` after a few days and ask whether real switch-offs were lost.
 - Plug the Pi into Ethernet; then Claude makes the Pi's Wi-Fi a network just for the plugs (NetworkManager hotspot, 2.4 GHz, sharing the cable's internet) and moves the plugs to local control (D-36, D-132).
 - After installing D-136: try "Pip, set chattiness to high/low", and say if he now answers room talk he shouldn't (the follow-up window is 8 s, a setting).
 - Still being watched: replies said to him that Claude passes on, and long turns joined from many pieces; voice thresholds with a roommate; how often Groq writes "Pip" wrongly; false clap switch-offs (each records how the claps measured).

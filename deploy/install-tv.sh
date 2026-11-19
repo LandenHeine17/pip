@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # Put Pip's face on the monitor (step 7, D-110): installs deploy/tv/pip-tv.service as a system service and
 # switches Ziggletron's screen service (ziggletron-tv) off, as the owner chose. Ziggletron's own files are
-# not touched. Needs sudo. Run it once, and again after deploy/tv/pip-tv.service changes:   sh deploy/install-tv.sh
+# not touched. Run it as yourself, NOT with sudo (it asks for your password where it needs it), once, and again
+# after deploy/tv/pip-tv.service changes:   sh ~/pip/deploy/install-tv.sh
 # To undo:   sudo systemctl disable --now pip-tv pip-tv-restart.timer
 #            sudo rm /etc/systemd/system/pip-tv.service /etc/systemd/system/pip-tv-restart.*
 #            (and, to give the screen back to Ziggletron:  sudo systemctl enable --now ziggletron-tv)
 set -eu
+if [ "$(id -u)" = 0 ]; then
+    # As root, $HOME and $USER are root's: it would look for /root/pip-app and run the monitor as root (2026-11-18)
+    echo "Run this without sudo:  sh ~/pip/deploy/install-tv.sh   (it asks for your password itself)."
+    exit 1
+fi
 cd "$(dirname "$0")/.."
 # The kiosk script runs from the installed version (~/pip-app/current, D-118), never from this working copy,
 # so an edit here only reaches the monitor through deploy/install.sh (with its health check and rollback).
