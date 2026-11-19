@@ -81,7 +81,9 @@ class FakeWeather:
 
 def make_thinker(location="Lincoln, Nebraska", modules="", weather="Sunny, 50F"):
     th = object.__new__(Thinker)
-    th.location, th.module_text, th.weather = location, modules, FakeWeather(weather)
+    th.location, th.weather, th.capabilities = location, FakeWeather(weather), ""
+    th.module_texts = {"calendar": modules} if modules else {}
+    th.cancelled, th.usage, th.paused_until = set(), None, 0.0
     return th
 
 

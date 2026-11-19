@@ -276,5 +276,5 @@ async def test_a_sure_command_is_done_without_claude_and_stop_is_instant(tmp_pat
     await asyncio.sleep(0.3)
     assert [x[1] for x in got if x[0] == "thinker.ask"] == ["Pip, set a timer for after dinner."]
     decisions = [r["data"]["why"] for r in bus.trace.recent() if r["type"] == "turn.decision"]
-    assert sorted(decisions) == ["short", "stop", "sure"]     # the timer and stop: fast; "after dinner": answered
+    assert sorted(decisions) == ["finished", "stop", "sure"]     # the timer and stop: fast; "after dinner": answered
     await finish(bus, tasks)

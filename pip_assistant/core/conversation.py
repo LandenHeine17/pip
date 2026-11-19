@@ -79,8 +79,7 @@ from .commands import sure as sure_command
 from . import states
 from .states import DETAILS, situation
 from .transcript import Transcript
-from .turns import (HOLD_S, RESUME_WITHIN_S, TurnTaking, is_phantom, listening_only,  # noqa: F401
-                    looks_unfinished, pause_word, plain)   # (tests import looks_unfinished from here)  # noqa: F401  (tests import looks_unfinished)
+from .turns import HOLD_S, RESUME_WITHIN_S, TurnTaking, is_phantom, listening_only, pause_word
 
 log = logging.getLogger(__name__)
 # A message typed on the dashboard (D-131) being answered: {"who": Match, "aloud": bool, "said": [what he said]}.
@@ -107,7 +106,7 @@ def _loop_running() -> bool:
 
 class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acting, Feed):
     SAYINGS = SAYINGS   # so the parts in other files (core/acting.py) can use them as self.SAYINGS
-    TURN_WAITS = {"short": 0.7, "statement": 0.7, "long": 0.7, "after_interrupt": 0.5}   # as in defaults.toml (D-137)
+    TURN_WAIT, AFTER_CUT_WAIT = 0.7, 0.5   # as in defaults.toml (D-137); tests shorten them
 
     def __init__(self, bus, cfg: dict | None = None, stt=None, schedule=None, local_stt=None, people=None, memory=None,
                  mic=None, modules=None, prefs=None):
@@ -146,7 +145,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         c = (cfg or {}).get("conversation", {})
         self.follow_up_s = c.get("follow_up_seconds", 8.0)
         self.carry_on = c.get("carry_on_after_backchannel", True)   # a "yeah" or a laugh over him: he carries on (CB-020)
-        self.follow = None           # the follow-up window after he spoke: {until} (D-136)
+        self.follow_until = 0.0      # the follow-up window after he spoke ends then (time.monotonic(), D-136)
         th = (cfg or {}).get("thinker", {})
         self.tone_mode = th.get("thinking_tone", "always")
         self.tone_after = th.get("thinking_tone_after_seconds", 1.5)
@@ -182,16 +181,13 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.name_lookback = c.get("name_lookback_seconds", 30.0)
         self.name_alone_wait = c.get("name_alone_wait_seconds", 2.5)
         self.unfinished_wait = c.get("unfinished_wait_seconds", 3.0)
-        t = self.TURN_WAITS                                             # knowing when you're done (D-106)
-        self.turn_short = c.get("turn_wait_short_seconds", t["short"])
-        self.turn_statement = c.get("turn_wait_statement_seconds", t["statement"])
-        self.turn_long = c.get("turn_wait_long_seconds", t["long"])
-        self.turn_after_cut = c.get("turn_wait_after_interrupt_seconds", t["after_interrupt"])
+        self.turn_wait_s = c.get("turn_wait_seconds", self.TURN_WAIT)   # knowing when you're done (D-106, D-138)
+        self.turn_after_cut = c.get("turn_wait_after_interrupt_seconds", self.AFTER_CUT_WAIT)
         self.max_utterance = (cfg or {}).get("listen", {}).get("max_utterance_seconds", 12.0)
         self.last_cut = -1e9         # when someone last talked over Pip (he waits longer on the next turn, D-122)
         self.end_silence = (cfg or {}).get("listen", {}).get("end_silence_seconds", 0.7)
         self.pending_ended = 0.0     # when they stopped talking, for the held turn (time.monotonic())
-        self.pending_why = ""        # what kind of turn it sounded like (turns.py turn_kind)
+        self.pending_why = ""        # unfinished / finished (turns.py turn_kind)
         self.turn_since_speech = 0.0 # end of their speech → the held turn answered (traced in turn.decision)
         self.asked = None            # the turn last asked (text, how, ended, why): reopened if they go on (D-137)
         self.mic_off_since = None    # for "mic was off for 12 s" on the feed
@@ -213,7 +209,6 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.heard: collections.deque = collections.deque()   # speech waiting for speech-to-text, in order
         self.heard_ready = asyncio.Event()
         self.heard_worker: asyncio.Task | None = None
-        self.answer_done = asyncio.Event()
         self.speech_done = asyncio.Event()
         bus.core_listen("heard.utterance", self.queue_utterance)
         bus.core_listen("heard.started", self.on_started)
@@ -276,17 +271,17 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         """Speak `text` through pip-ears. `reason` says why (answer, welcome, command, error, …); the face
         shows it while he talks (states.SPEAKING). `typed`: the typed message this answers (else TYPED's): it's
         kept as the reply, and spoken only if they asked for it out loud."""
+        if not text:
+            return
         typed = typed or TYPED.get()
-        if text and typed is not None:
+        if typed is not None:
             typed["said"].append(text)
             if not typed["aloud"]:
                 return
-        if text:
-            self.say_reason = reason
-        if text and not self.speaking:
+        self.say_reason = reason
+        if not self.speaking:
             self.say_pending_until = time.monotonic() + 3.0
-        if text:
-            await self.command("ears", "ears.say", {"reason": reason}, {"text": text})
+        await self.command("ears", "ears.say", {"reason": reason}, {"text": text})
 
     @property
     def silent(self) -> bool:
@@ -562,12 +557,11 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         t0 = time.perf_counter()
         self.transcribing = True
         self.refresh_state()
-        ident = asyncio.ensure_future(self.identify(pcm)) if reason != "room" else None
+        ident = asyncio.ensure_future(self.identify(pcm))
         try:
             text, offline = await self.transcribe(pcm, reason)
         except Exception as e:
-            if ident:
-                ident.cancel()
+            ident.cancel()
             self.transcribing = False
             self.refresh_state()
             log.warning("speech-to-text failed: %s", e)
@@ -576,9 +570,8 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             await self._finish_pending()
             return
         stt_s = round(time.perf_counter() - t0, 2)
-        speaker = await ident if ident else self.speaker
+        self.speaker, self.last_pcm = await ident, pcm
         self.transcribing = False
-        self.speaker, self.last_pcm = speaker, pcm
         asyncio.get_running_loop().call_soon(self.refresh_state)  # by then he's answering (thinking) or done
         await self.bus.publish(Message("event", "stt.done", data={"seconds": stt_s, "chars": len(text),
                                                                    "reason": reason, "offline": offline,
@@ -600,13 +593,10 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             return
         text = self.fix_names(text)
         await self.told_off(text)
-        kind, ask = "direct", ""
-        if reason == "follow_up" and not self.pending and not calls_pip(text) and self.in_follow_up():
-            ask = "follow_up"   # right after he spoke: taken as said to him, whoever said it; Claude may PASS (D-136)
+        ask = self.follow_up_ask(text) if reason == "follow_up" else ""
         self.hear(text, pcm=pcm)
         await self.feed(text, "direct", self.speaker, stt_s=stt_s, offline=offline, reason=reason)
-        await self.addressed(text, reason, stt_s=stt_s, offline=offline, heard_s=msg.data.get("seconds") or 0,
-                             ended_at=self.speech_ended(msg), kind=kind, ask=ask)
+        await self.addressed(text, reason, stt_s=stt_s, offline=offline, ended_at=self.speech_ended(msg), ask=ask)
 
     async def told_off(self, text: str) -> None:
         """"Not now" / "we're talking", to him or the room, soon after he joined in: he stays out (CB-031)."""
@@ -629,7 +619,12 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
 
     def in_follow_up(self) -> bool:
         """The follow-up window after one of his answers is open (a little slack: speech that started in it)."""
-        return self.follow is not None and time.monotonic() <= self.follow["until"] + 2.0
+        return time.monotonic() <= self.follow_until + 2.0
+
+    def follow_up_ask(self, text: str) -> str:
+        """"follow_up" for a new line without his name right after he spoke: taken as said to him, whoever said it,
+        and Claude may PASS (D-136). "" otherwise (more of a held turn, or he was called by name)."""
+        return "follow_up" if not self.pending and not calls_pip(text) and self.in_follow_up() else ""
 
     async def only_listening(self, text: str) -> bool:
         """Pip was talked over and his answer paused: was it only "yeah", a laugh, or nothing speech-to-text
@@ -744,9 +739,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         await self.told_off(text)
         quiet_for = time.time() - self.last_voice_at
         expected = time.monotonic() < self.expect_until or bool(self.pending)   # more of a held turn
-        ask = ""
-        if expected and not self.pending and not calls_pip(text) and self.in_follow_up():
-            ask = "follow_up"   # right after he spoke: taken as said to him, whoever said it; Claude may PASS (D-136)
+        ask = self.follow_up_ask(text) if expected else ""
         how = "direct" if expected or calls_pip(text) else "mentioned" if names_pip(text) else "room"
         await self.bus.publish(Message("event", "room.heard", data={"seconds": msg.data.get("seconds"),
                                                                      "addressed": how != "room", "how": how,
@@ -773,7 +766,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             self.drop_paused()
             await self.command("thinker", "thinker.cancel")
         await self.addressed(text, "expected" if expected else "transcript", offline=offline, chime=not expected,
-                             heard_s=msg.data.get("seconds") or 0, ended_at=self.speech_ended(msg), ask=ask)
+                             ended_at=self.speech_ended(msg), ask=ask)
 
     async def room_talk(self, text: str, speaker, offline: bool, quiet_for: float, pcm: bytes | None = None) -> None:
         """Room talk, not for Pip: into the transcript and the feed; welcome back, the modules, maybe joining in."""
@@ -811,18 +804,20 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         return True
 
     # ---------------------------------------------------------------- answering
-    async def answer(self, text: str, reason: str, kind: str = "direct", mood: str = "", looked_up: str = "",
+    async def answer(self, text: str, reason: str, kind: str = "direct", looked_up: str = "",
                      asker: tuple | None = None, ask: str = "", before: int = 0) -> None:
         """Ask Claude. kind: "direct" (said to Pip), "mentioned" (his name came up: he may PASS) or "join"
         (nobody spoke to him: he may join in with "SAY: …" or PASS). Claude sees the room transcript.
         `ask`: how Claude is asked, when not by kind: "follow_up" (said without his name right after he spoke, by
         anyone: taken as said to him, but Claude may PASS, D-136) or "name_after" (only his name, right
         after `before` lines were said: "what's the weather… Pip?", D-134).
-        `looked_up`: what Claude asked Pip to look up first (ACTION look), for the second round.
+        `looked_up`: what Claude asked Pip to look up first (ACTION look), for the second round, which is asked
+        the same way as the first (`again`).
         `asker`: (speaker, audio) of who asked. It's kept with this answer, so if someone else talks while
         Claude works, the actions and look-ups are still done as the person who asked."""
         asker = asker or self.asker_now()
-        self.follow = None
+        self.follow_until = 0.0
+        again = None if looked_up else dict(text=text, reason=reason, kind=kind, ask=ask, before=before)
         aid = new_id()
         if not looked_up:
             self.requests += 1
@@ -841,7 +836,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             told = self.for_claude(asker[0] if kind != "join" else None, kind)   # core/context.py
             reply = await self.bus_request("thinker", "thinker.ask", {"answer_id": aid, "reason": reason, "kind": ask or kind,
                                                                     **({"before": before} if before else {})},
-                                           {"text": text or "", "transcript": self.transcript.render(), "mood": mood,
+                                           {"text": text or "", "transcript": self.transcript.render(),
                                             **told, "looked_up": looked_up}, timeout=60)
         except Exception as e:
             reply = Message("reply", "thinker.ask", data={"error": f"{type(e).__name__}"})
@@ -864,8 +859,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             if kind == "join":
                 return  # joining in never acts on anything (nothing overheard is acted on)
             if not reply.private.get("text"):
-                return await self.claude_action(reply.private["action"], t0,
-                                                again=None if looked_up else (text, reason, kind, mood), asker=asker)
+                return await self.claude_action(reply.private["action"], t0, again=again, asker=asker)
         # An answer he said in full can end with an ACTION line (D-130), e.g. a recipe also put in a notes box
         # on the monitor: it's done after the answer, quietly unless it fails.
         after = reply.private.get("action") if self.commands and kind != "join" else None
@@ -881,15 +875,13 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         await self.show("pip", answer, total_s=round(time.perf_counter() - t0, 2),
                         first_s=reply.data.get("first_sentence_s"), kind=kind)
         if after:
-            await self.claude_action(after, t0, asker=asker, quiet=True,
-                                     again=None if looked_up else (text, reason, kind, mood))
+            await self.claude_action(after, t0, asker=asker, quiet=True, again=again)
         if self.speech_done.is_set():
             await self._maybe_follow_up()
 
     async def go_quiet(self) -> None:
         """Told to stop or be quiet: stop talking, close the follow-up window, back to idle."""
-        self.expect_until = self.listen_until = 0.0
-        self.follow = None
+        self.expect_until = self.listen_until = self.follow_until = 0.0
         await self.command("ears", "ears.stop")
         await self.command("ears", "ears.listen", {"seconds": 0})
         self.refresh_state()
@@ -900,9 +892,9 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
                 and not self.transcribing and self.stt is not None and time.monotonic() >= self.offline_until
                 and (joining or (self.answer_id is None and not self.speaking)))
 
-    async def join_in(self, mood: str) -> None:
+    async def join_in(self) -> None:
         await self.bus.publish(Message("event", "join.considered", data={}))
-        await self.answer("", "join", kind="join", mood=mood)
+        await self.answer("", "join", kind="join")
 
     def cancel_answer(self, why: str = "") -> None:
         if self.answer_id:
@@ -920,8 +912,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         if self.follow_up_s > 0 and last is not None and last["ours"] and not self.ringing and self.listening:
             asked = last["text"].rstrip().endswith("?")
             secs = self.follow_up_s * (1.5 if asked else 1.0)  # he asked something
-            self.expect_until = time.monotonic() + secs
-            self.follow = {"until": self.expect_until}
+            self.expect_until = self.follow_until = time.monotonic() + secs
             await self.command("ears", "ears.listen", {"seconds": secs})
             self.listening_for(secs, "follow_up")
 

@@ -7,14 +7,15 @@ answered (`respond`).
 
 How long he waits is a budget **counted from when they stopped talking** (D-122). The pause pip-ears already
 waited before sending the speech (0.7 s, its `quiet_s`) and the time speech-to-text took both count towards
-it, so he only holds for what's left (`hold`). Before D-122 the wait started after speech-to-text, so every
-request paid the pause twice (the owner's spec, 2026-11-12: 1.55 s typical hold, 5.4 s to answer).
+it, so he only holds for what's left. Before D-122 the wait started after speech-to-text, so every request
+paid the pause twice (the owner's spec, 2026-11-12: 1.55 s typical hold, 5.4 s to answer).
 
-    sounds unfinished ("what's the...", "remind me to")   unfinished_wait_seconds    (3.0 s)
-    two sentences or more, or a long stretch              turn_wait_long_seconds     (2.0 s)
-    a question, or 8 words or fewer                       turn_wait_short_seconds    (1.0 s)
-    anything else                                         turn_wait_statement_seconds (1.6 s)
+    sounds unfinished ("what's the...", "remind me to")   unfinished_wait_seconds   (3.0 s)
+    anything else                                         turn_wait_seconds         (0.7 s: at once, D-137)
     (plus turn_wait_after_interrupt_seconds for the next turn after someone talked over him)
+
+If they start talking again before he's said anything, the answer is dropped and the turn held again
+(`reopen_turn`, D-137), so what they add is joined to it and asked once.
 
 The face shows "Waiting to see if you're done" with a countdown while a turn is held (`turn_until`). Each
 answered turn is traced as `turn.decision` (decision "answered", why, how long since they stopped talking):
@@ -75,11 +76,6 @@ def looks_unfinished(text: str) -> bool:
     return t.endswith(("...", "…", ",", "-")) or bool(DANGLING.search(t.rstrip(".")))
 
 
-def is_backchannel(text: str) -> bool:
-    """'yeah', 'mhm', 'okay', a laugh: listening along, not taking the turn (CB-020)."""
-    return listening_only(text) != ""
-
-
 def is_phantom(text: str) -> bool:
     """Is this only what speech-to-text writes for a sound without words ("Thank you.", "you", "Bye.")?"""
     return bool(PHANTOM.match(" ".join(re.sub(r"[^\w' ]", " ", text).lower().split())))
@@ -137,10 +133,9 @@ class TurnTaking:
             await self.command("ears", "ears.listen", {"seconds": self.wait_after_name})
             self.listening_for(self.wait_after_name)
             return
-        # A joined turn waits by its newest piece: the earlier pieces have had their wait (D-134; before, two short
-        # pieces read as "two sentences" and got the long wait).
-        why = self.turn_kind(piece, float(data.pop("heard_s", 0) or 0))
-        budget = self.turn_wait(text, why=why)
+        # A joined turn waits by its newest piece: the earlier pieces have had their wait (D-134)
+        why = self.turn_kind(piece)
+        budget = self.turn_wait(piece)
         if data.get("ask") == "name_after":
             budget = max(budget, self.name_alone_wait)
         wait = round(max(0.0, budget - (time.monotonic() - ended)), 2)
@@ -184,23 +179,15 @@ class TurnTaking:
         line), not counting his name itself: "what's the weather… Pip?" → 1. 0 = nothing: he listens for the rest."""
         return sum(1 for line in self.transcript.recent(self.name_lookback) if not only_name(line["text"]))
 
-    def turn_kind(self, text: str, heard_s: float = 0.0) -> str:
-        """What kind of turn it sounds like: unfinished / long / short / statement."""
-        t = text.strip()
-        if looks_unfinished(t):
-            return "unfinished"
-        if len(re.findall(r"[.!?](?:\s|$)", t)) >= 2 or heard_s >= self.max_utterance - 0.5:
-            return "long"
-        if t.endswith("?") or len(t.split()) <= 8:
-            return "short"
-        return "statement"
+    @staticmethod
+    def turn_kind(text: str) -> str:
+        """"unfinished" ("what's the...", "remind me to") or "finished"."""
+        return "unfinished" if looks_unfinished(text.strip()) else "finished"
 
-    def turn_wait(self, text: str, heard_s: float = 0.0, why: str = "") -> float:
+    def turn_wait(self, text: str) -> float:
         """How long after they stop talking before taking it that they've finished (D-106, D-122): the whole
         budget, counted from the end of their speech."""
-        why = why or self.turn_kind(text, heard_s)
-        wait = {"unfinished": self.unfinished_wait, "long": self.turn_long, "short": self.turn_short,
-                "statement": self.turn_statement}[why]
+        wait = self.unfinished_wait if self.turn_kind(text) == "unfinished" else self.turn_wait_s
         if time.monotonic() - self.last_cut < 60:
             wait += self.turn_after_cut   # just talked over: he takes the hint, for this turn only
         return wait

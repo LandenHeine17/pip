@@ -70,12 +70,13 @@ class Acting:
         await self.speak_reply(reply, "command")
         return True
 
-    async def claude_action(self, raw: str, t0: float, again: tuple | None = None, asker: tuple | None = None,
+    async def claude_action(self, raw: str, t0: float, again: dict | None = None, asker: tuple | None = None,
                             quiet: bool = False) -> None:
         """Claude turned a request into actions; Pip checks them, does them and confirms (D-84, D-94).
         Ringing alarms and voice learning are handled here (they need the alarm and the audio);
         the rest by core/actions.py. Anything invalid means nothing at all is done.
-        A look-up ("look", D-102) isn't a change: Pip fetches it and asks Claude again, once (`again`).
+        A look-up ("look", D-102) isn't a change: Pip fetches it and asks Claude again, once, the same way
+        (`again`: answer()'s arguments, None in the second round).
         quiet=True: the ACTION line came after an answer he already said (D-130): the confirmation is said only if
         nothing could be done, and no look-ups, unless all he said was a line or two before looking ("Let me check
         that."): then he looks it up and answers, as if the ACTION had come alone (that line was the filler)."""
@@ -197,7 +198,7 @@ class Acting:
         who = line["speaker"]
         return f"Got it, that was {who}." + (f" I'll know {who}'s voice better now." if learned else "")
 
-    async def look_up(self, looks: list[dict], again: tuple | None, t0: float, asker: tuple | None = None) -> None:
+    async def look_up(self, looks: list[dict], again: dict | None, t0: float, asker: tuple | None = None) -> None:
         """Claude asked to see more first (the calendar for next Friday, the web, …): fetch it and ask again.
         A module's look-up may be async (a web search, D-125); if it takes over a second, Pip says so."""
         from . import actions, selfknow
@@ -239,5 +240,4 @@ class Acting:
             text = "Sorry, I couldn't find that."
             await self.speak_reply(text, "command", t0)
             return
-        text, reason, kind, mood = again
-        await self.answer(text, reason, kind=kind, mood=mood, looked_up=" ".join(found), asker=asker)
+        await self.answer(**again, looked_up=" ".join(found), asker=asker)

@@ -71,16 +71,11 @@ SCHEMA = {
                                                "none comes, he answers what was said before his name.", "float",
                                                ["core"], min=1, max=8),
     # ---- Taking turns: when Pip answers, when he stops, who he answers (D-106, D-122-D-124)
-    "conversation.turn_wait_short_seconds": _s(T, "After a question", "Seconds from when you stop talking before Pip "
-                                               "answers a question or short request. The end-of-speech pause and "
-                                               "speech-to-text count towards it (D-122): at 0.7 he answers as soon as "
-                                               "the words are in, and if you go on before he speaks he starts over "
-                                               "with all of it (D-137).", "float", ["core"],
-                                               min=0.5, max=5),
-    "conversation.turn_wait_statement_seconds": _s(T, "After a statement", "…after something longer that ends like a "
-                                                   "statement.", "float", ["core"], min=0.5, max=5),
-    "conversation.turn_wait_long_seconds": _s(T, "After a story", "…after two or more sentences (you might be telling "
-                                              "a story).", "float", ["core"], min=0.5, max=5),
+    "conversation.turn_wait_seconds": _s(T, "Before answering", "Seconds from when you stop talking before Pip "
+                                         "answers. The end-of-speech pause and speech-to-text count towards it "
+                                         "(D-122): at 0.7 he answers as soon as the words are in, and if you go on "
+                                         "before he speaks he starts over with all of it (D-137).", "float", ["core"],
+                                         min=0.5, max=5),
     "conversation.unfinished_wait_seconds": _s(T, "After a half-finished sentence", "Stopped mid-sentence (\"what's "
                                                "the...\", \"remind me to\")? He gives you longer to go on.",
                                                "float", ["core"], min=0.5, max=10),

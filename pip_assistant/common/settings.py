@@ -18,7 +18,9 @@ class SettingsError(ValueError):
 
 
 # Settings that were removed: an old settings.toml that still has them is fine, they're skipped.
-REMOVED = {"ears.wake_words", "ears.wake_thresholds", "listen.after_wake_seconds", "listen.transcript_wake"}   # D-134
+REMOVED = {"ears.wake_words", "ears.wake_thresholds", "listen.after_wake_seconds", "listen.transcript_wake",   # D-134
+           "conversation.turn_wait_short_seconds", "conversation.turn_wait_statement_seconds",       # D-138: one wait
+           "conversation.turn_wait_long_seconds"}
 
 
 def _defaults() -> dict:

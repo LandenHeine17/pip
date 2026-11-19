@@ -19,6 +19,14 @@ UtmpMode=user
 StandardInput=tty-fail
 StandardOutput=journal
 StandardError=journal
+# Harmless lines from the screen program (cage) when you switch to another slot (Ctrl+Alt+F2/F3) and back, or
+# when it starts while another slot has the screen: it isn't allowed to touch the screen then, and the face carries on
+# when you come back. X11 support isn't installed and isn't needed. Kept out of the journal, so the owner's process
+# monitor doesn't list them as errors (2026-11-19). Anything else it says is still logged.
+LogFilterPatterns=~Failed to disable CRTC
+LogFilterPatterns=~Atomic commit failed: Permission denied
+LogFilterPatterns=~[Xx][Ww]ayland
+LogFilterPatterns=~Backend 'seatd' failed to open seat
 Environment=PIP_TV_URL=http://127.0.0.1:@PORT@/tv
 # cage can only start while tty1 is the console on the screen. If someone is using another one (Ctrl+Alt+F2)
 # when it (re)starts, wait for them to come back to tty1 (Ctrl+Alt+F1) instead of failing every 10 s.

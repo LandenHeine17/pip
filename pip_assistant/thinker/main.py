@@ -105,6 +105,10 @@ Each message gives what you remember and what's set, then the conversation, then
 Weather: {weather}"""
 
 
+async def _nothing(*_):
+    """For answers nobody hears sentence by sentence (previews, conversation notes)."""
+
+
 AGAIN = ("Your last reply was only notes to yourself about how to answer, and none of it was said. Reply with only "
          "the words you'll say out loud.")
 
@@ -124,7 +128,6 @@ class Thinker:
         self.location = t["location"]
         # What each plugged-in module adds (modules/<name>/module.toml [claude]): calendar events, to-dos, …
         self.module_texts = {m.name: m.claude for m in enabled(cfg) if m.claude}
-        self.module_text = "\n\n".join(self.module_texts.values())
         self.capabilities = capabilities.text(enabled(cfg))   # "what can you do?" (D-128)
         self.recent: deque = deque(maxlen=20)   # the last requests' sizes and tokens (RAM only; never the words)
         self.claude = ClaudeCLI(t["model"], t["web_search"], t["timeout_seconds"], t["effort"])
@@ -137,13 +140,10 @@ class Thinker:
             log.warning("usage meter unavailable: %s", e)
             self.usage = None
         self.paused_until = 0.0
-        self.cancelled: set[str] = set()
-        self.was_cancelled: set[str] = set()   # answers cancelled while being asked (no "ask again" for them)
+        self.cancelled: set[str] = set()   # answers pip-core stopped (thinker.cancel) while being asked
         self.show_usage()
 
     name = "Pip"   # fills {name} in the personality; settings ([pip] name) override it in __init__
-    usage = None
-    paused_until = 0.0
     KIND = {"direct": "answer", "follow_up": "answer", "name_after": "answer", "mentioned": "mention", "join": "join", "preview": "preview"}
 
     # ---------------------------------------------------------------- the usage meter (D-69, PIP-NEW-089)
@@ -183,7 +183,8 @@ class Thinker:
         return self.paused_until > time.time()
 
     async def _ask(self, cli, kind: str, aid: str, *args, **kw):
-        """cli.ask(…), counted in the usage meter (an answer stopped on purpose isn't counted as a failure)."""
+        """cli.ask(…), counted in the usage meter (an answer stopped on purpose isn't counted as a failure).
+        info["cancelled"] says it was stopped on purpose, even before its process started."""
         report: dict = {}
 
         def on_result(cost, is_error, text):
@@ -196,26 +197,27 @@ class Thinker:
             failed = e
             raise
         finally:
-            stopped = self.__dict__.setdefault("cancelled", set())
-            cancelled = aid in stopped or bool(info.get("cancelled"))
-            stopped.discard(aid)
-            if cancelled and aid:
-                self.__dict__.setdefault("was_cancelled", set()).add(aid)
+            cancelled = aid in self.cancelled or bool(info.get("cancelled"))
+            self.cancelled.discard(aid)
+            if cancelled:
+                info["cancelled"] = True
             await self.count(kind, report, failed, cancelled)
 
-    async def prompt_parts(self) -> dict:
-        """The fixed part of what Claude is told, piece by piece (the "What Pip sends" page): the personality, the
-        rules (with today's weather) and each module's instructions. None of it is anything people said."""
-        return {"personality": personality.render(personality.read()[0], self.name, self.location),
+    async def prompt_parts(self, persona: str | None = None) -> dict:
+        """The fixed part of what Claude is told, piece by piece (the "What Pip sends" page): the personality (the
+        saved one, or `persona` for a preview), the rules (with today's weather) and each module's instructions.
+        None of it is anything people said."""
+        persona = personality.read()[0] if persona is None else persona
+        return {"personality": personality.render(persona, self.name, self.location),
                 "rules": RULES.format(weather=await self.weather.text() or "not available"),
-                "modules": dict(self.__dict__.get("module_texts", {}))}
+                "modules": dict(self.module_texts)}
 
     def remember_request(self, kind: str, system: str, msg: Message, user: str, info: dict) -> None:
         """One request's sizes and Claude's token counts, for the "What Pip sends" page. Only lengths and numbers:
         what people said is never kept (CLAUDE.md rule 1)."""
         p = msg.private
         lines = p.get("transcript") or []
-        self.__dict__.setdefault("recent", deque(maxlen=20)).appendleft({
+        self.recent.appendleft({
             "at": round(time.time()), "kind": kind, "system_chars": len(system), "user_chars": len(user),
             "parts": {"room conversation": sum(len(x) + 1 for x in lines), "lines heard": len(lines),
                       "who's here": len(p.get("people", "")), "what's set (timers, calendar, to-dos…)": len(p.get("schedule", "")),
@@ -236,13 +238,10 @@ class Thinker:
         lines = [str(x)[:500] for x in (msg.private.get("lines") or [])][:120]
         if not lines:
             return msg.reply({"chars": 0}, private={"text": ""}, source="thinker")
-
-        async def nothing(*_):
-            pass
         user = "The conversation, oldest first:\n" + "\n".join(lines) + "\n\nYour notes:"
         try:
             text, info = await self._ask(self.preview_claude, "summary", msg.data.get("answer_id", ""),
-                                         self.SUMMARY_SYSTEM, user, nothing, nothing)
+                                         self.SUMMARY_SYSTEM, user, _nothing, _nothing)
         except Exception as e:
             log.warning("summary failed: %s", e)
             return msg.reply({"error": type(e).__name__}, source="thinker")
@@ -254,17 +253,14 @@ class Thinker:
     async def on_prompt(self, msg: Message) -> Message:
         """The dashboard's "What Pip sends" page: the fixed text in full, and the last requests' sizes and tokens."""
         parts = await self.prompt_parts()
-        return msg.reply({"ok": True}, private={"fixed": parts, "recent": list(self.__dict__.get("recent", ()))}, source="thinker")
+        return msg.reply({"ok": True}, private={"fixed": parts, "recent": list(self.recent)}, source="thinker")
 
     async def system_prompt(self, persona: str | None = None) -> str:
-        """The personality (the saved one, or `persona` for a preview), then the fixed rules, then the modules'.
-        Kept stable (no clock in it), so the pre-started Claude process stays usable until the weather or the
-        personality changes."""
-        persona = personality.read()[0] if persona is None else persona
-        base = personality.render(persona, self.name, self.location) + "\n\n" + \
-            RULES.format(weather=await self.weather.text() or "not available")
-        caps = getattr(self, "capabilities", "")
-        return base + ("\n\n" + caps if caps else "") + ("\n\n" + self.module_text if self.module_text else "")
+        """The personality (the saved one, or `persona` for a preview), then the fixed rules, what he can do
+        (D-128) and the modules'. Kept stable (no clock in it), so the pre-started Claude process stays usable
+        until the weather or the personality changes."""
+        p = await self.prompt_parts(persona)
+        return "\n\n".join(x for x in (p["personality"], p["rules"], self.capabilities, *p["modules"].values()) if x)
 
     ASK = {   # how each kind of request is asked (D-137: Ziggletron's wording where it had one)
         "direct": ("The last line was said to you. Reply with exactly what you'll say. (Just PASS if they told you "
@@ -328,12 +324,9 @@ class Thinker:
         question = (msg.private.get("question") or "").strip()[:500]
         if not question:
             return msg.reply({"error": "No question"}, source="thinker")
-
-        async def nothing(*_):
-            pass
         try:
             text, info = await self._ask(self.preview_claude, "preview", aid, await self.system_prompt(persona),
-                                         self.user_text(question, [f"Someone: {question}"]), nothing, nothing)
+                                         self.user_text(question), _nothing, _nothing)
         except Exception as e:
             log.warning("preview failed: %s", e)
             return msg.reply({"error": f"{type(e).__name__}: {str(e)[:120]}"}, source="thinker")
@@ -364,8 +357,7 @@ class Thinker:
                               looked_up=msg.private.get("looked_up", ""), before=msg.data.get("before") or 0)
         try:
             text, info = await self._ask(self.claude, kind, aid, system, user, sentence, searching, held=kind == "join")
-            if info.get("only_notes") and aid not in self.__dict__.setdefault("was_cancelled", set()) \
-                    and not info.get("cancelled"):
+            if info.get("only_notes") and not info.get("cancelled"):
                 # It only wrote notes to itself ("Caleb's asking... Keep it short and cheeky."), none of it said:
                 # once more, told so (owner, 2026-11-12)
                 text, info = await self._ask(self.claude, kind, aid, system, user + "\n\n" + AGAIN, sentence,
@@ -374,8 +366,6 @@ class Thinker:
         except Exception as e:
             log.warning("answer failed: %s", e)
             return msg.reply({"error": f"{type(e).__name__}: {str(e)[:120]}"}, source="thinker")
-        finally:
-            self.__dict__.setdefault("was_cancelled", set()).discard(aid)
         if info.get("is_error") and not text and not info.get("action"):
             # The CLI answered with an error (a usage limit, …) rather than words: say so, don't go quiet
             return msg.reply({"error": "Claude reported an error"}, source="thinker")

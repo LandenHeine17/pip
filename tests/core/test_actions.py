@@ -150,6 +150,32 @@ async def test_a_long_answer_is_said_in_full_and_put_on_the_screen_quietly(tmp_p
     await finish(bus, tasks)
 
 
+async def test_the_second_round_after_a_look_up_is_asked_the_same_way(tmp_path):
+    """D-138: "what have I got that day… Pip?" (just his name after the question, D-134) with a look-up: the
+    second round is asked as name_after too, with the same lines before his name (before, it became "direct" and
+    Claude read only "Pip.")."""
+    from datetime import datetime, timedelta
+
+    from helpers import registry
+
+    sched = Schedule(tmp_path / "pip.db")
+    reg = registry(tmp_path, schedule=sched)
+    day = (datetime.now() + timedelta(days=9)).replace(hour=15, minute=0, second=0, microsecond=0)
+    reg.module("calendar").store.add_event("dentist", day)
+    look = 'ACTION {"do": "look", "kind": "calendar", "from": "%s"}' % day.date().isoformat()
+    bus, conv, ears, got, asks, tasks = await setup(
+        tmp_path, "What have I got that day?", social={"join_in": False}, schedule=sched, modules=reg,
+        replies={"name_after": [look, "The dentist at 3."]}, conversation={"name_alone_wait_seconds": 0.1})
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.2)
+    conv.stt.text = "Pip."
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.8)
+    assert [k for k, _ in asks] == ["name_after", "name_after"] and "dentist" in asks[1][1]["looked_up"]
+    assert says(got) == ["The dentist at 3."]
+    await finish(bus, tasks)
+
+
 async def test_a_slow_web_look_up_is_awaited_and_pip_says_so(tmp_path, monkeypatch):
     """D-125: a module's look-up may be async (the websearch module asks Brave). It's awaited, Claude is asked
     again with what it found, and if it takes over a second Pip says "Let me look that up." first."""

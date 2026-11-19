@@ -101,6 +101,15 @@ def test_module_settings_validate():
 
 
 # ---------------------------------------------------------------- save
+def test_an_old_settings_file_with_removed_settings_still_loads(tmp_path):
+    """D-138: the three turn waits became one; a settings.toml that still has them loads, and they're ignored."""
+    from pip_assistant.common import settings
+    f = tmp_path / "settings.toml"
+    f.write_text("[conversation]\nturn_wait_short_seconds = 1.0\nturn_wait_long_seconds = 2.0\n")
+    c = settings.load(f)["conversation"]
+    assert c["turn_wait_seconds"] == 0.7 and "turn_wait_short_seconds" not in c
+
+
 def test_save_writes_only_non_defaults_and_keeps_modules(tmp_path):
     f = tmp_path / "settings.toml"
     f.write_text('[web]\nhost = "100.1.2.3"  # mine\n\n[modules.calendar]\nsync_minutes = 5.0\n')

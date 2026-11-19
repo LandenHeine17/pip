@@ -353,7 +353,7 @@ async def test_anyones_reply_right_after_he_spoke_is_taken_as_for_him(tmp_path, 
     bus, conv, asks, tasks = await answered_then(tmp_path, monkeypatch, voices[then_voice], voices[asker])
     assert [k for k, _ in asks] == ["direct", "follow_up"]
     await asyncio.sleep(0.2)                                          # (the fake Claude PASSes: he stays quiet)
-    assert any(r["type"] == "answer.passed" for r in bus.trace.recent()) and conv.follow is None
+    assert any(r["type"] == "answer.passed" for r in bus.trace.recent()) and not conv.in_follow_up()
     await finish(bus, tasks)
 
 
@@ -464,6 +464,6 @@ async def test_a_typed_message_is_its_own_request(tmp_path):
     await conv.typed("say hello", None, aloud=True)
     await asyncio.sleep(0.05)
     await conv._maybe_follow_up()
-    assert conv.follow is None                                         # no listening window after a typed reply
+    assert not conv.in_follow_up()                                     # no listening window after a typed reply
     await finish(bus, tasks)
 

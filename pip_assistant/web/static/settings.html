@@ -441,14 +441,12 @@ const DEPENDS = {
 };
 
 const TURNS = [
-  ["After a question", "conversation.turn_wait_short_seconds", "What time is it?"],
-  ["After a statement", "conversation.turn_wait_statement_seconds", "I finally finished that puzzle last night."],
-  ["After a story", "conversation.turn_wait_long_seconds", "So I went to the store. They were out of milk."],
+  ["Finished", "conversation.turn_wait_seconds", "What time is it?"],
   ["Half-finished", "conversation.unfinished_wait_seconds", "Remind me to…"],
 ];
 let afterCut = false;
 function turnViz(){
-  const box = $("turnviz"); if (!box || !("conversation.turn_wait_short_seconds" in meta)) return;
+  const box = $("turnviz"); if (!box || !("conversation.turn_wait_seconds" in meta)) return;
   const pause = n("listen.end_silence_seconds") || 0.7, extra = afterCut ? n("conversation.turn_wait_after_interrupt_seconds") : 0;
   const rows = TURNS.map(([name, key, eg]) => { const total = Math.max(n(key) + extra, pause + STT_S); return {name, key, eg, total}; });
   const span = Math.max(4, Math.ceil(Math.max(...rows.map(r => r.total)) + 0.5));

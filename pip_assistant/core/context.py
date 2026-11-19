@@ -5,25 +5,30 @@ read its fields like its own. Everything here is shaped by who's asking: a modul
 may hear, and memories are only those this person may be told (D-34, core/memory.py).
 
     for_claude    the schedule and each module's part (calendar, to-dos, …), who lives here and who's
-                  talking, and their memories. Sent with `thinker.ask` (Conversation.answer); the room
-                  transcript and the question itself are added there.
+                  talking, their memories, and for a join-in his mood. Sent with `thinker.ask`
+                  (Conversation.answer); the room transcript and the question itself are added there.
     _action_ctx   what core/actions.py and core/commands.py need to check and do actions, as who asked
 """
+import re
+
+from .joining import MOODS
 
 
 class Context:
     def for_claude(self, sp, kind: str) -> dict:
-        """{schedule, people, memories} for Claude, as speaker `sp` (None when joining in: nobody asked)."""
+        """{schedule, people, memories} for Claude, as speaker `sp` (None when joining in: nobody asked), and
+        the mood for a join-in (how chatty he is, D-136)."""
         schedule = self.schedule.summary() if self.schedule else ""
         if self.modules is not None:   # each module's part: the calendar, to-dos, … (only what this speaker may hear)
             from .modules import Call
             schedule = " ".join(x for x in (schedule, self.modules.summary(Call(speaker=sp, kind=kind))) if x)
         people = self.people.summary(sp) if self.people is not None else ""
-        if kind == "join":
-            people = people.split(". ", 1)[-1]   # nobody spoke to him: just who lives here
         memories = self.memory.for_claude(sp.person_id if sp else None, sp.level if sp else "unknown",
                                           speaker_name=sp.name if sp else "", **self.who_is_present(sp)) \
             if self.memory is not None else ""
+        if kind == "join":   # nobody spoke to him: just who lives here, and how chatty he is
+            return {"schedule": schedule, "people": people.split(". ", 1)[-1], "memories": memories,
+                    "mood": MOODS[self.joining.mood]}
         return {"schedule": schedule, "people": people, "memories": memories}
 
     def who_is_present(self, sp) -> dict:
@@ -31,7 +36,6 @@ class Context:
         (as a speaker or talked about). Memories about anyone else aren't sent, like Ziggletron."""
         if self.people is None:
             return {}
-        import re
         talk = "\n".join(self.transcript.render())
         everyone = self.people.all()
         present = {p["id"]: p["name"] for p in everyone

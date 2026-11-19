@@ -83,13 +83,11 @@ carry_on_after_backchannel = true  # Talked over by only "yeah", a laugh or noth
 wait_after_name_seconds = 5.0      # Said only his name, with nothing said just before? Pip listens quietly this long for the rest.
 name_lookback_seconds = 30.0       # Said only his name ("what's the weather… Pip?"): what was said this long before counts (D-134).
 name_alone_wait_seconds = 2.5      # …but first he waits this long after his name (from when you stopped) in case the question comes next.
-# Knowing when you're done talking (D-106, D-122, D-137). Each wait is counted from when you stop talking: the 0.7 s
-# pause ([listen]) and speech-to-text count towards it, so at 0.7 he answers as soon as the words are in, like
+# Knowing when you're done talking (D-106, D-122, D-137, D-138). Each wait is counted from when you stop talking: the
+# 0.7 s pause ([listen]) and speech-to-text count towards it, so at 0.7 he answers as soon as the words are in, like
 # Ziggletron. If you start talking again before he's said anything, the answer is dropped and it's all taken as one.
+turn_wait_seconds = 0.7            # Seconds from when you stop talking before he answers.
 unfinished_wait_seconds = 3.0      # …after a half-finished sentence ("what's the...", "remind me to").
-turn_wait_short_seconds = 0.7      # …after a question or a short request.
-turn_wait_statement_seconds = 0.7  # …after something longer that ends like a statement.
-turn_wait_long_seconds = 0.7       # …after two or more sentences (you might be telling a story).
 turn_wait_after_interrupt_seconds = 0.5   # Added to the next turn after someone talked over him: he takes the hint.
 
 [alarms]

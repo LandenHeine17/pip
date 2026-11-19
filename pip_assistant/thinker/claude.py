@@ -214,8 +214,8 @@ class ClaudeCLI:
         split, full = SentenceSplitter(), []
         mode, head, pieces = None, "", []  # mode: "speak", "action" (for pip-core, never spoken) or "pass" (quiet)
 
-        async def speak(piece: str):
-            for s in split.feed(piece):
+        async def say(sentences: list[str]):
+            for s in sentences:
                 info["first_sentence_s"] = info["first_sentence_s"] or round(time.perf_counter() - t0, 2)
                 full.append(s)
                 await on_sentence(s)
@@ -249,7 +249,7 @@ class ClaudeCLI:
                                     continue  # not sure yet whether it's an ACTION line, PASS or SAY:
                                 mode, piece = decided
                             if mode == "speak":
-                                await speak(piece)
+                                await say(split.feed(piece))
                     elif ev.get("type") == "result":
                         info["is_error"] = bool(ev.get("is_error", False))
                         info["cost_usd"] = ev.get("total_cost_usd")
@@ -267,14 +267,12 @@ class ClaudeCLI:
             if mode is None:  # a very short answer ("Sure."), or a join-in that never said SAY:
                 mode, rest = classify(head, held, final=True)
                 if mode == "speak":
-                    await speak(rest)
+                    await say(split.feed(rest))
             if mode == "action":
                 info["action"] = "".join(pieces)
             elif mode == "speak" and (after := trailing_action("".join(pieces))):
                 info["action"] = after   # said in full first; pip-core does it afterwards (D-130)
-            for s in split.flush():
-                full.append(s)
-                await on_sentence(s)
+            await say(split.flush())
             if mode == "speak" and not full and split.passed:
                 mode = "pass"               # notes, then PASS: it chose to stay quiet
             elif mode == "speak" and not full and split.notes:

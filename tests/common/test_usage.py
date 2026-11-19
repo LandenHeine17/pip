@@ -1,5 +1,6 @@
 """The usage meter (D-69, PIP-NEW-089): counting Claude requests, spotting the usage limit, and pausing joining in."""
 import asyncio
+from collections import deque
 import time
 from datetime import date, datetime, timedelta
 
@@ -129,6 +130,7 @@ class FakeClaude:
 def make_thinker(tmp_path, claude):
     th = object.__new__(Thinker)
     th.bus, th.usage, th.claude, th.paused_until = FakeClientBus(), Usage(tmp_path / "pip.db"), claude, 0.0
+    th.cancelled, th.recent = set(), deque(maxlen=20)
 
     async def system_prompt(persona=None):
         return "rules"

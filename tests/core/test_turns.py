@@ -45,14 +45,13 @@ async def test_the_chime_can_be_switched_off(tmp_path):
 # ---------------------------------------------------------------- D-106: knowing when they're done
 @pytest.mark.real_turn_waits
 async def test_he_waits_for_the_end_of_the_turn_and_joins_the_pieces(tmp_path):
-    waits = {"turn_wait_short_seconds": 0.3, "turn_wait_statement_seconds": 0.6, "turn_wait_long_seconds": 0.8,
-             "turn_wait_after_interrupt_seconds": 0.5}
+    waits = {"turn_wait_seconds": 0.6, "turn_wait_after_interrupt_seconds": 0.5}
     bus, conv, ears, got, asks, tasks = await setup(
         tmp_path, "Pip, so I was at the store today and I saw the weirdest thing in the parking lot.",
         social={"join_in": False}, conversation=waits)
     await ears.emit("heard.utterance", *room())
     await asyncio.sleep(0.3)
-    assert not asks and ("ears.chime", None, {}) not in got and conv.state == "listening"   # a statement: still waiting
+    assert not asks and ("ears.chime", None, {}) not in got and conv.state == "listening"   # still waiting
     await ears.emit("heard.started", {"reason": "follow_up"})          # …they carry on
     await asyncio.sleep(0.6)
     assert not asks                                                     # still holding while they talk
@@ -61,7 +60,7 @@ async def test_he_waits_for_the_end_of_the_turn_and_joins_the_pieces(tmp_path):
                     private=room()[1])
     await asyncio.sleep(0.15)
     assert not asks
-    await asyncio.sleep(0.9)                                            # two sentences: the long wait
+    await asyncio.sleep(0.9)                                            # nothing more: answered as one
     assert len(asks) == 1 and [k for k, _, _ in got].count("ears.chime") == 1 and says(got) == ["Sure."]
     await finish(bus, tasks)
 
@@ -95,7 +94,7 @@ async def test_the_wait_counts_from_when_they_stopped_talking(tmp_path):
     await asyncio.sleep(0.45)
     assert len(asks) == 1                                                       # well inside the 1.0 s budget
     [d] = [r["data"] for r in conv.bus.trace.recent() if r["type"] == "turn.decision"]
-    assert d["decision"] == "answered" and d["why"] == "short" and 0.9 <= d["since_speech_s"] < 1.5
+    assert d["decision"] == "answered" and d["why"] == "finished" and 0.9 <= d["since_speech_s"] < 1.5
     await finish(bus, tasks)
 
 
@@ -112,9 +111,9 @@ async def test_the_after_interrupt_wait_is_for_the_next_turn_only(tmp_path):
 
 
 def test_backchannels_are_only_listening():
-    from pip_assistant.core.turns import is_backchannel
-    assert all(is_backchannel(t) for t in ("Yeah.", "mhm", "Uh-huh.", "okay", "haha", "Oh, okay."))
-    assert not any(is_backchannel(t) for t in ("Yeah, but what about tomorrow?", "No, fifteen.", "stop", "wait"))
+    from pip_assistant.core.turns import listening_only
+    assert all(listening_only(t) for t in ("Yeah.", "mhm", "Uh-huh.", "okay", "haha", "Oh, okay."))
+    assert not any(listening_only(t) for t in ("Yeah, but what about tomorrow?", "No, fifteen.", "stop", "wait"))
 
 
 def test_laughing_over_pip_is_only_listening():
@@ -434,7 +433,7 @@ def test_phantom_phrases():
 async def test_a_phantom_thank_you_from_no_known_voice_is_noise(tmp_path):
     from pip_assistant.core.people import Match
     bus, conv, ears, got, asks, tasks = await setup(tmp_path, "Thank you.", social={"join_in": False})
-    conv.follow = {"until": time.monotonic() + 10, "question": True, "asker": None}
+    conv.follow_until = time.monotonic() + 10
     await ears.emit("heard.utterance", {"reason": "follow_up", "had_speech": True, "seconds": 1.1, "quiet_s": 0.0},
                     private=room()[1])
     await asyncio.sleep(0.3)

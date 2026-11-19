@@ -33,7 +33,7 @@ SUPPRESS_S = 15 * 60.0      # …and then he doesn't join in for this long ([soc
 STALE_S = 5.0               # a join-in reply this late is dropped: the moment has passed (Claude p90 ~4.5 s)
 
 INTERVALS = {"quiet": 120.0, "normal": 40.0, "chatty": 15.0}
-MOODS = {
+MOODS = {   # what Claude is told with a join-in (core/context.py)
     "quiet": "Speak up rarely - only when you'd really want to.",
     "normal": "Join in like a friendly, engaged person would, without dominating.",
     "chatty": "You're in a sociable mood: join in often, while still letting people talk.",
@@ -55,7 +55,8 @@ class Joining:
         s = (cfg or {}).get("social", {})
         self.conv, self.clock = conv, clock
         self.enabled = s.get("join_in", True)
-        self.mood = s.get("mood", "normal") if s.get("mood", "normal") in MOODS else "normal"
+        self.mood = "normal"
+        self.set_mood(s.get("mood", "normal"))
         self.pause = s.get("pause_seconds", 1.2)
         self.live = s.get("live_conversation_seconds", 60.0)
         self.quiet_hours = s.get("quiet_hours", "23:00-07:00")
@@ -112,7 +113,7 @@ class Joining:
         if self.ready():
             self.last_check = self.clock()
             self.checked_count = self.conv.transcript.count
-            await self.conv.join_in(self.mood_text())
+            await self.conv.join_in()
 
     def joined(self) -> None:
         self.joined_at = self.clock()
@@ -124,9 +125,6 @@ class Joining:
             self.cancel_wait()
             return True
         return False
-
-    def mood_text(self) -> str:
-        return MOODS[self.mood]
 
     def ready(self) -> bool:
         c, tr, now = self.conv, self.conv.transcript, self.clock()

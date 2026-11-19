@@ -400,6 +400,8 @@ Built in small steps. Each step ends with something you can try.
 
 **Called by name, like Ziggletron (2026-11-16, D-134):** the wake-word detector is gone (`ears/wake.py`, the `models/wake/` detectors, openWakeWord and four settings). Everything said is transcribed and his name in the words calls him (`calls_pip` in `on_room`); with Groq's limit used up or offline, room talk is transcribed on the Pi so that still works. **Just his name** answers what was said in the 30 s before it (`said_before_name`, `Transcript.recent`, Claude's `name_after`). While an alarm rings, his name alone quiets it and what's said next decides (`Commands.while_ringing`, `hushed_until`). A joined turn waits by its newest piece; Claude's effort was set to low (in the owner's settings file).
 
+**A tidier conversation (2026-11-19, D-138):** one turn wait for everything that sounds finished (`turn_wait_seconds`; the three that were all 0.7 s since D-137 are gone), a look-up's second round asked the same way as the first, the join-in mood sent with the rest of the context, and repeated or unused code removed from `core/conversation.py`, `core/turns.py` and `thinker/`. The monitor's harmless cage lines are kept out of the journal (`pip-tv.service`).
+
 ## 15. Review
 
 Approved 2026-11-04 (D-78). The one change requested then is in §6 (D-77, since replaced by D-90).

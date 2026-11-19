@@ -15,7 +15,7 @@ def test_names_pip_spots_mishearings_but_not_ziggletron():
 
 
 def test_unfinished_sentences():
-    from pip_assistant.core.conversation import looks_unfinished
+    from pip_assistant.core.turns import looks_unfinished
     for t in ["Pippletron, what's the", "what's the...", "Pip, play my", "hey pip, um"]:
         assert looks_unfinished(t), t
     for t in ["Pippletron, what's the weather?", "what time is it.", "who are you talking to?", "turn it up"]:

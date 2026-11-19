@@ -248,7 +248,8 @@ async def test_a_reply_of_only_notes_is_asked_again(monkeypatch):
     """owner, 2026-11-12: "Caleb's asking what I think of... Keep it short and cheeky." and nothing else."""
     from pip_assistant.common.messages import Message
     from pip_assistant.thinker import main as thinker_main
-    replies = [("", {"only_notes": True, "passed": False}), ("Glub glub, sign me up.", {"passed": False})]
+    replies = [("", {"only_notes": True, "passed": False}), ("Glub glub, sign me up.", {"passed": False}),
+               ("", {"only_notes": True, "passed": False})]
     asked = []
 
     class Notes:
@@ -272,11 +273,12 @@ async def test_a_reply_of_only_notes_is_asked_again(monkeypatch):
                                     data={"answer_id": "a1", "kind": "direct"}, private={"text": "what do you think?"}))
     assert reply.private["text"] == "Glub glub, sign me up." and reply.data["asked_again"]
     assert len(asked) == 2 and asked[1].endswith(thinker_main.AGAIN)
-    asked.clear()
-    th.was_cancelled = {"a2"}                     # talked over meanwhile: no second request for nothing
+    # talked over meanwhile: the real _ask marks it cancelled, even before its process started, and it isn't asked again
+    th._ask = Thinker._ask.__get__(th)
+    th.usage, th.paused_until, th.cancelled, th.bus.status = None, 0.0, {"a2"}, {}
     reply = await th.on_ask(Message("request", "thinker.ask", source="core", id="r2",
                                     data={"answer_id": "a2", "kind": "direct"}, private={"text": "what do you think?"}))
-    assert len(asked) == 1 and not reply.data.get("asked_again")
+    assert len(asked) == 3 and not reply.data.get("asked_again") and reply.data["cancelled"] and not th.cancelled
 
 
 async def test_an_answer_stopped_on_purpose_is_not_a_failure(tmp_path):
