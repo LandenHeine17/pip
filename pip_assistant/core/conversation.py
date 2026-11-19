@@ -107,7 +107,7 @@ def _loop_running() -> bool:
 
 class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acting, Feed):
     SAYINGS = SAYINGS   # so the parts in other files (core/acting.py) can use them as self.SAYINGS
-    TURN_WAITS = {"short": 1.0, "statement": 1.6, "long": 2.0, "after_interrupt": 0.5}   # as in defaults.toml (D-122)
+    TURN_WAITS = {"short": 0.7, "statement": 0.7, "long": 0.7, "after_interrupt": 0.5}   # as in defaults.toml (D-137)
 
     def __init__(self, bus, cfg: dict | None = None, stt=None, schedule=None, local_stt=None, people=None, memory=None,
                  mic=None, modules=None, prefs=None):
@@ -193,6 +193,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.pending_ended = 0.0     # when they stopped talking, for the held turn (time.monotonic())
         self.pending_why = ""        # what kind of turn it sounded like (turns.py turn_kind)
         self.turn_since_speech = 0.0 # end of their speech → the held turn answered (traced in turn.decision)
+        self.asked = None            # the turn last asked (text, how, ended, why): reopened if they go on (D-137)
         self.mic_off_since = None    # for "mic was off for 12 s" on the feed
         self.alarm_mic = False       # listening is off but pip-ears is on for a ringing alarm (D-127, micctl.py)
         self.expect_until = 0.0     # Pip was just called: the next speech is for him, name or not
@@ -360,6 +361,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         elif msg.data.get("reason") == "room":
             self.room_until = time.monotonic() + self.max_utterance
             self.refresh_state()
+        await self.reopen_turn()   # still thinking, nothing said yet: their turn isn't over after all (D-137)
         if self.pending:   # they're still going: keep holding their turn (until that speech arrives, D-106)
             if self.pending_task:
                 self.pending_task.cancel()

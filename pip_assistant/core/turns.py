@@ -162,6 +162,23 @@ class TurnTaking:
             wait = self.max_utterance + 4.0
         self.pending_task = asyncio.create_task(self._answer_pending(wait=wait))
 
+    async def reopen_turn(self) -> bool:
+        """They started talking again while Claude was still working on the answer and nothing of it has been said
+        (D-137, like Ziggletron): drop that answer and hold the turn again, so what they say next is joined to it
+        and asked once. If it turns out to be only noise, `_finish_pending` asks again. True if it reopened."""
+        if not (self.asked and self.answer_id and self.answer_kind == "direct" and not self.spoken
+                and not self.speaking and not self.pending):
+            return False
+        text, how, ended, why = self.asked
+        self.asked = None
+        self.cancel_answer("kept talking")
+        await self.decided("reopened", why)
+        self.pending, self.pending_how, self.pending_ended, self.pending_why = text, how, ended, why
+        self.expect_until = time.monotonic() + self.max_utterance + 4.0
+        self.turn_until = time.monotonic() + 1.0
+        self.refresh_state()
+        return True
+
     def said_before_name(self) -> int:
         """How many lines were said in the `name_lookback` seconds before his name (by anyone, since his own last
         line), not counting his name itself: "what's the weather… Pip?" → 1. 0 = nothing: he listens for the rest."""
@@ -209,6 +226,8 @@ class TurnTaking:
             if chime:
                 await self.chime()
             self.turn_since_speech = round(time.monotonic() - self.pending_ended, 2)
+            # Kept so that if they start talking again before he's said anything, the turn reopens (D-137)
+            self.asked = (text, (reason, offline, dict(data), False), self.pending_ended, self.pending_why)
             await self.respond(text, reason, offline=offline, **data)
         # No longer "waiting to see if you're done", even if nothing was said back ("never mind" offline).
         # (Not before respond(): it would flash idle before thinking.)

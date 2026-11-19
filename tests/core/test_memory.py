@@ -164,3 +164,20 @@ def test_a_memory_that_may_contradict_another_is_flagged_and_settled(tmp_path):
     d, _ = mem.add("Sam's birthday is May 4", "personal", [sam["id"]])
     act("keep_old", d["id"])
     assert mem.get(d["id"])["status"] == "archived" and mem.get(b["id"])["status"] == "active"
+
+
+def test_memories_about_someone_are_sent_only_when_they_are_in_the_conversation(mem):
+    """D-137, like Ziggletron: rules and household facts always; a fact about one person only when that person
+    is speaking or in the conversation (all 90 used to go with every message)."""
+    mem.add("Pip says good night at eleven", "rule")
+    mem.add("The recycling goes out on Tuesdays by the fridge door", "household")
+    mem.add("Sam likes his coffee black", "personal", about=["s"])
+    mem.add("Alex is training for a marathon", "personal", about=["a"])
+    mem.add("Jordan hates cilantro", "personal")                      # lists nobody, names nobody in the house
+    everyone = ["Sam", "Alex"]
+    t = mem.for_claude(present={"s": "Sam"}, household=everyone)
+    assert "good night" in t and "fridge" in t and "coffee" in t and "cilantro" in t
+    assert "marathon" not in t and "(1 more about people not in this conversation" in t
+    t = mem.for_claude(present={"s": "Sam", "a": "Alex"}, household=everyone)
+    assert "marathon" in t and "not shown" not in t
+    assert "marathon" in mem.for_claude()                             # without `present`: everything, as before

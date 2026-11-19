@@ -73,7 +73,9 @@ SCHEMA = {
     # ---- Taking turns: when Pip answers, when he stops, who he answers (D-106, D-122-D-124)
     "conversation.turn_wait_short_seconds": _s(T, "After a question", "Seconds from when you stop talking before Pip "
                                                "answers a question or short request. The end-of-speech pause and "
-                                               "speech-to-text count towards it (D-122).", "float", ["core"],
+                                               "speech-to-text count towards it (D-122): at 0.7 he answers as soon as "
+                                               "the words are in, and if you go on before he speaks he starts over "
+                                               "with all of it (D-137).", "float", ["core"],
                                                min=0.5, max=5),
     "conversation.turn_wait_statement_seconds": _s(T, "After a statement", "…after something longer that ends like a "
                                                    "statement.", "float", ["core"], min=0.5, max=5),

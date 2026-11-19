@@ -22,6 +22,7 @@ URL = re.compile(r"https?://\S+|\[([^\]]+)\]\([^)]+\)")
 
 # Claude sometimes says its thinking out loud before the answer: "Caleb's asking about upgrading me." or
 # "Honest answer, short: ..." (owner, 2026-11-12). The rules tell it not to; this catches it when it still does.
+# D-137: a first sentence that ends in "?" is kept ("Landen wants pizza again? Classic." is a jab, not a note).
 # owner, 2026-11-17: it still talked about the people ("They're talking to each other", "Sounds like Sam wants…")
 # and planned its answer ("I'll keep it light", "Not for me") out loud, more often since its effort went to low.
 WHO = r"(?:[A-Z][a-z]+|someone|somebody|they|he|she|both of them|everyone|the (?:user|person|speaker|room|group))"
@@ -117,7 +118,7 @@ class SentenceSplitter:
                 self.passed = self.passed or (self.cut == 0 and not kept)
                 continue
             if self.cut == 0 and not kept:
-                if NARRATION.match(s) or SELF_NOTE.match(s) or PLAN.match(s):
+                if (NARRATION.match(s) and not s.rstrip().endswith("?")) or SELF_NOTE.match(s) or PLAN.match(s):
                     self.notes += 1
                     continue
                 s = unnarrate(s)

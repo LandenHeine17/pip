@@ -20,7 +20,7 @@ barge_in_voice_check = true             # …and it must have a voice in it: a k
 duck_before_stop = true                # …and a voice first only lowers his voice: he stops if they keep talking, comes back up if not (D-128).
 voice_engine = "piper"                  # Voice engine (swappable, PIP-NEW-097).
 voice = "en_US-lessac-medium"           # Voice model in ~/pip-data/models/voices (D-73).
-speech_rate = 1.0                       # 1.0 = normal; 1.2 = a bit faster; 0.8 = slower.
+speech_rate = 1.05                      # 1.05 as Ziggletron (D-137); 1.0 = normal; 1.2 = a bit faster; 0.8 = slower.
 
 [listen]
 speech_dbfs = -50.0                # Louder than this counts as speech when cutting out what you said.
@@ -83,13 +83,13 @@ carry_on_after_backchannel = true  # Talked over by only "yeah", a laugh or noth
 wait_after_name_seconds = 5.0      # Said only his name, with nothing said just before? Pip listens quietly this long for the rest.
 name_lookback_seconds = 30.0       # Said only his name ("what's the weather… Pip?"): what was said this long before counts (D-134).
 name_alone_wait_seconds = 2.5      # …but first he waits this long after his name (from when you stopped) in case the question comes next.
-# Knowing when you're done talking (D-106, D-122). Each wait is counted from when you stop talking: the 0.7 s pause
-# ([listen]) and speech-to-text count towards it, so Pip holds only for what's left. If you start talking again he
-# keeps waiting and takes it all as one; then he chimes and answers.
+# Knowing when you're done talking (D-106, D-122, D-137). Each wait is counted from when you stop talking: the 0.7 s
+# pause ([listen]) and speech-to-text count towards it, so at 0.7 he answers as soon as the words are in, like
+# Ziggletron. If you start talking again before he's said anything, the answer is dropped and it's all taken as one.
 unfinished_wait_seconds = 3.0      # …after a half-finished sentence ("what's the...", "remind me to").
-turn_wait_short_seconds = 1.0      # …after a question or a short request.
-turn_wait_statement_seconds = 1.6  # …after something longer that ends like a statement.
-turn_wait_long_seconds = 2.0       # …after two or more sentences (you might be telling a story).
+turn_wait_short_seconds = 0.7      # …after a question or a short request.
+turn_wait_statement_seconds = 0.7  # …after something longer that ends like a statement.
+turn_wait_long_seconds = 0.7       # …after two or more sentences (you might be telling a story).
 turn_wait_after_interrupt_seconds = 0.5   # Added to the next turn after someone talked over him: he takes the hint.
 
 [alarms]
@@ -104,7 +104,7 @@ ringtones = { timer = "kitchen", alarm = "classic", reminder = "chimes", event =
 [thinker]
 thinking_tone = "always"           # Soft tone when Pip starts thinking (D-86): "always", "slow" (only if the answer is slow) or "off".
 thinking_tone_after_seconds = 1.5  # For "slow": play it if the answer hasn't started after this long.
-model = "sonnet"                   # Claude model: "sonnet" starts answering in ~0.9 s vs ~2.3 s for the default Opus.
+model = "opus"                     # Claude model. Opus, like Ziggletron: the most personality, and a short reply is out in ~1.6 s (Haiku 1.3 s), D-137.
 effort = "low"                     # How hard Claude thinks: low is quickest (like Ziggletron).
 timeout_seconds = 45.0             # Give up on an answer after this long.
 web_search = false                 # Claude's own built-in web search (slow: 10-15 s). Off since D-125: the websearch

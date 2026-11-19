@@ -101,7 +101,7 @@ sequenceDiagram
 |---|---|
 | End of speech detected | 0.7 s pause |
 | Groq transcription | 0.4 s |
-| "Are you done?" wait | 1.55 s then; since D-122 one budget counted from the end of speech (1.0 s for a question, in all) |
+| "Are you done?" wait | 1.55 s then; since D-122 one budget counted from the end of speech (1.0 s for a question, in all); since D-137 0.7 s, so no hold past the pause, and going on while he thinks reopens the turn |
 | Claude's first sentence | 2.0 s |
 | Piper starts speaking | 0.3 s |
 | **Total** | **5.4 s** before D-122. Clearly worded commands skip Claude (D-123). Offline, Whisper on the Pi takes ~2.4 s instead of Groq. The new figure is still to be measured |

@@ -171,7 +171,7 @@ async def test_what_was_heard_before_switching_off_is_still_answered(tmp_path):
 @pytest.mark.real_turn_waits
 async def test_a_held_turn_is_answered_promptly_when_more_sound_was_nothing(tmp_path):
     bus, conv, ears, got, asks, tasks = await setup(tmp_path)
-    conv.stt = SlowSTT("Pip, what time is it?", "")
+    conv.stt = SlowSTT("Pip, remind me to", "")                     # sounds unfinished: held (D-137 holds only these)
     conv.stt.release.set()
     await ears.emit("heard.utterance", *utt())
     await asyncio.sleep(0.1)
@@ -182,6 +182,35 @@ async def test_a_held_turn_is_answered_promptly_when_more_sound_was_nothing(tmp_
     while not asks and time.monotonic() - t0 < 3:
         await asyncio.sleep(0.05)
     assert asks and time.monotonic() - t0 < 2.5                     # not after 16 s
+    await finish(bus, tasks)
+
+
+@pytest.mark.real_turn_waits
+async def test_going_on_while_he_thinks_reopens_the_turn(tmp_path):
+    """D-137, like Ziggletron: he starts on the answer as soon as they pause; if they go on before he's said
+    anything, that answer is dropped and everything they said is asked as one."""
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, social={"join_in": False})
+    conv.stt = SlowSTT("Pip, what's the weather", "for tomorrow?")
+    conv.stt.release.set()
+    seen, real = [], conv.bus_request
+
+    async def slow_claude(target, msg_type, data, private, timeout):
+        if msg_type != "thinker.ask":
+            return await real(target, msg_type, data, private, timeout)
+        seen.append(private["text"])
+        await asyncio.sleep(0.6)
+        return Message("reply", "thinker.ask", data={"passed": True}, private={"text": ""})
+    conv.bus_request = slow_claude
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(0.9)
+    assert seen == ["Pip, what's the weather"] and conv.answer_id        # asked at once, still thinking
+    await ears.emit("heard.started", {"reason": "room"})               # they go on
+    await asyncio.sleep(0.05)
+    assert conv.answer_id is None and conv.pending == "Pip, what's the weather"
+    await ears.emit("heard.utterance", *room())
+    await asyncio.sleep(1.2)
+    assert seen[-1] == "Pip, what's the weather for tomorrow?" and len(seen) == 2
+    assert "reopened" in [r["data"]["decision"] for r in bus.trace.recent() if r["type"] == "turn.decision"]
     await finish(bus, tasks)
 
 

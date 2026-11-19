@@ -73,16 +73,16 @@ def test_how_long_he_waits(tmp_path):
     from pip_assistant.core.health import Health
     from pip_assistant.core.trace import Trace
     c = Conversation(Bus(tmp_path / "s", Trace(tmp_path / "pip.db"), Health([], restart=False)), {"conversation": {}})
-    assert c.turn_wait("what time is it?") == 1.0
-    assert c.turn_wait("set a timer for ten minutes") == 1.0                       # short request
-    assert c.turn_wait("I think we should probably get the pizza from the other place tonight") == 1.6
-    assert c.turn_wait("We went to the lake. It was freezing.") == 2.0
+    assert c.turn_wait("what time is it?") == 0.7                                  # D-137: no hold past the pause
+    assert c.turn_wait("set a timer for ten minutes") == 0.7                       # short request
+    assert c.turn_wait("I think we should probably get the pizza from the other place tonight") == 0.7
+    assert c.turn_wait("We went to the lake. It was freezing.") == 0.7
     assert c.turn_wait("what's the weather like in the") == 3.0                    # sounds unfinished
     assert c.turn_wait("Pip, remind me to") == 3.0
     assert c.turn_wait("set a timer for") == 3.0
-    assert c.turn_wait("what's that for?") == 1.0                                  # a question mark wins
+    assert c.turn_wait("what's that for?") == 0.7                                  # a question mark wins
     c.last_cut = time.monotonic()
-    assert c.turn_wait("what time is it?") == 1.5                                  # just talked over: takes the hint
+    assert c.turn_wait("what time is it?") == 1.2                                  # just talked over: takes the hint
 
 
 @pytest.mark.real_turn_waits
@@ -104,10 +104,10 @@ async def test_the_after_interrupt_wait_is_for_the_next_turn_only(tmp_path):
     bus, conv, ears, got, asks, tasks = await setup(tmp_path, "Pip, what time is it?", social={"join_in": False})
     await ears.emit("speech.interrupted", {"level_dbfs": -20})
     await asyncio.sleep(0.05)
-    assert conv.turn_wait("what time is it?") == 1.5
+    assert conv.turn_wait("what time is it?") == 1.2
     await ears.emit("heard.utterance", *room())
-    await asyncio.sleep(1.7)
-    assert len(asks) == 1 and conv.turn_wait("what time is it?") == 1.0         # used up by that turn
+    await asyncio.sleep(1.4)
+    assert len(asks) == 1 and conv.turn_wait("what time is it?") == 0.7         # used up by that turn
     await finish(bus, tasks)
 
 

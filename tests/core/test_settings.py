@@ -117,7 +117,7 @@ def test_save_writes_only_non_defaults_and_keeps_modules(tmp_path):
     assert cfg["ears"]["speech_rate"] == 1.2 and cfg["ears"]["voice"] == "en_US-lessac-medium"
     assert cfg["modules"]["calendar"]["sync_minutes"] == 5.0
     # back to the default: the line (and the empty section) go away
-    settings_schema.save({"ears.speech_rate": 1.0, "modules.todos.show_done_days": 7}, f)
+    settings_schema.save({"ears.speech_rate": 1.05, "modules.todos.show_done_days": 7}, f)
     saved = tomllib.loads(f.read_text())
     assert "ears" not in saved and "todos" not in saved["modules"]
 
@@ -226,7 +226,7 @@ async def test_get_describes_every_setting(tmp_path):
     assert [g["name"] for g in r["groups"]] == settings_schema.GROUPS
     rows = {s["key"]: s for g in r["groups"] for s in g["settings"]}
     assert set(rows) == set(settings_schema.SCHEMA)
-    assert rows["ears.speech_rate"]["value"] == 1.3 and rows["ears.speech_rate"]["default"] == 1.0
+    assert rows["ears.speech_rate"]["value"] == 1.3 and rows["ears.speech_rate"]["default"] == 1.05
     assert rows["ears.speech_rate"]["min"] == 0.5 and rows["social.mood"]["choices"] == settings_schema.MOODS
     assert rows["stt.model"]["advanced"] and not rows["social.mood"]["advanced"]
     mods = {s["key"]: s for m in r["modules"] for s in m["settings"]}

@@ -180,6 +180,15 @@ class Memory:
         return person_id in row["about"] or bool(name and re.search(rf"\b{re.escape(name)}\b", row["text"], re.I))
 
     @staticmethod
+    def relevant(row: dict, present: dict[str, str], household: list[str] = ()) -> bool:
+        """A memory about someone matters now if they're in the conversation (`present`: {id: name}). One that
+        lists nobody counts if it names someone present, or names nobody in the `household`."""
+        if row["about"]:
+            return any(pid in present for pid in row["about"])
+        return any(name and re.search(rf"\b{re.escape(name)}\b", row["text"], re.I) for name in present.values()) \
+            or not any(re.search(rf"\b{re.escape(n)}\b", row["text"], re.I) for n in household if n)
+
+    @staticmethod
     def may_see(row: dict, person_id: str | None) -> bool:
         """A private memory is only for its owner, even while it waits in the inbox (D-88): Sam is never shown,
         and can't approve, Alex's private note about Sam's surprise party."""
@@ -242,14 +251,23 @@ class Memory:
 
     # ---------------------------------------------------------------- what Claude sees
     def for_claude(self, speaker_id: str | None = None, speaker_level: str = "unknown", limit: int = 200,
-                   speaker_name: str = "") -> str:
+                   speaker_name: str = "", present: dict[str, str] | None = None, household: list[str] = ()) -> str:
         """Active memories Pip may use right now: household ones, plus the speaker's private ones if
-        they're recognised "sure" (memory policy §4.2). Rules for Pip come first."""
+        they're recognised "sure" (memory policy §4.2). Rules for Pip come first.
+        `present` ({person id: name} of who's talking or talked about in the conversation, and the speaker): if
+        given, memories about one person are only sent when that person is part of the conversation, like
+        Ziggletron (D-137: all 90 went with every message); rules and the rest always go."""
         rows = [r for r in self.items("active")
                 if r["visibility"] == "household" or (speaker_level == "sure" and r["owner"] == speaker_id)]
+        hidden = 0
+        if present is not None:
+            kept = [r for r in rows if r["category"] != "personal" or self.relevant(r, present, household)]
+            hidden, rows = len(rows) - len(kept), kept
         rows.sort(key=lambda r: (r["category"] != "rule", -r["updated"]))
         lines = [f"{self.short(r['id'])} {r['text']}" + (" (private)" if r["visibility"] == "private" else "") for r in rows[:limit]]
         out = ("What you remember: " + "; ".join(lines) + ".") if lines else "You don't remember anything yet."
+        if hidden:
+            out += f" ({hidden} more about people not in this conversation, not shown.)"
         if speaker_level == "sure" and speaker_id:   # the speaker may approve what's waiting about them (D-107)
             waiting = [f"{self.short(r['id'])} {r['text']}" for r in self.items("pending")
                        if self.is_about(r, speaker_id, speaker_name) and self.may_see(r, speaker_id)]

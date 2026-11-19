@@ -312,3 +312,13 @@ async def test_an_answer_stopped_on_purpose_is_not_a_failure(tmp_path):
     assert stopped == [("answers", None)]          # a summary being written isn't cut short
     await th.on_cancel(type("M", (), {"data": {"answer_id": "s1"}})())
     assert ("summaries", "s1") in stopped
+
+
+def test_what_claude_reads_ends_with_the_moment():
+    """D-137, Ziggletron's order: memories and what's set, then the conversation, then the time, who's speaking
+    and the ask - the last thing Claude reads is the moment it answers."""
+    text = Thinker.user_text("", ["[10:01] Sam: Pip, how far is the moon?"], now="Saturday 10:01 AM",
+                             people="Speaking: Sam (sure).", schedule="No timers set.", memories="What you remember: x.")
+    assert text.index("What you remember") < text.index("No timers set.") < text.index("The conversation so far")
+    assert text.index("Sam: Pip, how far") < text.index("It's Saturday 10:01 AM. Speaking: Sam (sure).")
+    assert text.endswith(Thinker.ASK["direct"])
