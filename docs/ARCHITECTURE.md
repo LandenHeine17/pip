@@ -132,7 +132,8 @@ What else leaves the Pi:
 | Groq | Audio of everything said in the room while Pip is listening, plus the household's first names as spelling hints | As it happens |
 | Claude | The room transcript (last 40 lines), memories, what's set, the last day's conversation notes (D-128), the smart plugs and whether each is on, the calendar's today and tomorrow plus counts for the week (the rest only when Claude looks it up, D-102) and open to-dos (only what the speaker may hear; never private events or ignored calendars), the allowed actions. Join-in checks get only the rest of today | Each answer, mention or join-in check (at most every ~40 s) |
 | Open-Meteo | "Lincoln, Nebraska" | Weather updates |
-| Tuya (smart plugs, D-132, until the plugs' own network) | Which plug to switch on or off; the list of plugs and whether each is on | When a plug is switched, and every 10 minutes |
+| Tuya's cloud (smart plugs, D-132, D-139) | Which plug to switch on or off, for a plug not on Pip's own network; the list of plugs, their local keys and whether each is on | When such a plug is switched, and every 10 minutes |
+| The plugs on Pip's own network (`pip-plugs`, D-139) | Switch on or off; are you on? (directly, never leaving the Pi's network) | When a plug is switched, and every 30 s |
 | Brave Search | The search words Claude chose (the websearch module, D-125; needs the owner's key) | Only when Claude looks something up on the web |
 | Google | For each person who connected their account (D-97): their calendar events and to-dos, both ways (D-98, D-100). Private events are kept on the Pi too but never told to Claude | Every ~2 min, and straight after a change |
 | Claude (self-changes) | The request, Pip's code (the workspace copy) and the plan; never `~/pip-data` | When a change is planned or built (D-118) |
@@ -140,7 +141,7 @@ What else leaves the Pi:
 
 ## 7. Modules: how features plug in
 
-Every new feature is a **module**: a folder with a short description file and a little code. Pip finds modules automatically at startup (D-96, built 2026-11-07). This is the main way Pip grows, whether the module is written by you, by Claude, or by Pip's own self-change. Today: **google** (accounts), **calendar**, **todos**, **screen** (what's on the monitor, D-111), **websearch** (D-125), **six_seven** (Pip's first self-change, D-121), **recall** (conversation notes, D-128) and **tuya** (smart plugs through Tuya's cloud, a stopgap, D-132). (The older built-in parts, like timers and memory, live in pip-core.)
+Every new feature is a **module**: a folder with a short description file and a little code. Pip finds modules automatically at startup (D-96, built 2026-11-07). This is the main way Pip grows, whether the module is written by you, by Claude, or by Pip's own self-change. Today: **google** (accounts), **calendar**, **todos**, **screen** (what's on the monitor, D-111), **websearch** (D-125), **six_seven** (Pip's first self-change, D-121), **recall** (conversation notes, D-128) and **tuya** (the smart plugs: directly on Pip's own Wi-Fi network, else through Tuya's cloud, D-132, D-139). (The older built-in parts, like timers and memory, live in pip-core.)
 
 ### 7.1 Kinds of module
 
@@ -149,7 +150,7 @@ Every new feature is a **module**: a folder with a short description file and a 
 | **Skill** | Things Pip can do or answer | calendar, todos, recall, six_seven, the template's dice |
 | **Widget** | Boxes on the TV screen | screen (the layout and its boxes); any module can also add a kind of box (`[monitor.<kind>]`) |
 | **Provider** | A service Pip or other modules use | google (accounts), websearch (look-ups) |
-| **Device** | A kind of device (M3) | tuya (the plugs, through Tuya's cloud for now, D-132); later ESPHome over MQTT and local Tuya |
+| **Device** | A kind of device (M3) | tuya (the plugs: local Tuya on Pip's own network, else Tuya's cloud, D-132, D-139); later ESPHome over MQTT |
 | **Plugin** | Anything else, with declared permissions | none yet |
 
 ### 7.2 What a module looks like
@@ -247,7 +248,7 @@ The voice engine is a setting: `voice_engine` under `[ears]` in `defaults.toml` 
 |---|---|---|
 | `~/pip` (repo) | All code, modules, default settings, docs | Yes (public-safe) |
 | `~/pip-data/settings.toml` | Your settings (location, room, mode, voice…), written by the Settings page | **No** |
-| `~/pip-data/secrets.toml` | API keys, and each module's own section (`[google]`: the Google client and each connected person's sign-in key; `[websearch]`, `[tuya]`). Only pip-core reads it (`core/stt.py` for the Groq key; modules through `core/modules.py`); a module only ever sees its own section | **No** |
+| `~/pip-data/secrets.toml` | API keys, and each module's own section (`[google]`: the Google client and each connected person's sign-in key; `[websearch]`, `[tuya]`, `[plugs_wifi]`). Only pip-core reads it (`core/stt.py` for the Groq key; modules through `core/modules.py`); a module only ever sees its own section | **No** |
 | `~/pip-data/pip.db` | One SQLite database: memories, people and voice profiles, timers/reminders, the Listening switches and preferences, the 48-hour decision trace, each module's own tables (`calendar_…`, `todos_…`, `google_…`, `screen_…`, `recall_notes`), self-changes (`builder_changes`) and the usage meter (`usage`) | **No** |
 | `~/pip-data/models/` | The voice recognition model (`speaker/`) and Pip's Piper voice (`voices/`). | **No** |
 | `~/pip-app/` | The live copy Pip runs from (§10): `releases/<id>/` (one folder per installed version, with its own `.venv`), `current` (a link to the running one), `release-state.json`, `release.log` | **No** |
@@ -388,7 +389,7 @@ Built in small steps. Each step ends with something you can try.
 
 **M2 built 2026-11-13 (D-128, D-129):** explaining himself (`core/selfknow.py`: the trace, settings, health, memories, his own docs and code; `common/capabilities.py`), conversation memory (the `recall` module, notes kept 30 days, written through the module-neutral `ctx.summarize` → `thinker.summarize`), smarter memory (contradictions flagged, "that was Sam, not me"), conversation polish (ducking in pip-ears, "hold on"; "Want the rest?" was removed again by D-130: he says the whole answer, and a long one can also go in a notes box), a richer face (expressions, corner icons from `face_status`, `[face]` appearance settings read by pip-web), and your data (`core/yourdata.py`; modules join in through `export_data`, `wipe_data` and `forget_person`). No new program. Not built, by the owner's choice: the offline Qwen fallback (D-75), spoken problem notices, Room-Aware mode.
 
-**M3 (smart home) started 2026-11-15:** the `tuya` module switches the smart plugs through Tuya's cloud, a stopgap until the Pi hosts a Wi-Fi network for them (D-132), with an On/Off card on the dashboard's front page (a new kind of `home()` card); and a chat box on the front page (D-131): typed messages go through `core.chat` → `Conversation.typed`, the same path as speech.
+**M3 (smart home) started 2026-11-15:** the `tuya` module switches the smart plugs through Tuya's cloud, a stopgap until the Pi hosts a Wi-Fi network for them (D-132), with an On/Off card on the dashboard's front page (a new kind of `home()` card); and a chat box on the front page (D-131): typed messages go through `core.chat` → `Conversation.typed`, the same path as speech. **2026-11-19 (D-139):** the Pi on Ethernet hosts a Wi-Fi network for the plugs (`pip-plugs`, `deploy/plug-network.sh`); the `tuya` module switches a plug there directly (tinytuya), any other through the cloud, and "all" switches every plug.
 
 **Review fixes (2026-11-16, D-133)**, from a review of the whole code, inside the existing programs:
 - **Typed messages and alarms:** a typed message is its own request (the `TYPED` context variable in `core/conversation.py`, `asker_now`, `typed_answers`), so Pip talking to the room meanwhile is unaffected and actions are done as the person picked; while ringing, typed "snooze" and "okay" work like spoken. "Hey Pip" quiets a ringing alarm (`Schedule.hush`, 20 s) and what's said next decides.

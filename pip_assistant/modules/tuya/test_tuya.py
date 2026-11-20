@@ -1,5 +1,6 @@
-"""The tuya module (D-132), against a pretend Tuya cloud: signed requests, finding a plug by what people call
-it, switching it, what Claude reads, and nothing but Tuya's API hosts."""
+"""The tuya module (D-132, D-139), against a pretend Tuya cloud and pretend plugs on Pip's own network: signed
+requests, finding a plug by what people call it (or all of them), switching it directly or else through the
+cloud, what Claude reads, and nothing but Tuya's API hosts."""
 import hashlib
 import hmac
 import json
@@ -27,7 +28,7 @@ class FakeTuya:
         if path.startswith("/v1.0/token"):
             return httpx.Response(200, json={"success": True, "result": {"access_token": "TOK", "expire_time": 7200}})
         if path.startswith("/v1.0/iot-01/associated-users/devices"):
-            devs = [{"id": i, "name": n, "online": o, "status": [{"code": "switch_1", "value": on}]}
+            devs = [{"id": i, "name": n, "online": o, "local_key": "KEY-" + i, "status": [{"code": "switch_1", "value": on}]}
                     for i, (n, on, o) in self.plugs.items()]
             devs.append({"id": "cam", "name": "Camera", "status": [{"code": "record", "value": True}]})
             return httpx.Response(200, json={"success": True, "result": {"devices": devs}})
@@ -40,12 +41,40 @@ class FakeTuya:
         return httpx.Response(404)
 
 
+class FakeLocal:
+    """The plugs on Pip's own network: their announcements and direct messages."""
+
+    def __init__(self):
+        self.near = {}         # id → on (a plug that answers directly)
+        self.sent = []         # (id, on, key) of each direct switch
+
+    @staticmethod
+    def decrypt(data):
+        return json.loads(data)
+
+    async def switch(self, plug, on):
+        if plug["id"] not in self.near:
+            raise OSError("no answer")
+        self.near[plug["id"]] = on
+        self.sent.append((plug["id"], on, plug["key"]))
+
+    async def state(self, plug):
+        if plug["id"] not in self.near:
+            raise OSError("no answer")
+        return self.near[plug["id"]]
+
+
+def announce(mod, pid, ip="10.47.0.20"):
+    mod.heard(json.dumps({"gwId": pid, "ip": ip, "version": "3.4"}).encode(), ip)
+
+
 def setup(tmp_path, monkeypatch, plugs, nicknames=""):
     monkeypatch.setenv("PIP_DATA", str(tmp_path))
     (tmp_path / "secrets.toml").write_text('[tuya]\naccess_id = "AID"\naccess_secret = "SECRET"\nregion = "us"\n')
     fake = FakeTuya(plugs)
     reg = Registry.load({}, infos=[read(ROOT / "tuya", {"nicknames": nicknames})], db_path=tmp_path / "pip.db",
                         transport=httpx.MockTransport(fake))
+    reg.modules["tuya"].local = FakeLocal()
     return reg, reg.modules["tuya"], fake
 
 
@@ -110,3 +139,80 @@ async def test_the_front_page_card_switches_a_plug(tmp_path, monkeypatch):
     fake.plugs.clear()                                                        # Tuya now fails the command
     r = await mod.dashboard("switch", {"id": "p1", "on": False})
     assert r == {"error": "Couldn't reach the plug."} and mod.plugs["p1"]["on"] is True   # not shown as switched
+
+
+async def test_a_plug_on_pips_network_is_switched_directly_and_the_rest_through_the_cloud(tmp_path, monkeypatch):
+    reg, mod, fake = setup(tmp_path, monkeypatch, {"a": ("Desk plug", False, True), "b": ("Fan plug", False, True)})
+    await mod.refresh()
+    commands = lambda: sum(r.url.path.endswith("/commands") for r in fake.seen)  # noqa: E731
+    mod.local.near["a"] = False
+    announce(mod, "a")
+    announce(mod, "b", ip="10.65.1.9")                  # not on Pip's network (the campus): ignored
+    mod.heard(b"not a plug", "10.47.0.30")
+    assert set(mod.found) == {"a"} and mod.found["a"] == {"ip": "10.47.0.20", "version": "3.4"}
+    await mod.switch("a", True)
+    assert mod.local.sent == [("a", True, "KEY-a")] and commands() == 0 and mod.plugs["a"]["on"] is True
+    await mod.switch("b", True)                         # not found on Pip's network: the cloud
+    assert commands() == 1 and fake.plugs["b"][1] is True
+    del mod.local.near["a"]                             # unplugged, or moved away: the cloud, until heard again
+    await mod.switch("a", False)
+    assert commands() == 2 and "a" not in mod.found
+
+
+async def test_everything_switches_every_plug_and_says_which_it_couldnt_reach(tmp_path, monkeypatch):
+    reg, mod, fake = setup(tmp_path, monkeypatch, {"a": ("Desk plug", True, True), "b": ("Fan plug", True, True),
+                                                   "c": ("Heater", True, True)})
+    await mod.refresh()
+    mod.local.near["a"] = True
+    announce(mod, "a")
+    act = reg.action("plug")
+    for said in ("everything", "all the plugs", "all the lights"):
+        assert act.check({"do": "plug", "name": said, "on": False}, Call())[0] == "*"
+    said = await act.do(act.check({"do": "plug", "name": "everything", "on": False}, Call()), Call())
+    assert said == "All 3 plugs are off." and not any(p["on"] for p in mod.plugs.values())
+    del fake.plugs["c"]                                 # the cloud now fails for the heater
+    said = await act.do(act.check({"do": "plug", "name": "all", "on": True}, Call()), Call())
+    assert said == "The rest are on, but I couldn't reach Heater."
+
+
+async def test_plugs_on_pips_network_are_checked_directly_and_keys_stay_private(tmp_path, monkeypatch, caplog):
+    reg, mod, fake = setup(tmp_path, monkeypatch, {"a": ("Desk plug", False, True)})
+    published = []
+
+    async def publish(kind, data=None, private=None):
+        published.append((kind, data, private))
+    mod.ctx.publish = publish
+    await mod.refresh()
+    mod.local.near["a"] = True                          # switched by its own button
+    announce(mod, "a")
+    monkeypatch.setattr("asyncio.sleep", _once())
+    with pytest.raises(StopAsyncIteration):
+        await mod._check()
+    assert mod.plugs["a"]["on"] is True and published[-1][0] == "changed"
+    fake.plugs["a"] = ("Desk plug", False, True)        # the cloud's list lags behind: the direct check wins
+    await mod.refresh()
+    assert mod.plugs["a"]["on"] is True
+    everything = repr(published) + caplog.text + repr(reg.summary(Call())) + repr(mod.home())
+    assert "KEY-" not in everything
+
+
+def _once():
+    """asyncio.sleep that lets a background loop run once, then stops it."""
+    calls = []
+
+    async def sleep(_):
+        calls.append(1)
+        if len(calls) > 1:
+            raise StopAsyncIteration
+    return sleep
+
+
+def test_a_real_announcement_is_read_with_tinytuya():
+    import tinytuya
+    from tinytuya.core import udp_helper
+    from pip_assistant.modules.tuya.module import Local
+    raw = json.dumps({"gwId": "abc", "ip": "10.47.0.5", "version": "3.3"}).encode()
+    sealed = tinytuya.AESCipher(udp_helper.udpkey).encrypt(raw, False)
+    msg = tinytuya.pack_message(tinytuya.TuyaMessage(0, 0x13, 0, b"\0\0\0\0" + sealed, 0, True,
+                                                     tinytuya.PREFIX_55AA_VALUE, False))
+    assert Local.decrypt(msg)["gwId"] == "abc"

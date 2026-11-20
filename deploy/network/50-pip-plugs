@@ -1,0 +1,13 @@
+#!/bin/sh
+# Lets the plugs' own network (pip-plugs, D-139) reach the internet through the cable. Docker blocks traffic
+# passing through the Pi unless its DOCKER-USER chain lets it; this adds the two rules when the Wi-Fi comes up.
+# Only needed if a phone on pip-plugs can't open a web page. Install once (it then runs by itself):
+#     sudo install -m 755 ~/pip/deploy/network/50-pip-plugs /etc/NetworkManager/dispatcher.d/
+#     sudo /etc/NetworkManager/dispatcher.d/50-pip-plugs wlan0 up
+# NetworkManager runs it with the interface and what happened ("wlan0 up").
+[ "${1:-}" = wlan0 ] && [ "${2:-}" = up ] || exit 0
+iptables -N DOCKER-USER 2>/dev/null || true   # (Docker keeps a chain that's already there)
+iptables -C DOCKER-USER -i wlan0 -o eth0 -j ACCEPT 2>/dev/null ||
+    iptables -I DOCKER-USER -i wlan0 -o eth0 -j ACCEPT
+iptables -C DOCKER-USER -i eth0 -o wlan0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null ||
+    iptables -I DOCKER-USER -i eth0 -o wlan0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
