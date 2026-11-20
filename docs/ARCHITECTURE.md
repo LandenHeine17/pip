@@ -108,7 +108,7 @@ sequenceDiagram
 
 ## 5. Why "stop" and alarms always work
 
-- **Talking over Pip stops him inside pip-ears**, before anything is understood: no internet, no AI, no waiting. Only a voice does it (D-122), and since D-128 his voice first drops for about half a second: if the voice keeps going he stops, if it was a short laugh or "yeah" he carries on. Then what you said is understood: "stop", "shut up", "never mind" get silence and he goes back to idle (D-105); anything else is answered. While an alarm rings, "stop" and "snooze" work instantly on the Pi (D-94), and "Hey Pip" quiets it at once: what's said next decides ("snooze" snoozes; anything else, or nothing for 20 s, stops it).
+- **Talking over Pip stops him inside pip-ears**, before anything is understood: no internet, no AI, no waiting. Only a voice does it (D-122), and since D-128 his voice first drops for about half a second: if the voice keeps going he stops, if it was a short laugh or "yeah" he carries on. Then what you said is understood: "stop", "shut up", "never mind" get silence and he goes back to idle (D-105); anything else is answered. While an alarm rings, "stop" and "snooze" work instantly on the Pi (D-94), and his name alone ("Hey Pip") quiets it at once: what's said next decides ("snooze" snoozes; anything else, or nothing for 20 s, stops it).
 - **Alarms** live in the core's scheduler, which never does slow work itself: thinking happens in pip-thinker, and network calls have short timeouts. When an alarm is due, the core tells pip-ears to ring, and pip-ears plays it even if the core then gets stuck. A missed heartbeat makes the watchdog restart the stuck program (PIP-NEW-079).
 - **Timers and alarms survive restarts and power cuts**: they're saved in the database the moment they're created.
 
@@ -130,10 +130,10 @@ What else leaves the Pi:
 | To | What | When |
 |---|---|---|
 | Groq | Audio of everything said in the room while Pip is listening, plus the household's first names as spelling hints | As it happens |
-| Claude | The room transcript (last 40 lines), memories, what's set, the last day's conversation notes (D-128), the smart plugs and whether each is on, the calendar's today and tomorrow plus counts for the week (the rest only when Claude looks it up, D-102) and open to-dos (only what the speaker may hear; never private events or ignored calendars), the allowed actions. Join-in checks get only the rest of today | Each answer, mention or join-in check (at most every ~40 s) |
+| Claude | The room transcript (last 40 lines), memories (those about one person only when they're in the conversation, D-137), what's set, the last day's conversation notes (D-128), the home devices (each one's kind, nicknames and whether it's on, D-140), the calendar's today and tomorrow plus counts for the week (the rest only when Claude looks it up, D-102) and open to-dos (only what the speaker may hear; never private events or ignored calendars), the allowed actions. Join-in checks get only the rest of today | Each answer, mention or join-in check (about every 15 s in the default "chatty" mood, D-136) |
 | Open-Meteo | "Lincoln, Nebraska" | Weather updates |
-| Tuya's cloud (smart plugs, D-132, D-139) | Which plug to switch on or off, for a plug not on Pip's own network; the list of plugs, their local keys and whether each is on | When such a plug is switched, and every 10 minutes |
-| The plugs on Pip's own network (`pip-plugs`, D-139) | Switch on or off; are you on? (directly, never leaving the Pi's network) | When a plug is switched, and every 30 s |
+| Tuya's cloud (home devices, D-132, D-139, D-140) | Which device to switch on or off, for one not on Pip's own network; a request for the list of devices (Tuya sends back their names, local keys, MAC addresses and whether each is on) | When such a device is switched, and every 10 minutes |
+| The plugs on Pip's own network (`pip-plugs`, D-139, D-140) | Switch on or off; are you on? (directly, never leaving the Pi's network) | When a plug is switched, and every 30 s |
 | Brave Search | The search words Claude chose (the websearch module, D-125; needs the owner's key) | Only when Claude looks something up on the web |
 | Google | For each person who connected their account (D-97): their calendar events and to-dos, both ways (D-98, D-100). Private events are kept on the Pi too but never told to Claude | Every ~2 min, and straight after a change |
 | Claude (self-changes) | The request, Pip's code (the workspace copy) and the plan; never `~/pip-data` | When a change is planned or built (D-118) |
@@ -141,7 +141,7 @@ What else leaves the Pi:
 
 ## 7. Modules: how features plug in
 
-Every new feature is a **module**: a folder with a short description file and a little code. Pip finds modules automatically at startup (D-96, built 2026-11-07). This is the main way Pip grows, whether the module is written by you, by Claude, or by Pip's own self-change. Today: **google** (accounts), **calendar**, **todos**, **screen** (what's on the monitor, D-111), **websearch** (D-125), **six_seven** (Pip's first self-change, D-121), **recall** (conversation notes, D-128) and **tuya** (the smart plugs: directly on Pip's own Wi-Fi network, else through Tuya's cloud, D-132, D-139). (The older built-in parts, like timers and memory, live in pip-core.)
+Every new feature is a **module**: a folder with a short description file and a little code. Pip finds modules automatically at startup (D-96, built 2026-11-07). This is the main way Pip grows, whether the module is written by you, by Claude, or by Pip's own self-change. Today: **google** (accounts), **calendar**, **todos**, **screen** (what's on the monitor, D-111), **websearch** (D-125), **six_seven** (Pip's first self-change, D-121), **recall** (conversation notes, D-128) and **home_control** (home control: the lamps and the fan on smart plugs, directly on Pip's own Wi-Fi network, else through Tuya's cloud, D-132, D-139, D-140). (The older built-in parts, like timers and memory, live in pip-core.)
 
 ### 7.1 Kinds of module
 
@@ -150,7 +150,7 @@ Every new feature is a **module**: a folder with a short description file and a 
 | **Skill** | Things Pip can do or answer | calendar, todos, recall, six_seven, the template's dice |
 | **Widget** | Boxes on the TV screen | screen (the layout and its boxes); any module can also add a kind of box (`[monitor.<kind>]`) |
 | **Provider** | A service Pip or other modules use | google (accounts), websearch (look-ups) |
-| **Device** | A kind of device (M3) | tuya (the plugs: local Tuya on Pip's own network, else Tuya's cloud, D-132, D-139); later ESPHome over MQTT |
+| **Device** | A kind of device (M3) | home_control (the lamps and the fan on smart plugs: local Tuya on Pip's own network, else Tuya's cloud, D-132, D-139, D-140); later ESPHome over MQTT |
 | **Plugin** | Anything else, with declared permissions | none yet |
 
 ### 7.2 What a module looks like
@@ -220,7 +220,7 @@ flowchart LR
 | `actions` | ACTION verbs Claude may use (checked first, then done) | add, change, cancel an event; look further ahead |
 | `summary(call)` | its part of what Claude reads with each request | today, tomorrow, the calendars' names |
 | `offline()` | its own phrases for when Pip is offline, and items the shared "move it", "cancel that" rules can change (`OfflineItems`) | "put the dentist on the calendar Friday at 3" (`offline.py`) |
-| `home()` | a card on the dashboard's front page: dated items, or things with an On/Off button | the next two weeks (calendar); the smart plugs (tuya) |
+| `home()` | a card on the dashboard's front page: dated items, or things with an On/Off button | the next two weeks (calendar); the lamps and the fan (home_control) |
 | `tv(shown)` + `[monitor.<kind>]` + `static/monitor.js` | a kind of box on the monitor: the screen module learns it at startup, the module sends its data and draws it | today's and tomorrow's shared events |
 | `room_heard(text, call)` | hears everything said (room talk, or to or about Pip: `call.kind`) and may answer with something for Pip to say, instead of Claude for speech to him; may ask the monitor's face for a reaction (`ctx.publish("reaction", …)`). Offered at any hour; said only when Pip is free to talk; the module keeps nothing of the words | the six-seven chant and freak-out |
 | `room_may_see(alert)` | whether a heads-up may show on the room's monitor | not for an event Pip mayn't mention to everyone |
@@ -234,7 +234,7 @@ flowchart LR
 
 What a module gets (its **context**), and nothing more: its settings (`[modules.<name>]` in `~/pip-data/settings.toml` overrides the defaults; `enabled = false` switches it off); **its own tables** in `pip.db`, named `<name>_…` (`ctx.db()`: reading or writing any other table is refused, and so are triggers, views, attached databases and PRAGMAs that change the file); **its own section of `secrets.toml`**; an internet client limited to the hosts in its permissions; **heads-ups for its own items** (`ctx.alerts`: add, cancel, not pip-core's whole schedule); **who's in the household** (`ctx.people`: id, name and role only, never voices); whether Pip is online; the kinds of box every module adds to the monitor (`ctx.boxes`, for the screen module); one-off conversation notes from Claude (`ctx.summarize`, only with the `claude:summarize` permission); its own events (`ctx.publish`, sent as `module.<name>.<kind>`); and the small `api` of each module it `needs`. A background job (`tasks()`) that fails is started again after 30 s, then longer, up to 10 minutes (`Registry._guard`). Its requests from the dashboard and its events travel privately (never logged).
 
-**Keep what Claude reads short** (D-102): it goes with every request, including join-in checks every ~40 s. A module's summary is told whether it's for a join-in check (`call.kind == "join"`) and should send even less then. Anything bigger is a **look-up**: the module declares an action `look:<kind>`, Claude replies `ACTION {"do": "look", "kind": …}`, Pip fetches it and asks Claude again with the result (once). An action that has to wait for the internet (e.g. making a Google calendar) may be `async`. A module that adds columns to its own tables later uses `ALTER TABLE` on its own tables (allowed); test it against an old database too.
+**Keep what Claude reads short** (D-102): it goes with every request, including join-in checks every ~15 s (D-136). A module's summary is told whether it's for a join-in check (`call.kind == "join"`) and should send even less then. Anything bigger is a **look-up**: the module declares an action `look:<kind>`, Claude replies `ACTION {"do": "look", "kind": …}`, Pip fetches it and asks Claude again with the result (once). An action that has to wait for the internet (e.g. making a Google calendar) may be `async`. A module that adds columns to its own tables later uses `ALTER TABLE` on its own tables (allowed); test it against an old database too.
 
 A **template** module with a worked example of every part (dice: Claude's action, an offline phrase, a dashboard page and card, a box on the monitor, tests) is in `pip_assistant/modules/_template/`. Adding a feature means copying it and keeping what you need; the step-by-step recipe is in [HOW-PIP-WORKS.md](HOW-PIP-WORKS.md) ("Making a module"). Pip's self-changes are told to do the same.
 
@@ -248,7 +248,7 @@ The voice engine is a setting: `voice_engine` under `[ears]` in `defaults.toml` 
 |---|---|---|
 | `~/pip` (repo) | All code, modules, default settings, docs | Yes (public-safe) |
 | `~/pip-data/settings.toml` | Your settings (location, room, mode, voice…), written by the Settings page | **No** |
-| `~/pip-data/secrets.toml` | API keys, and each module's own section (`[google]`: the Google client and each connected person's sign-in key; `[websearch]`, `[tuya]`, `[plugs_wifi]`). Only pip-core reads it (`core/stt.py` for the Groq key; modules through `core/modules.py`); a module only ever sees its own section | **No** |
+| `~/pip-data/secrets.toml` | API keys, and each module's own section (`[google]`: the Google client and each connected person's sign-in key; `[websearch]`, `[home_control]`, `[plugs_wifi]`). Only pip-core reads it (`core/stt.py` for the Groq key; modules through `core/modules.py`), plus `deploy/plug-network.sh` for `[plugs_wifi]`; a module only ever sees its own section | **No** |
 | `~/pip-data/pip.db` | One SQLite database: memories, people and voice profiles, timers/reminders, the Listening switches and preferences, the 48-hour decision trace, each module's own tables (`calendar_…`, `todos_…`, `google_…`, `screen_…`, `recall_notes`), self-changes (`builder_changes`) and the usage meter (`usage`) | **No** |
 | `~/pip-data/models/` | The voice recognition model (`speaker/`) and Pip's Piper voice (`voices/`). | **No** |
 | `~/pip-app/` | The live copy Pip runs from (§10): `releases/<id>/` (one folder per installed version, with its own `.venv`), `current` (a link to the running one), `release-state.json`, `release.log` | **No** |
@@ -326,7 +326,7 @@ flowchart TD
 | **PipeWire's `pw-record` / `pw-play`** | Simple, proven with the speakerphone in M0; stopping playback is instant |
 | **Piper** voice | 0.3 s to start speaking *(M0)*; the engine is swappable, but Kokoro isn't built |
 | **Groq Whisper Turbo + word list** | Best in M0 (D-48); local Whisper as the offline fallback |
-| **Claude Code CLI** (Pro plan) | D-05, D-17; one fresh session per request |
+| **Claude Code CLI** (Pro plan) | D-05, D-17; one fresh session per request; Opus at low effort (D-137, chosen with `tools/model_compare.py`) |
 | **llama-cpp-python + Qwen 2.5 1.5B** | Offline fallback (D-75); tested in M0, not built into Pip yet |
 | **systemd** services and sandbox, plus `unshare` | Already on the Pi; restarts, memory caps and the M0-tested sandbox; `unshare` (no root needed) takes the network and home folder away from self-change tests |
 
@@ -342,10 +342,10 @@ pip/                          (the repo)
 │   ├── builder/              pip-builder (the self-change pipeline: store, sandbox, agent, pipeline)
 │   ├── release.py            versioned installs with automatic rollback (run with the system python3)
 │   ├── common/               shared bits: messages, settings, secrets, paths, db (opening pip.db), when (times)
-│   └── modules/              plug-in features: google, calendar, todos, screen, websearch, six_seven, recall, tuya (+ _template/)
+│   └── modules/              plug-in features: google, calendar, todos, screen, websearch, six_seven, recall, home_control (+ _template/)
 ├── models/                   generic, public-safe models
-├── deploy/                   systemd service files (deploy/systemd/, incl. pip-builder.service), install.sh (installs the committed HEAD as a release); the monitor's kiosk (deploy/tv/, install-tv.sh); https (install-https.sh)
-├── tools/                    the commit checks, and sandbox-test (tests with no network and no home folder)
+├── deploy/                   systemd service files (deploy/systemd/, incl. pip-builder.service), install.sh (installs the committed HEAD as a release); the monitor's kiosk (deploy/tv/, install-tv.sh); https (install-https.sh); the plugs' Wi-Fi network (plug-network.sh, network/)
+├── tools/                    the commit checks, sandbox-test (tests with no network and no home folder), and measuring tools (latency.py, model_compare.py, home_check.py)
 ├── tests/                    tests, sorted by the program they test (a module's own are next to it)
 ├── docs/                     PIP-SPEC, HOW-PIP-WORKS, ARCHITECTURE, DECISIONS, REQUIREMENTS, PROJECT-MAP
 └── m0/                       measurement tools (kept for re-runs)
@@ -389,7 +389,7 @@ Built in small steps. Each step ends with something you can try.
 
 **M2 built 2026-11-13 (D-128, D-129):** explaining himself (`core/selfknow.py`: the trace, settings, health, memories, his own docs and code; `common/capabilities.py`), conversation memory (the `recall` module, notes kept 30 days, written through the module-neutral `ctx.summarize` → `thinker.summarize`), smarter memory (contradictions flagged, "that was Sam, not me"), conversation polish (ducking in pip-ears, "hold on"; "Want the rest?" was removed again by D-130: he says the whole answer, and a long one can also go in a notes box), a richer face (expressions, corner icons from `face_status`, `[face]` appearance settings read by pip-web), and your data (`core/yourdata.py`; modules join in through `export_data`, `wipe_data` and `forget_person`). No new program. Not built, by the owner's choice: the offline Qwen fallback (D-75), spoken problem notices, Room-Aware mode.
 
-**M3 (smart home) started 2026-11-15:** the `tuya` module switches the smart plugs through Tuya's cloud, a stopgap until the Pi hosts a Wi-Fi network for them (D-132), with an On/Off card on the dashboard's front page (a new kind of `home()` card); and a chat box on the front page (D-131): typed messages go through `core.chat` → `Conversation.typed`, the same path as speech. **2026-11-19 (D-139):** the Pi on Ethernet hosts a Wi-Fi network for the plugs (`pip-plugs`, `deploy/plug-network.sh`); the `tuya` module switches a plug there directly (tinytuya), any other through the cloud, and "all" switches every plug.
+**M3 (smart home) started 2026-11-15:** a module (now `home_control`, D-140) switches the smart plugs through Tuya's cloud, a stopgap until the Pi hosts a Wi-Fi network for them (D-132), with an On/Off card on the dashboard's front page (a new kind of `home()` card); and a chat box on the front page (D-131): typed messages go through `core.chat` → `Conversation.typed`, the same path as speech. **2026-11-19 (D-139):** the Pi on Ethernet hosts a Wi-Fi network for the plugs (`pip-plugs`, `deploy/plug-network.sh`); the module switches a plug there directly (tinytuya), any other through the cloud, and "all" switches every plug. **D-140:** the module is renamed `home_control` (shown as Home; keys in secrets.toml `[home_control]`); plugs are found by their MAC address (protocol-3.5 plugs don't announce themselves), each device is a light, fan or plug, "the lights" switches every light but not the fan, and the module has its own Home page.
 
 **Review fixes (2026-11-16, D-133)**, from a review of the whole code, inside the existing programs:
 - **Typed messages and alarms:** a typed message is its own request (the `TYPED` context variable in `core/conversation.py`, `asker_now`, `typed_answers`), so Pip talking to the room meanwhile is unaffected and actions are done as the person picked; while ringing, typed "snooze" and "okay" work like spoken. "Hey Pip" quiets a ringing alarm (`Schedule.hush`, 20 s) and what's said next decides.
@@ -400,6 +400,8 @@ Built in small steps. Each step ends with something you can try.
 - **Deploy:** `pip-tv` waits for tty1 before starting, and `install-tv.sh` restarts it with `--no-block`; `install.sh` stops if the voice-recognition model can't be downloaded; `[web] allowed_hosts` lets the dashboard answer to other names.
 
 **Called by name, like Ziggletron (2026-11-16, D-134):** the wake-word detector is gone (`ears/wake.py`, the `models/wake/` detectors, openWakeWord and four settings). Everything said is transcribed and his name in the words calls him (`calls_pip` in `on_room`); with Groq's limit used up or offline, room talk is transcribed on the Pi so that still works. **Just his name** answers what was said in the 30 s before it (`said_before_name`, `Transcript.recent`, Claude's `name_after`). While an alarm rings, his name alone quiets it and what's said next decides (`Commands.while_ringing`, `hushed_until`). A joined turn waits by its newest piece; Claude's effort was set to low (in the owner's settings file).
+
+**More like Ziggletron (2026-11-17/18, D-135–D-137):** switching listening off by claps needs a quiet moment and short, close claps (refused ones traced as `mic.clap_ignored`); Claude's notes to itself before an answer are dropped (`thinker/claude.py`); the monitor gets a fresh browser at 4 am (`pip-tv-restart.timer`). After he speaks, anything said in the follow-up window, by anyone, is taken as said to him (`ask = "follow_up"`); joining in is welcomed, the default mood is chatty (~15 s), and "set chattiness to low / normal / high" (ACTION `set_chattiness`, kept in `prefs`) overrides it. Claude is now Opus at low effort (`tools/model_compare.py`); he answers at the pause (all turn waits 0.7 s), and if they go on before he speaks the answer is dropped and it's all asked as one (`reopen_turn`); what Claude reads follows Ziggletron's order and hints, with shorter rules and memories about one person only when they're in the conversation; talking speed 1.05.
 
 **A tidier conversation (2026-11-19, D-138):** one turn wait for everything that sounds finished (`turn_wait_seconds`; the three that were all 0.7 s since D-137 are gone), a look-up's second round asked the same way as the first, the join-in mood sent with the rest of the context, and repeated or unused code removed from `core/conversation.py`, `core/turns.py` and `thinker/`. The monitor's harmless cage lines are kept out of the journal (`pip-tv.service`).
 

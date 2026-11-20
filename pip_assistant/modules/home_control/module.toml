@@ -1,0 +1,49 @@
+# Home control (D-132, D-139, D-140): the lamps and the fan, each on a smart plug (Eightree, Tuya inside).
+# "Pip, turn on the lights", "turn off the desk lamp", "is the fan on?". Each plug on the Wi-Fi network the Pi
+# hosts for them (pip-plugs, deploy/plug-network.sh) is switched directly; any other through Tuya's cloud. The
+# cloud also gives the devices' names, keys and network addresses, so it's needed when Pip starts.
+# Needs the owner's Tuya developer project in ~/pip-data/secrets.toml:
+#   [home_control]   access_id = "..."   access_secret = "..."   region = "us"
+# The devices are the ones paired in the Smart Life app and linked to that project.
+
+name = "home_control"
+kind = "device"
+summary = "Home control: switches the lamps and the fan on and off (smart plugs; \"the lights\" means every lamp)."
+says_examples = ["Pip, turn on the lights", "turn off the desk lamp", "is the fan on?", "Pip, turn everything off"]
+offline = true                      # the plugs on Pip's network switch without the internet (once Pip has their keys)
+# Tuya's API hosts; and "lan:plugs": talking directly to the plugs inside plug_network below (not through ctx.http)
+permissions = ["network:openapi.tuyaus.com", "network:openapi-ueaz.tuyaus.com", "network:openapi.tuyaeu.com",
+               "network:openapi-weaz.tuyaeu.com", "network:openapi.tuyacn.com", "network:openapi.tuyain.com",
+               "lan:plugs"]
+needs = []
+
+[settings.nicknames]
+default = ""
+explain = "Other names for the devices, like: robo-lamp = desk lamp; Fan = fan, the fan. Hyphens don't matter (\"tv lamp\" is tv-lamp). A device with lamp, light or bulb in its name or nicknames is a light (\"the lights\" switches every light), one with fan a fan; \"everything\" switches them all."
+
+[settings.refresh_minutes]
+default = 10
+explain = "How often Pip asks Tuya's cloud for the list of devices (their names, and whether those not on Pip's own network are on)."
+
+[settings.check_seconds]
+default = 30
+explain = "How often Pip asks each device on his own network whether it's on, so one switched by its button or the Smart Life app shows within this long."
+
+[settings.plug_network]
+default = "10.47.0.0/24"
+explain = "The addresses of Pip's own Wi-Fi network for the plugs (pip-plugs, made by deploy/plug-network.sh). Only devices there are talked to directly."
+
+[dashboard]
+page = "index.html"
+label = "Home"
+
+[claude]
+instructions = """
+Home control: each message lists the home devices ("Home devices"), each with its kind (light, fan, plug), its
+nicknames and whether it's on. To switch, reply with ONLY:
+ACTION {"do": "plug", "name": "robo-lamp", "on": false}   ("on": true to turn on)
+"name" is a device's name from the list (pick the one that fits what they said: a nickname, a description like
+"the lamp by the TV"), or a group: "lights" (every light, never the fan), "fans", or "everything". "Turn on the
+lights" → "lights". Several particular devices: a JSON list of actions. Pip's code does it and says so.
+If they ask whether something is on, answer from the list.
+"""

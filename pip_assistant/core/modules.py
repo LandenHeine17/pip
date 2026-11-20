@@ -32,7 +32,7 @@ own section of secrets.toml; events it publishes (module.<name>.*); heads-ups fo
 voices); whether Pip is online; the clock; the modules it `needs` (their small `api`); the kinds of box
 every module adds to the monitor (`boxes`, for the screen module); and an HTTP client that can only reach
 the hosts its module.toml lists under permissions ("network:<host>"). A module that talks to devices on the
-local network itself declares that too ("lan:<what>", the tuya module's plugs): sockets aren't checked like
+local network itself declares that too ("lan:<what>", the home_control module's plugs): sockets aren't checked like
 the HTTP client, so the declaration is what a reviewer goes by. Nothing else of pip-core.
 """
 import asyncio

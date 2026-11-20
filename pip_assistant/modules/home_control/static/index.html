@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Home</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+.dev{display:flex;gap:12px;align-items:center;padding:12px;border-radius:12px;background:var(--soft);margin-bottom:8px}
+.dev .icon{font-size:1.5rem;width:1.8em;text-align:center}
+.dev .main{flex:1;min-width:0}
+.dev .name{font-weight:700}
+.dev .meta{color:var(--muted);font-size:.84rem}
+.dev .state{font-weight:700;min-width:4.5em;text-align:right}
+.dev .state.on{color:var(--good)}
+.dev.offline{opacity:.6}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+.chip{padding:4px 10px;border-radius:999px;background:var(--soft);font-size:.86rem}
+h2{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:18px 0 6px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+    <div><h1>Home</h1><div class="sub">The lamps and the fan Pip switches (smart plugs, D-132, D-139, D-140)</div></div></div>
+</header>
+<section>
+  <div id="list"><div class="empty">Loading…</div></div>
+
+  <h2>Groups</h2>
+  <div id="groups" class="sub"></div>
+
+  <h2>Things to say</h2>
+  <div class="row">
+    <span class="chip">"Pip, turn on the lights"</span><span class="chip">"turn off the desk lamp"</span>
+    <span class="chip">"is the fan on?"</span><span class="chip">"Pip, turn everything off"</span>
+  </div>
+  <div class="sub">Pip knows each device by its name in the Smart Life app, and by the other names in
+    <a href="/settings">Settings → home_control</a> (nicknames). A device with lamp, light or bulb in its names is a light;
+    "the lights" switches every light, never the fan.</div>
+
+  <h2>How Pip reaches them</h2>
+  <div id="net" class="sub"></div>
+</section>
+</main>
+<script src="/pip.js"></script>
+<script>
+const ICON = {light: "💡", fan: "🌀", plug: "🔌"};
+function ago(t, now) {
+  if (!t) return "never";
+  const s = Math.max(0, Math.round(now - t));
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  return new Date(t * 1000).toLocaleString([], {weekday: "short", hour: "numeric", minute: "2-digit"});
+}
+async function load() {
+  const r = await pip.act(pip.get("list"));
+  if (!r) return;
+  $("list").innerHTML = r.devices.map(d => {
+    const state = !d.online ? "offline" : d.on ? "on" : "off";
+    const how = d.direct ? `directly on pip-plugs (${esc(d.ip)}, protocol ${esc(d.version || "?")})`
+                         : "through Tuya's cloud (not on pip-plugs)";
+    return `<div class="dev ${d.online ? "" : "offline"}">
+      <span class="icon">${ICON[d.kind] || ICON.plug}</span>
+      <div class="main"><div class="name">${esc(d.name)}</div>
+        <div class="meta">${esc(d.kind)}${d.also.length ? " · also " + esc(d.also.join(", ")) : ""}</div>
+        <div class="meta">${how} · checked ${esc(ago(d.checked, r.now))}${d.switched ? " · switched by Pip " + esc(ago(d.switched, r.now)) : ""}</div></div>
+      <span class="state ${state}">${state}</span>
+      <button data-id="${esc(d.id)}" data-on="${d.on ? "false" : "true"}" ${d.online ? "" : "disabled"}>${d.on ? "Turn off" : "Turn on"}</button>
+    </div>`;
+  }).join("") || `<div class="empty">No devices yet. They appear once Pip has fetched them from Tuya's cloud (keys in secrets.toml [home_control]).</div>`;
+  $("groups").innerHTML = Object.entries(r.groups).map(([g, names]) =>
+    `<div><b>"${esc(g)}"</b>: ${esc(names.join(", "))}</div>`).join("");
+  $("net").innerHTML = `${r.direct} of ${r.devices.length} on Pip's own Wi-Fi network, pip-plugs (${esc(r.network)}), switched directly
+    without the internet; the rest through Tuya's cloud. The list of devices was last fetched from the cloud ${esc(ago(r.cloud_checked, r.now))}.
+    A device paired onto pip-plugs in the Smart Life app is found within a few minutes.`;
+}
+document.addEventListener("click", async ev => {
+  const b = ev.target.closest("button[data-id]"); if (!b) return;
+  b.disabled = true;
+  if (await pip.act(pip.post("switch", {id: b.dataset.id, on: b.dataset.on === "true"}))) load();
+  b.disabled = false;
+});
+pip.live(load);
+load();
+</script>
+</body>
+</html>

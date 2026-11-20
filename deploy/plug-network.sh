@@ -1,7 +1,7 @@
 #!/bin/sh
 # The smart plugs' own Wi-Fi network (D-139): the Pi reaches the internet through its Ethernet cable, and its
 # Wi-Fi hosts a small 2.4 GHz network, "pip-plugs", that only the plugs (and a phone, while pairing one) join.
-# On it, Pip switches the plugs directly (modules/tuya), which the campus Wi-Fi doesn't allow (test tuya-plug).
+# On it, Pip switches the plugs directly (modules/home_control), which the campus Wi-Fi doesn't allow (test tuya-plug).
 #
 #     sh ~/pip/deploy/plug-network.sh             set it up (once; again is harmless)
 #     sh ~/pip/deploy/plug-network.sh --dry-run   only show what it would do

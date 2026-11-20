@@ -12,7 +12,9 @@ BUILT_IN = [
     "timers, alarms and reminders, in any words (snooze, move, change, cancel; while ringing just say stop or snooze)",
     "remembering lasting things people tell you to remember, and forgetting or correcting them",
     "knowing people by their voice (they learn their voice on the dashboard)",
-    "listening to the room's conversation and joining in now and then",
+    "listening to the room's conversation and joining in now and then (how often is set by voice: "
+    "\"set chattiness to low, normal or high\")",
+    "answering what's typed in the dashboard's chat box, like the same words said out loud",
     "the monitor: your face, captions, and boxes people can ask to show",
     "the weather where you live",
     "being switched off: the dashboard's Listening switch, or two claps",
