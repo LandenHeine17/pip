@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Video</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+.now{display:flex;gap:14px;align-items:center;padding:12px;border-radius:12px;background:var(--soft)}
+.now img{width:160px;aspect-ratio:16/9;object-fit:cover;border-radius:8px;flex-shrink:0}
+.now .main{flex:1;min-width:0}
+.now .title{font-weight:700}
+.now .meta{color:var(--muted);font-size:.84rem;margin-top:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.chip{padding:4px 10px;border-radius:999px;background:var(--soft);font-size:.86rem}
+form{display:flex;gap:8px;margin:6px 0}
+form input{flex:1;min-width:0}
+h2{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:18px 0 6px}
+#said{min-height:1.2em;color:var(--muted);font-size:.9rem;margin-top:6px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+    <div><h1>Video</h1><div class="sub">YouTube videos on the monitor (D-141)</div></div></div>
+</header>
+<section>
+  <div id="now"><div class="empty">Loading…</div></div>
+  <div class="row" id="buttons"></div>
+  <div id="said"></div>
+
+  <h2>Put a video up</h2>
+  <form id="find"><input id="query" placeholder="What should it be about?" maxlength="200" autocomplete="off"><button>Find</button></form>
+  <div id="key" class="sub"></div>
+
+  <h2>Things to say</h2>
+  <div class="row">
+    <span class="chip">"Pip, pull up a YouTube video explaining matrix multiplication"</span>
+    <span class="chip">"Pip, pause the video"</span><span class="chip">"Pip, play"</span>
+    <span class="chip">"Pip, fast forward a minute"</span><span class="chip">"Pip, go back"</span>
+    <span class="chip">"Pip, go to 4:30"</span><span class="chip">"Pip, start it over"</span>
+    <span class="chip">"Pip, louder" / "quieter"</span><span class="chip">"Pip, a different one"</span>
+    <span class="chip">"Pip, take down the video"</span>
+  </div>
+  <div class="sub">Say his name with each: said like this, they're done at once, without asking Claude. "Stop the video"
+    pauses it. While Pip is listening or talking the video plays quieter (<a href="/settings">Settings → youtube</a>).
+    The video covers the monitor with Pip's face small beside it; taking it down puts the screen back as it was.
+    Nothing is kept: Pip restarting takes the video down.</div>
+</section>
+</main>
+<script src="/pip.js"></script>
+<script>
+const time = (s) => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = String(s % 60).padStart(2, "0");
+                      return h ? `${h}:${String(m).padStart(2, "0")}:${x}` : `${m}:${x}`; };
+function show(r) {
+  const v = r.video;
+  $("now").innerHTML = v ? `<div class="now"><img src="https://i.ytimg.com/vi/${encodeURIComponent(v.id)}/mqdefault.jpg" alt="">
+      <div class="main"><div class="title">${esc(v.title)}</div><div class="meta">${esc(v.channel)}</div>
+      <div class="meta">${v.playing ? "Playing" : "Paused"} at about ${time(v.position)} of ${time(v.seconds)} · volume ${v.volume}
+      ${r.more ? ` · ${r.more} more found` : ""}</div></div></div>`
+    : `<div class="empty">No video up.</div>`;
+  const b = (op, label, s) => `<button data-op="${op}"${s ? ` data-s="${s}"` : ""}>${label}</button>`;
+  $("buttons").innerHTML = !v ? "" : [v.playing ? b("pause", "Pause") : b("play", "Play"), b("back", `− ${r.skip} s`),
+    b("forward", `+ ${r.skip} s`), b("restart", "From the start"), b("quieter", "Quieter"), b("louder", "Louder"),
+    r.more ? b("next", "A different one") : "", b("close", "Take it down")].join("");
+  $("key").textContent = r.has_key ? "" : "No YouTube key yet: add [youtube] api_key = \"…\" to ~/pip-data/secrets.toml, then restart Pip.";
+}
+async function load() { const r = await pip.act(pip.get("status")); if (r) show(r); }
+document.addEventListener("click", async (ev) => {
+  const btn = ev.target.closest("button[data-op]"); if (!btn) return;
+  btn.disabled = true;
+  const r = await pip.act(pip.post("control", { op: btn.dataset.op }));
+  if (r) { show(r); $("said").textContent = r.said || ""; }
+  btn.disabled = false;
+});
+$("find").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const q = $("query").value.trim(); if (!q) return;
+  $("said").textContent = "Looking…";
+  const r = await pip.act(pip.post("play", { query: q }));
+  if (r) { show(r); $("said").textContent = r.said || ""; $("query").value = ""; }
+  else $("said").textContent = "";
+});
+pip.live(load);
+load();
+</script>
+</body>
+</html>

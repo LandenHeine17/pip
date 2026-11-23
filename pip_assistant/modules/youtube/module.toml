@@ -1,0 +1,56 @@
+# YouTube videos on the monitor (D-141): "Pip, pull up a YouTube video explaining matrix multiplication".
+# Claude turns the request into a search; this module asks YouTube for the best video that's allowed to play outside
+# YouTube, and covers the monitor with it (Pip's face shrinks beside it). Pause, play, fast forward, go back, go to a
+# time, louder, quieter, a different one and "take down the video" are done at once, without Claude. The video plays
+# through the speakerphone, which takes it back out of what the microphone hears, like Pip's own voice; while Pip is
+# listening or talking it plays quieter. Keeps nothing: what's up is in memory only.
+# Needs a YouTube Data API key (Google Cloud, free: about 100 searches a day) in ~/pip-data/secrets.toml:
+#   [youtube]   api_key = "..."
+
+name = "youtube"
+kind = "skill"
+summary = "Finds YouTube videos and plays them on the monitor, with pause, fast forward, go to a time and take down by voice."
+says_examples = ["Pip, pull up a YouTube video explaining matrix multiplication", "Pip, pause the video",
+                 "Pip, fast forward a minute", "Pip, go to 4:30", "Pip, take down the video"]
+offline = false                     # finding and playing videos needs the internet
+permissions = ["network:www.googleapis.com"]   # the search; the monitor's browser plays the video from YouTube itself
+needs = ["screen"]                  # to cover the monitor with the video, and put the screen back after
+
+[settings.skip_seconds]
+default = 10
+explain = "How far \"fast forward\" and \"go back\" move when you don't say how far, in seconds."
+
+[settings.volume]
+default = 70
+explain = "The video's volume when it starts (0 to 100). \"Louder\" and \"quieter\" change it by 15."
+
+[settings.duck_volume]
+default = 15
+explain = "The video's volume while Pip is listening to you, thinking or talking (0 to 100), so you can hear each other."
+
+[settings.safe_search]
+default = "moderate"
+explain = "YouTube's SafeSearch for the videos Pip finds: none, moderate or strict."
+
+[settings.results]
+default = 5
+explain = "How many videos each search finds: \"a different one\" goes to the next of them."
+
+[claude]
+instructions = """
+YouTube: only when they ask for a video, reply with ONLY: ACTION {"do": "play_video", "query": "matrix multiplication \
+explained"} (a good YouTube search for what they want). It goes up on the monitor and Pip says which video it is. While a \
+video is up (a line says so): ACTION {"do": "video", "op": "pause"} (op: pause, play, forward, back, go_to, restart, \
+louder, quieter, next (a different video), close (take it down); "seconds": how far for forward and back, the time for \
+go_to). "Stop the video" means pause.
+"""
+
+[monitor.video]                     # the video's box: put up and taken down by this module (screen api cover/uncover)
+label = "Video"
+size = [9, 8]
+once = true
+aliases = ["youtube", "youtube video"]
+
+[dashboard]
+page = "index.html"
+label = "Video"

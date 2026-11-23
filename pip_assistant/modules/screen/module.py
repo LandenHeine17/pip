@@ -6,6 +6,8 @@ dashboard, and keeping it all in pip.db. Each change publishes module.screen.cha
 "what can go on the screen?") with "layout": true, which pip-web passes on to the monitor; the monitor then
 fetches what it shows (core/dashapi.py tv_snapshot: the layout from tv_layout() here, and each box's data
 from the module that adds that kind of box). Other modules' kinds of box arrive in ctx.boxes (add_kinds).
+
+Other modules may cover the screen with one of their boxes for a while (`api`, ScreenApi below: a video, D-141).
 """
 import asyncio
 import json
@@ -32,6 +34,7 @@ class ScreenModule(Module):
         self.actions = {verb: Action(self.check, self.do) for verb in
                         ("show_screen", "save_screen", "delete_screen", "add_box", "remove_box", "move_box",
                          "change_box", "arrange_screen", "undo_screen", "screen_fix", "screen_options")}
+        self.api = ScreenApi(self)   # what other modules that `need` the screen may use
 
     # ---------------------------------------------------------------- keeping it
     def _keep(self) -> None:
@@ -41,7 +44,7 @@ class ScreenModule(Module):
     def _changed(self, kind: str = "changed") -> None:
         """Save, and tell pip-web: the monitor reloads what it shows. Only box kinds travel (no names or notes)."""
         self._keep()
-        data = {"layout": True, "boxes": [s["type"] for s in self.screen.view["sections"]], "room": self.screen.room_talk()}
+        data = {"layout": True, "boxes": [s["type"] for s in self.screen.shown["sections"]], "room": self.screen.room_talk()}
         try:
             asyncio.get_running_loop().create_task(self.ctx.publish(kind, data))
         except RuntimeError:   # no loop running (tests)
@@ -168,6 +171,30 @@ class ScreenModule(Module):
             self._changed()
         return {"showing": s.name, "view": s.view, "screens": s.list_screens(), "can_undo": bool(s.history),
                 "palette": s.for_tv()["palette"], "summary": describe(s.view)}
+
+
+class ScreenApi:
+    """What other modules may do with the screen (they list "screen" in their module.toml's `needs`).
+
+    cover(kind)      cover the monitor with one box of that kind, the face shrunk beside it (a video, D-141).
+                     Not kept: Pip restarting takes it off. The screens underneath can still be changed meanwhile.
+    uncover(kind)    take it off again: the screen shows as it was (with any changes made meanwhile)
+    covered()        the kind of box covering the screen, or None
+    """
+
+    def __init__(self, screen: ScreenModule):
+        self._m = screen
+
+    def cover(self, kind: str) -> None:
+        self._m.screen.put_cover(kind)
+        self._m._changed()
+
+    def uncover(self, kind: str) -> None:
+        if self._m.screen.take_cover_off(kind):
+            self._m._changed()
+
+    def covered(self) -> str | None:
+        return (self._m.screen.cover or {}).get("kind")
 
 
 def _sentence(e: Exception) -> str:

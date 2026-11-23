@@ -160,7 +160,7 @@ class Module:
     def room_heard(self, text: str, call: Call) -> str | None:
         """A sentence heard: room talk (call.kind "room"), or said to Pip ("direct") or about him ("mentioned"),
         except the rest of a turn he's waiting on. Return something for Pip to say (for speech to Pip, instead of
-        asking Claude), or None. Pip says it only if he's free to talk. To make the monitor's face react, publish
+        asking Claude, even when he isn't free to say it: D-141), or None. Pip says it only if he's free to talk. To make the monitor's face react, publish
         ctx.publish("reaction", {"reaction": <a face reaction in tv.html, e.g. "pleased">}). Read the words and
         forget them: don't store or log what people said."""
         return None

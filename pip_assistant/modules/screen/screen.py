@@ -12,7 +12,7 @@ Every change is checked first. When something doesn't fit, nothing changes: Pip 
 import copy
 import re
 
-from .layout import COLS, FACES, LABELS, PLACE, ROWS, SIZES, arrange, clean_face, clean_place
+from .layout import COLS, FACES, LABELS, MIN_FACE, PLACE, ROWS, SIZES, arrange, clean_face, clean_place
 
 # Each kind of box, by the name people would use (the monitor lists them), and what it can be told. These are
 # the screen's own; other modules add theirs (the calendar, a to-do list) in their module.toml's
@@ -264,6 +264,9 @@ class Screen:
         self.name: str = s.get("name", "default")
         self.history: list = s.get("history", [])      # earlier [name, screen] pairs, newest last (undo)
         self.pending: dict | None = s.get("pending")  # a fix waiting for an okay: {"words", "name", "view"}
+        # A module's box covering the screen for a while (a video, D-141): {"kind", "view"}. It isn't a screen and isn't
+        # kept: the screens underneath can still be changed, and they show again as they are when it's taken off.
+        self.cover: dict | None = None
         if self.name not in self.views():
             self.name = "default"
 
@@ -276,6 +279,27 @@ class Screen:
     @property
     def view(self) -> dict:
         return self.views()[self.name]
+
+    @property
+    def shown(self) -> dict:
+        """What the monitor shows: the cover if there is one, else the screen."""
+        return self.cover["view"] if self.cover else self.view
+
+    # -- a module's box covering the screen (D-141)
+    def put_cover(self, kind: str) -> dict:
+        """Cover the screen with one box of a module's `kind`: everything but the face, which shrinks to its
+        smallest and keeps the left edge (so you can still see him listening and talking)."""
+        if kind not in KINDS or kind in OWN_KINDS:
+            raise ScreenError(f"there's no {kind!r} kind of box")
+        box = {"type": kind, "x": MIN_FACE[0], "y": 0, "w": COLS - MIN_FACE[0], "h": ROWS}
+        self.cover = {"kind": kind, "view": make(KINDS[kind][0], "tiny", [box])}
+        return self.cover["view"]
+
+    def take_cover_off(self, kind: str) -> bool:
+        if not self.cover or self.cover["kind"] != kind:
+            return False
+        self.cover = None
+        return True
 
     def find_screen(self, name) -> str:
         n = clean_name(name)
@@ -479,14 +503,14 @@ class Screen:
 
     # -- for the monitor, the dashboard and Claude
     def for_tv(self) -> dict:
-        v = self.view
+        v = self.shown
         on = {s["type"] for s in v["sections"]}
         return {"name": self.name, "view": v, "palette": COLORS,
                 "kinds": [{"type": k, "label": label, "on": k in on} for k, (label, _) in KINDS.items()]}
 
     def room_talk(self) -> bool:
         """Room talk goes to the monitor only while a conversation box showing it is up (D-111)."""
-        return any(s["type"] == "conversation" and s.get("room", True) for s in self.view["sections"])
+        return any(s["type"] == "conversation" and s.get("room", True) for s in self.shown["sections"])
 
     def list_screens(self) -> list[dict]:
         return [{"name": n, "label": v["label"], "built_in": n in BUILT_IN, "changed": n in BUILT_IN and n in self.saved,
@@ -498,4 +522,7 @@ class Screen:
         out += " Screens: " + ", ".join(v["label"] for v in self.views().values()) + "."
         if self.pending:
             out += f" Waiting for an okay to: {self.pending['words']} (if they agree: {{\"do\": \"screen_fix\"}})."
+        if self.cover:
+            out += (f" For now the {KINDS[self.cover['kind']][0]} box covers the monitor (the face small beside it): "
+                    "changes to the screen show once it's taken off.")
         return out

@@ -111,7 +111,7 @@ class Echo:
         return "echo" if "echo" in text else None
 
 
-async def _room(tmp_path, quiet_hours, heard):
+async def _room(tmp_path, quiet_hours, heard, busy=False):
     import asyncio
 
     from helpers import finish, room, says
@@ -119,6 +119,8 @@ async def _room(tmp_path, quiet_hours, heard):
     reg = Registry()
     reg.modules["echo"] = echo = Echo()
     bus, conv, ears, got, asks, tasks = await setup(tmp_path, heard, modules=reg, social={"quiet_hours": quiet_hours})
+    if busy:
+        conv.answer_id = "an answer under way"   # not free to talk
     await ears.emit("heard.utterance", *room())
     await asyncio.sleep(0.2)
     out = says(got)
@@ -136,6 +138,13 @@ async def test_speech_to_pip_is_offered_too_and_a_modules_answer_replaces_claude
     assert echo.seen == [("pip, say echo", "direct")] and out == ["echo"] and not asks
     out, echo, asks = await _room(tmp_path, "", "pip, what time is it")   # no module answers: Claude does
     assert echo.seen == [("pip, what time is it", "direct")] and "echo" not in out
+
+
+async def test_a_modules_answer_to_pip_replaces_claude_even_while_he_is_busy(tmp_path):
+    """D-141: "Pip, pause the video" while he's answering something else: the module has already paused it, so Claude
+    isn't asked to do it again. It just isn't said. Room talk is unchanged: unsaid, and joining in carries on."""
+    out, echo, asks = await _room(tmp_path, "", "pip, say echo", busy=True)
+    assert echo.seen == [("pip, say echo", "direct")] and out == [] and not asks
 
 
 async def test_modules_are_asked_at_any_hour(tmp_path):

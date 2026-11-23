@@ -781,12 +781,17 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         """Offer something heard to the modules (room_heard, D-121): room talk, or something said to or about Pip
         (`how`: room / direct / mentioned). One may answer with something for him to say; for speech to Pip that
         answer replaces asking Claude. He says it only when he's free to talk (any hour: the owner, 2026-11-10);
-        a module can still react on the monitor's face when he isn't. Nothing is kept of the words."""
+        a module can still react on the monitor's face when he isn't. Nothing is kept of the words.
+
+        Said to Pip, a module's answer replaces Claude even when he isn't free to say it: the module may already have
+        done what was asked ("Pip, pause the video" while he's talking, D-141), and Claude mustn't do it again."""
         if self.modules is None:
             return False
         reply = self.modules.room_heard(text, Call(speaker=speaker, kind=how))
-        if not reply or not self.can_join():
+        if not reply:
             return False
+        if not self.can_join():
+            return how != "room"
         await self.speak_reply(reply, how)
         return True
 
