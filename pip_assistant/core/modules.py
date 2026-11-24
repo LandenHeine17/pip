@@ -72,6 +72,11 @@ class Call:
         return sp.person_id if sp is not None and sp.level == "sure" and not sp.guest else None
 
 
+class Done(str):
+    """A room_heard answer for something the module has already done ("Paused.", the youtube module, D-141). Said
+    to Pip, it replaces asking Claude even when he isn't free to say it, so Claude never does it a second time."""
+
+
 @dataclass
 class Action:
     check: Callable                   # (action dict, Call) → a checked plan; raise Invalid if it doesn't check out
@@ -160,7 +165,8 @@ class Module:
     def room_heard(self, text: str, call: Call) -> str | None:
         """A sentence heard: room talk (call.kind "room"), or said to Pip ("direct") or about him ("mentioned"),
         except the rest of a turn he's waiting on. Return something for Pip to say (for speech to Pip, instead of
-        asking Claude, even when he isn't free to say it: D-141), or None. Pip says it only if he's free to talk. To make the monitor's face react, publish
+        asking Claude), or None. Pip says it only if he's free to talk; if he isn't, speech to him goes to Claude
+        after all, unless the answer is a `Done` (the module has already done it: "Paused.", D-141). To make the monitor's face react, publish
         ctx.publish("reaction", {"reaction": <a face reaction in tv.html, e.g. "pleased">}). Read the words and
         forget them: don't store or log what people said."""
         return None

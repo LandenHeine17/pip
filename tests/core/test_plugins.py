@@ -13,7 +13,7 @@ from fakes.google import FakeGoogle, connect
 from pip_assistant.common.modules import ROOT, read
 from pip_assistant.core.commands import Commands
 from pip_assistant.core.dashapi import alerts_snapshot, tv_snapshot
-from pip_assistant.core.modules import Call, ModulePeople, Registry
+from pip_assistant.core.modules import Call, Done, ModulePeople, Registry
 from pip_assistant.core.people import Match, People
 from pip_assistant.core.schedule import Schedule
 
@@ -108,10 +108,12 @@ class Echo:
 
     def room_heard(self, text, call):
         self.seen.append((text, call.kind))
+        if "done" in text:
+            return Done("done it")   # already done (like "Paused."): Claude must never be asked as well
         return "echo" if "echo" in text else None
 
 
-async def _room(tmp_path, quiet_hours, heard, busy=False):
+async def _room(tmp_path, quiet_hours, heard, busy=False, reason="room"):
     import asyncio
 
     from helpers import finish, room, says
@@ -121,7 +123,8 @@ async def _room(tmp_path, quiet_hours, heard, busy=False):
     bus, conv, ears, got, asks, tasks = await setup(tmp_path, heard, modules=reg, social={"quiet_hours": quiet_hours})
     if busy:
         conv.answer_id = "an answer under way"   # not free to talk
-    await ears.emit("heard.utterance", *room())
+    data, private = room()
+    await ears.emit("heard.utterance", {**data, "reason": reason}, private)
     await asyncio.sleep(0.2)
     out = says(got)
     await finish(bus, tasks)
@@ -140,11 +143,21 @@ async def test_speech_to_pip_is_offered_too_and_a_modules_answer_replaces_claude
     assert echo.seen == [("pip, what time is it", "direct")] and "echo" not in out
 
 
-async def test_a_modules_answer_to_pip_replaces_claude_even_while_he_is_busy(tmp_path):
-    """D-141: "Pip, pause the video" while he's answering something else: the module has already paused it, so Claude
-    isn't asked to do it again. It just isn't said. Room talk is unchanged: unsaid, and joining in carries on."""
+async def test_a_done_answer_replaces_claude_even_while_he_is_busy(tmp_path):
+    """D-141: "Pip, pause the video" while he's busy: the module has already paused it (its answer is a Done), so
+    Claude isn't asked to do it again; it just isn't said. Any other answer he can't say goes to Claude as before
+    ("Pip, set a timer for 67 minutes" mustn't vanish into the six-seven chant)."""
+    out, echo, asks = await _room(tmp_path, "", "pip, get it done", busy=True)
+    assert echo.seen == [("pip, get it done", "direct")] and out == [] and not asks
     out, echo, asks = await _room(tmp_path, "", "pip, say echo", busy=True)
-    assert echo.seen == [("pip, say echo", "direct")] and out == [] and not asks
+    assert "echo" not in out and asks          # Claude was asked, and answered
+
+
+async def test_a_reply_in_the_follow_up_window_is_offered_to_modules_too(tmp_path):
+    """D-141: "Pip, louder" within a few seconds of "Here's the video" comes through pip-ears' follow-up path: the
+    module still answers it at once, without Claude."""
+    out, echo, asks = await _room(tmp_path, "", "pip, say echo", reason="follow_up")
+    assert echo.seen == [("pip, say echo", "direct")] and out == ["echo"] and not asks
 
 
 async def test_modules_are_asked_at_any_hour(tmp_path):

@@ -148,6 +148,8 @@ class ScreenModule(Module):
                 return f"{_sentence(e)} I can {s.pending['words']}. Okay?"
             return _sentence(e)
         self._changed()
+        if s.cover:   # a video covers the monitor for now (D-141): the change is kept, and shows after
+            said += f" It'll show once the {KINDS[s.cover['kind']][0].lower()} is taken down."
         return said
 
     # ---------------------------------------------------------------- the monitor and the dashboard

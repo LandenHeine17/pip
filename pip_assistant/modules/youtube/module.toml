@@ -1,9 +1,10 @@
 # YouTube videos on the monitor (D-141): "Pip, pull up a YouTube video explaining matrix multiplication".
 # Claude turns the request into a search; this module asks YouTube for the best video that's allowed to play outside
 # YouTube, and covers the monitor with it (Pip's face shrinks beside it). Pause, play, fast forward, go back, go to a
-# time, louder, quieter, a different one and "take down the video" are done at once, without Claude. The video plays
-# through the speakerphone, which takes it back out of what the microphone hears, like Pip's own voice; while Pip is
-# listening or talking it plays quieter. Keeps nothing: what's up is in memory only.
+# time, louder, quieter, mute, a volume, a different one and "take down the video" are done at once, without Claude.
+# The video plays through the speakerphone, whose echo cancelling keeps it out of what Pip hears, like his own voice
+# (tested 2026-11-23: none of a narrated video reached speech-to-text); while Pip is listening or talking it plays
+# quieter. It takes itself down a minute after it ends, or after it's been paused a long while. Keeps nothing.
 # Needs a YouTube Data API key (Google Cloud, free: about 100 searches a day) in ~/pip-data/secrets.toml:
 #   [youtube]   api_key = "..."
 
@@ -36,13 +37,18 @@ explain = "YouTube's SafeSearch for the videos Pip finds: none, moderate or stri
 default = 5
 explain = "How many videos each search finds: \"a different one\" goes to the next of them."
 
+[settings.paused_minutes]
+default = 30
+explain = "Take the video down by itself after it's been paused this many minutes, so the monitor shows its screen again (0: never). It's also taken down a minute after it ends."
+
 [claude]
 instructions = """
 YouTube: only when they ask for a video, reply with ONLY: ACTION {"do": "play_video", "query": "matrix multiplication \
 explained"} (a good YouTube search for what they want). It goes up on the monitor and Pip says which video it is. While a \
-video is up (a line says so): ACTION {"do": "video", "op": "pause"} (op: pause, play, forward, back, go_to, restart, \
-louder, quieter, next (a different video), close (take it down); "seconds": how far for forward and back, the time for \
-go_to). "Stop the video" means pause.
+video is up (a line says so), ONE ACTION per request: {"do": "video", "op": "pause"} (op: pause, play, forward, back, \
+go_to, restart, louder, quieter, mute (silent, still playing), unmute, volume, next (a different video), close (take it \
+down); "seconds": how far for forward and back, the time for go_to; "level": 0-100 for volume). "Stop the video" means \
+pause; "mute it" or "volume to zero" means mute, not pause.
 """
 
 [monitor.video]                     # the video's box: put up and taken down by this module (screen api cover/uncover)

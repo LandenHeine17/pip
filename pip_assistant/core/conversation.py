@@ -71,7 +71,7 @@ from .feed import Feed
 from .hearing import Hearing
 from .joining import STALE_S, Joining, in_quiet_hours
 from .micctl import MicControl
-from .modules import Call
+from .modules import Call, Done
 from .names import calls_pip, names_pip
 from .people import Match
 from .commands import HALLUCINATION, STOP, clean
@@ -596,6 +596,11 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         ask = self.follow_up_ask(text) if reason == "follow_up" else ""
         self.hear(text, pcm=pcm)
         await self.feed(text, "direct", self.speaker, stt_s=stt_s, offline=offline, reason=reason)
+        # A reply or something said over him can be for a module too ("Pip, louder" right after "Here's the video"),
+        # unless it's the rest of a turn he's holding. Said over him, he then carries on where he was cut off.
+        if not self.pending and await self.modules_answer(text, self.speaker, "direct"):
+            await self.resume_paused("a module answered")
+            return
         await self.addressed(text, reason, stt_s=stt_s, offline=offline, ended_at=self.speech_ended(msg), ask=ask)
 
     async def told_off(self, text: str) -> None:
@@ -783,15 +788,16 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         answer replaces asking Claude. He says it only when he's free to talk (any hour: the owner, 2026-11-10);
         a module can still react on the monitor's face when he isn't. Nothing is kept of the words.
 
-        Said to Pip, a module's answer replaces Claude even when he isn't free to say it: the module may already have
-        done what was asked ("Pip, pause the video" while he's talking, D-141), and Claude mustn't do it again."""
+        A module that has already done what was asked marks its answer `Done` ("Paused.": the video is paused, D-141):
+        said to Pip, that replaces Claude even when he isn't free to say it, so Claude doesn't do it again. Any other
+        answer he can't say right now leaves the request to Claude, as before."""
         if self.modules is None:
             return False
         reply = self.modules.room_heard(text, Call(speaker=speaker, kind=how))
         if not reply:
             return False
         if not self.can_join():
-            return how != "room"
+            return isinstance(reply, Done) and how != "room"
         await self.speak_reply(reply, how)
         return True
 

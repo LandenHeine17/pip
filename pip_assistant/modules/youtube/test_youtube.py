@@ -3,7 +3,7 @@ import httpx
 import pytest
 
 from pip_assistant.common.modules import ROOT, read
-from pip_assistant.core.modules import Call, Invalid, Registry
+from pip_assistant.core.modules import Call, Done, Invalid, Registry
 from pip_assistant.modules.youtube.module import control_in, iso_seconds, say_length, say_time, seconds_of, short_title
 
 SEARCH = {"items": [
@@ -64,7 +64,18 @@ def shown(screen) -> list[str]:
     ("Pip, skip to 4:30", "go_to", 270),
     ("Pip, jump to minute twelve", "go_to", 720),
     ("Pip, go to 1 minute 5", "go_to", 65),
+    ("Pip, go to four thirty", "go_to", 270),
+    ("Pip, go to 4.30", "go_to", 270),
     ("Pip, start it over", "restart", None),
+    ("Pip, play it again", "restart", None),
+    ("Pip, mute the video", "mute", None),
+    ("Pip, unmute it", "unmute", None),
+    ("Pip, set the volume to thirty", "volume", 30),
+    ("Pip, volume zero", "volume", 0),
+    ("Pip, turn it down to 20", "volume", 20),
+    ("Pip, skip this one", "next", None),
+    ("Pip, skip it", "next", None),
+    ("Pip, continue the video", "play", None),
     ("Pip, go back to the beginning", "restart", None),
     ("Pip, turn it up", "louder", None),
     ("Pip, quieter please", "quieter", None),
@@ -86,6 +97,15 @@ def test_controls_said_to_pip(said, op, seconds):
     "Pip, turn off the lights",                     # home control
     "Pip, set a timer for 4 minutes",
     "Pip, what's this video about?",
+    # the review (2026-11-23): longer requests mustn't lose their tail, and words that mean something else
+    "Pip, go back 5 minutes and explain what he said",
+    "Pip, skip ahead 2 minutes then tell me the weather",
+    "Pip, rewind 1 more time and set a timer",
+    "Pip, go to 10 seconds before the end",
+    "Pip, continue",
+    "Pip, keep going",
+    "Pip, start a timer",
+    "Pip, play some music",
 ])
 def test_anything_else_isnt_a_control(said):
     assert control_in(said) is None
@@ -127,10 +147,11 @@ async def test_a_video_is_found_and_covers_the_monitor(env):
 async def test_changing_the_screen_under_a_video_shows_after(env):
     reg, yt, screen, now, _ = env
     await ask(reg, "play_video", query="x")
-    await ask(reg, "add_box", type="clock")
+    said = await ask(reg, "add_box", type="notes", title="Under the video", lines=["kept"])
+    assert said.endswith("It'll show once the video is taken down.")
     assert shown(screen) == ["video"] and "covers the monitor" in screen.summary(Call())
     await ask(reg, "video", op="close")
-    assert "clock" in shown(screen)
+    assert any(s.get("title") == "Under the video" for s in screen.tv_layout()["view"]["sections"])
 
 
 async def test_no_key_and_youtube_failing(env, tmp_path):
@@ -156,11 +177,13 @@ async def test_controls_go_to_the_monitor_in_order(env):
     assert yt.room_heard("Pip, go back", Call(kind="direct")) == "Back 10 seconds."
     assert yt.room_heard("Pip, go to 4:30", Call(kind="direct")) == "Going to 4:30."
     assert yt.room_heard("Pip, go to 20 minutes", Call(kind="direct")) == "It's only 10 minutes long."
-    assert yt.room_heard("Pip, turn it up", Call(kind="direct")) == "Louder."
+    assert yt.room_heard("Pip, turn it up", Call(kind="direct")) == "Volume 85."
+    assert isinstance(yt.room_heard("Pip, pause the video", Call(kind="direct")), Done)   # never asked of Claude too
+    yt.room_heard("Pip, play", Call(kind="direct"))
     box = reg.tv()["boxes"]["video"]
     assert [(c["op"], c.get("s")) for c in box["commands"]] == \
-        [("pause", None), ("seek_by", 30), ("seek_by", -10), ("seek_to", 270), ("play", None)]
-    assert [c["n"] for c in box["commands"]] == [1, 2, 3, 4, 5]
+        [("pause", None), ("seek_by", 30), ("seek_by", -10), ("seek_to", 270), ("play", None), ("pause", None), ("play", None)]
+    assert [c["n"] for c in box["commands"]] == [1, 2, 3, 4, 5, 6, 7]
     assert box["start"] == 270 and box["playing"] and box["volume"] == 85
     now[0] += 30
     assert reg.tv()["boxes"]["video"]["start"] == 300   # where a reloaded monitor carries on from
@@ -177,6 +200,38 @@ async def test_the_video_page(env):
     assert r["said"] == "Paused." and not r["video"]["playing"]
     with pytest.raises(Invalid):
         await yt.dashboard("control", {"op": "explode"})
+
+
+async def test_mute_and_volume(env):
+    """From the first real use: "mute it" and "volume to zero" keep it playing, silent (they were paused before)."""
+    reg, yt, screen, now, _ = env
+    await ask(reg, "play_video", query="x")
+    assert yt.control("mute") == "Muted: it's still playing." and yt.volume == 0 and yt.playing
+    assert yt.control("louder") == "Volume 70."                       # back to where it was
+    assert await ask(reg, "video", op="volume", level=0) == "Muted: it's still playing."
+    assert yt.control("unmute") == "Sound's back on." and yt.volume == 70
+    assert await ask(reg, "video", op="volume", level=25) == "Volume 25."
+    with pytest.raises(Invalid):
+        reg.action("video").check({"do": "video", "op": "volume", "level": 400}, Call())
+
+
+async def test_it_takes_itself_down(env):
+    """A minute after it ends, or once it's been paused `paused_minutes` (30), the screen comes back by itself."""
+    reg, yt, screen, now, _ = env
+    await ask(reg, "play_video", query="x")                           # 10:05 long
+    now[0] += 300
+    yt._expire()                                                       # early (it was moved on): still up
+    assert shown(screen) == ["video"]
+    now[0] += 400                                                      # past the end
+    yt._expire()
+    assert yt.video is None and shown(screen) != ["video"]
+    await ask(reg, "play_video", query="x")
+    yt.control("pause")
+    yt._expire()                                                       # paused long enough
+    assert yt.video is None
+    await ask(reg, "play_video", query="x")
+    now[0] += 700                                                      # ended: "play" starts it again
+    assert yt.control("play") == "Playing it from the start." and yt.position() == 0
 
 
 def test_the_box_is_declared_and_drawn():

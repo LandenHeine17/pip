@@ -22,15 +22,22 @@
     .yt-said { flex: 1; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 2rem; color: var(--muted); }`;
   document.head.appendChild(style);
 
-  function youtube() {   // YouTube's player library, loaded once
-    loading = loading || new Promise((done) => {
+  function youtube() {   // YouTube's player library, loaded once (tried again next time if it couldn't load)
+    if (window.YT && window.YT.Player) return Promise.resolve();
+    loading = loading || new Promise((done, failed) => {
       const before = window.onYouTubeIframeAPIReady;
       window.onYouTubeIframeAPIReady = () => { if (before) before(); done(); };
       const tag = document.createElement("script");
       tag.src = "https://www.youtube.com/iframe_api";
+      tag.onerror = () => { tag.remove(); loading = null; failed(new Error("no YouTube")); };
       document.head.appendChild(tag);
     });
     return loading;
+  }
+
+  function say(box, h, words) {   // a message in place of the video
+    const spot = box.querySelector(".yt, .yt-said");
+    if (spot) spot.outerHTML = `<div class="yt-said">${h.esc(words)}</div>`;
   }
 
   function volume() {
@@ -74,12 +81,16 @@
           // While it plays, the screen doesn't doze (dozing dims it): tv.html's shown() looks for .keep-awake.
           onStateChange: (e) => box.classList.toggle("keep-awake", e.data === YT.PlayerState.PLAYING),
           onError: (e) => {
-            box.querySelector(".yt").outerHTML = `<div class="yt-said">${h.esc(WONT_PLAY[e.data] || "The video won't play")}.<br>Say “Pip, a different one”.</div>`;
             forget();
+            say(box, h, `${WONT_PLAY[e.data] || "The video won't play"}. Say “Pip, a different one”.`);
             shownId = d.id;   // don't try the same one again until another comes
           },
         },
       });
+    }).catch(() => {
+      if (shownId !== d.id) return;
+      say(box, h, "Couldn't load YouTube's player. Is the internet down?");
+      shownId = "";   // the next time the box is drawn, it tries again
     });
   }
 
@@ -93,6 +104,12 @@
     for (const c of d.commands || []) if (c.n > done) { run(c); done = c.n; }
   });
 
-  // The volume follows what Pip is doing (several times a second: it's only a number).
-  setInterval(() => { if (ready && player.getVolume() !== volume()) player.setVolume(volume()); }, 250);
+  // The volume follows what Pip is doing (several times a second: it's only a number). Once the video's box is gone
+  // (taken down), the player is let go of.
+  setInterval(() => {
+    if (!player) return;
+    const frame = player.getIframe && player.getIframe();
+    if (frame && !frame.isConnected) return forget();
+    if (ready && player.getVolume() !== volume()) player.setVolume(volume());
+  }, 250);
 })();

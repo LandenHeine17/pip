@@ -8,14 +8,19 @@ How a video goes up:
               needs = ["screen"]) and Pip says which video it is
     monitor:  static/monitor.js plays it with YouTube's own player, from what tv() below sends
 
-How it's controlled: "Pip, pause the video", "fast forward a minute", "go to 4:30", "louder", "a different one",
-"take down the video". Said to Pip by name, room_heard() recognises these (the whole sentence must be one of them:
-COMMANDS) and does them at once, without asking Claude; anything worded otherwise goes to Claude, which has the same
+How it's controlled: "Pip, pause the video", "fast forward a minute", "go to 4:30", "mute it", "set the volume to 30",
+"a different one", "take down the video". Said to Pip (by name, or as a reply right after he speaks), room_heard()
+recognises these (the whole sentence must be one of them: COMMANDS) and does them at once, without asking Claude; its
+answer is a `Done`, so Claude is never asked to do it again. Anything worded otherwise goes to Claude, which has the same
 controls ({"do": "video", "op": …}). Each control is added to a short numbered list (`commands`), which the monitor
 plays through in order: "pause", "play", "seek_by" (seconds forwards or back) and "seek_to". The module also keeps
 an estimate of where the video is (`position()`), so the monitor can carry on from about there if its page reloads.
 
-The volume: the monitor plays it at `volume`, and at `duck_volume` while Pip is listening, thinking or talking.
+The volume: the monitor plays it at `volume` (0 is muted, still playing), and at `duck_volume` while Pip is
+listening, thinking or talking.
+
+Taking itself down: a minute after the video ends, or once it's been paused `paused_minutes`, it's taken down by
+itself, so the room isn't left without its screen (`_arm`, one timer; nothing runs while no video is up).
 
 Nothing is kept: no tables, and neither what was asked for nor the videos' titles are logged. What's up is only in
 memory, so Pip restarting takes the video down (the screen's cover isn't kept either). The key is the module's own
@@ -30,8 +35,7 @@ import re
 import httpx
 
 from pip_assistant.common import when
-from pip_assistant.core.commands import clean
-from pip_assistant.core.modules import Action, Call, Invalid, Module
+from pip_assistant.core.modules import Action, Call, Done, Invalid, Module
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +44,9 @@ VIDEOS = "https://www.googleapis.com/youtube/v3/videos"
 BOX = "video"            # its kind of box on the monitor (module.toml [monitor.video])
 KEEP_COMMANDS = 20       # the monitor plays through the last few controls, in order
 VOLUME_STEP = 15
-OPS = ("pause", "play", "forward", "back", "go_to", "restart", "louder", "quieter", "next", "close")
+END_GRACE_S = 60         # taken down this long after the video should have ended (ads and buffering make it late)
+OPS = ("pause", "play", "forward", "back", "go_to", "restart", "louder", "quieter", "mute", "unmute", "volume",
+       "next", "close")
 
 # ---------------------------------------------------------------- understanding times
 UNITS = {"second": 1, "seconds": 1, "sec": 1, "secs": 1, "minute": 60, "minutes": 60, "min": 60, "mins": 60,
@@ -49,13 +55,20 @@ SMALLER = {3600: 60, 60: 1, 1: 1}
 CLOCK = re.compile(r"\b(?:(\d+):)?(\d+):(\d\d)\b")   # "4:30", "1:02:03"
 
 
-def seconds_of(t: str) -> float | None:
+def seconds_of(t: str, at: bool = False) -> float | None:
     """How long, or what time into a video, in words already cleaned ("30 seconds", "2 and a half minutes",
-    "1 minute 30", "4:30", "minute 12", "half a minute"). A bare number is seconds. None if there's no time."""
+    "1 minute 30", "4:30", "minute 12", "half a minute"). A bare number is seconds. With `at` (a time to go to),
+    "4 30" and "4.30" are four minutes thirty too ("go to four thirty"). None if there's no time."""
     if m := CLOCK.search(t):
         return int(m[1] or 0) * 3600 + int(m[2]) * 60 + int(m[3])
     if m := re.search(r"(?<!\d )\bminute (\d+)\b", t):   # "minute 12", but not "1 minute 5"
         return int(m[1]) * 60
+    if at and not any(w in UNITS for w in t.split()):
+        if m := re.search(r"\b(\d+)\.(\d\d)\b", t):
+            return int(m[1]) * 60 + int(m[2])
+        nums = re.findall(r"\b\d+\b", t)
+        if len(nums) == 2 and int(nums[1]) < 60:
+            return int(nums[0]) * 60 + int(nums[1])
     t = re.sub(r"\bhalf (?:an?|1) ", "0.5 ", t)               # "half a minute" (when.numbers made the "a" a 1)
     total, number, half, last, found = 0.0, None, False, None, False
     for w in re.findall(r"\d+(?:\.\d+)?|[a-z]+", t):
@@ -110,42 +123,61 @@ def short_title(title: str) -> str:
 
 
 # ---------------------------------------------------------------- the controls said to Pip
-# The whole sentence (after commands.clean() and when.numbers()) must be one of these: anything more ("pause it when
-# he gets to the proof") goes to Claude. Only while a video is up, and only said to Pip by name. when.numbers() has
-# made "a different one" "a different 1".
+# The whole sentence (after plain() and when.numbers()) must be one of these: anything more ("pause it when he gets to
+# the proof", "go back 5 minutes and explain that") goes to Claude. Only while a video is up, and only said to Pip.
+# when.numbers() has made "a different one" "a different 1" and "zero" "0".
+FILLER = re.compile(r"\b(?:pip\w*|hey|hi|ok(?:ay)?|yo|so|um+|uh+|hmm+|please|just|can you|could you|would you|will you|"
+                    r"can u|i want you to|i need you to|go ahead and)\b")
 _VIDEO = r"(?:the |this |that )?(?:youtube )?(?:video|vid|youtube)"
 _IT = rf"(?: {_VIDEO}| it| that| this)?"
-_TIME = r"(?: by)?(?: (?:\d|half|a half).*)?"
+_AMOUNT = r"(?:\d+(?:\.\d+)?|half|a|and|seconds?|secs?|minutes?|mins?|hours?|hrs?)"   # what a time is made of
+_TIME = rf"(?: by)?(?: {_AMOUNT})*"
+_ONE = r"(?:one|1|video)"
 COMMANDS = [
     ("close", re.compile(rf"^(?:(?:take|put|bring|pull|shut) (?:down|off|away) {_VIDEO}|(?:take|put|pull) (?:{_VIDEO}|it|that) "
                          rf"(?:down|off|away)|(?:close|hide|remove|exit|end|quit|kill|turn off|switch off|get rid of|"
                          rf"clear|stop showing) {_VIDEO}|no more (?:videos?|youtube))$")),
-    ("restart", re.compile(rf"^(?:restart{_IT}|start{_IT} (?:over|again|from the (?:start|beginning))|"
+    ("restart", re.compile(rf"^(?:restart{_IT}|start{_IT} (?:over|again|from the (?:start|beginning))|play{_IT} again|"
                            r"(?:go|skip|jump|rewind|take it) (?:back )?to the (?:start|beginning)|from the (?:start|beginning))$")),
     ("go_to", re.compile(rf"^(?:go|skip|jump|seek|fast forward|rewind|move|take it|play(?: it)? from|start(?: it)? from)"
-                         rf"(?: it| {_VIDEO})? (?:to|from|at) (?:minute \d+|\d+:\d\d(?::\d\d)?|\d.*?)"
+                         rf"(?: it| {_VIDEO})? (?:to|from|at) (?:minute \d+|\d+:\d\d(?::\d\d)?|\d+(?:\.\d+)?(?: {_AMOUNT})*)"
                          r"(?: (?:in|into) (?:the video|it))?$")),
-    ("forward", re.compile(rf"^(?:fast ?forward|skip(?: ahead| forward)?|go forward|forward|jump ahead|move ahead){_IT}{_TIME}$")),
-    ("back", re.compile(rf"^(?:rewind|go back|skip back(?:wards?)?|jump back|back up|go backwards?){_IT}{_TIME}$")),
+    ("next", re.compile(rf"^(?:(?:play |show |put on |try )?(?:the )?next {_ONE}|(?:play |show |put on |try |find |get )?(?:me )?"
+                        rf"(?:a different|another|a new|different) {_ONE}|skip (?:it|this|that)(?: {_ONE})?|"
+                        rf"not (?:this|that) (?:one|1)|next)$")),
+    ("forward", re.compile(rf"^(?:fast ?forward{_IT}|skip(?: ahead| forward)?|go forward|forward|jump ahead|move ahead){_TIME}$")),
+    ("back", re.compile(rf"^(?:rewind{_IT}|go back|skip back(?:wards?)?|jump back|back up|go backwards?){_TIME}$")),
     ("pause", re.compile(rf"^(?:pause{_IT}(?: for a (?:sec|second|moment|minute))?|stop {_VIDEO})$")),
-    ("play", re.compile(rf"^(?:play|resume|unpause|continue|keep playing|keep going|carry on|start){_IT}(?: again)?$")),
+    ("play", re.compile(rf"^(?:(?:play|resume|unpause){_IT}|(?:continue|start|keep playing|carry on with|keep going with) {_VIDEO}|"
+                        r"keep playing)$")),
+    ("unmute", re.compile(rf"^(?:unmute{_IT}|(?:turn|put) the sound back on|sound (?:back )?on)$")),
+    ("mute", re.compile(rf"^(?:mute{_IT}|(?:turn|switch) (?:the sound|the volume|it) off|(?:sound|volume) off|no sound)$")),
+    ("volume", re.compile(rf"^(?:(?:set|turn|put|change) )?(?:the )?(?:video )?volume (?:to |at )?(\d+)(?: percent)?$|"
+                          rf"^(?:set|turn|put) (?:it|{_VIDEO}|the volume) (?:down |up )?to (\d+)(?: percent)?$")),
     ("louder", re.compile(rf"^(?:louder|(?:make|turn){_IT} (?:up|louder)|turn up{_IT}|volume up|turn the volume up|"
                           r"turn up the volume|(?:raise|increase) the volume|more volume)$")),
     ("quieter", re.compile(rf"^(?:quieter|softer|(?:make|turn){_IT} (?:down|quieter|softer)|turn down{_IT}|volume down|"
                            r"turn the volume down|turn down the volume|(?:lower|decrease) the volume|less volume)$")),
-    ("next", re.compile(rf"^(?:(?:play |show |put on |try )?(?:the )?next (?:(?:one|1)|video)|(?:play |show |put on |try |find |"
-                        rf"get )?(?:me )?(?:a different|another|a new|different) (?:(?:one|1)|video)|skip (?:this|that) (?:(?:one|1)|video)|"
-                        rf"not (?:this|that) (?:one|1)|next)$")),
 ]
 
 
+def plain(text: str) -> str:
+    """The words without Pip's names, "hey", "please", "can you" or punctuation, numbers as digits, lower case."""
+    t = re.sub(r"[^\w':.\- ]+", " ", text.lower()).replace("-", " ")
+    t = FILLER.sub(" ", t)
+    t = re.sub(r"\s+", " ", t).strip(" .,'")
+    return when.numbers(t).strip(" .?!,")
+
+
 def control_in(text: str) -> tuple[str, float | None] | None:
-    """("forward", 60.0) for "Pip, fast forward a minute"; None if the sentence isn't just a control."""
-    t = when.numbers(clean(text)).strip(" .?!,")
-    t = re.sub(r"-", " ", t)
+    """("forward", 60.0) for "Pip, fast forward a minute"; ("volume", 30.0) for "set the volume to 30"; None if the
+    sentence isn't just a control."""
+    t = plain(text)
     for op, pattern in COMMANDS:
-        if pattern.match(t):
-            return op, seconds_of(t) if op in ("forward", "back", "go_to") else None
+        if m := pattern.match(t):
+            if op == "volume":
+                return op, float(next(g for g in m.groups() if g is not None))
+            return op, seconds_of(t, at=op == "go_to") if op in ("forward", "back", "go_to") else None
     return None
 
 
@@ -158,8 +190,10 @@ class YouTube(Module):
         self.playing = False
         self.offset, self.since = 0.0, ctx.clock()   # where it was, and when (position())
         self.volume = self._setting("volume", 70)
+        self.unmuted = self.volume    # the volume to go back to after "mute"
         self.commands: list[dict] = []   # the last few controls for the monitor: {"n", "op", "s"}
         self.n = 0
+        self._timer: asyncio.TimerHandle | None = None   # taking it down by itself (_arm)
         self.actions = {"play_video": Action(self.check_play, self.do_play),
                         "video": Action(self.check_control, self.do_control)}
 
@@ -171,6 +205,7 @@ class YouTube(Module):
 
     def _changed(self) -> None:
         """Tell pip-web: the monitor (if the video's box is up) and the Video page reload what they show."""
+        self._arm()
         try:
             asyncio.get_running_loop().create_task(self.ctx.publish("changed"))
         except RuntimeError:   # no loop running (tests)
@@ -178,6 +213,35 @@ class YouTube(Module):
 
     def _screen(self):
         return self.ctx.module("screen")   # the screen module's api (None if it's switched off)
+
+    # ---------------------------------------------------------------- taking itself down
+    def _arm(self) -> None:
+        """One timer: a minute after the video should end, or `paused_minutes` after it was paused."""
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
+        if not self.video:
+            return
+        if self.playing:
+            wait = max(0.0, self.video["seconds"] - self.position()) + END_GRACE_S
+        else:
+            minutes = self._setting("paused_minutes", 30, 0, 24 * 60)
+            if not minutes:
+                return
+            wait = minutes * 60
+        try:
+            self._timer = asyncio.get_running_loop().call_later(wait, self._expire)
+        except RuntimeError:   # no loop running (tests call _expire themselves)
+            pass
+
+    def _expire(self) -> None:
+        self._timer = None
+        if not self.video:
+            return
+        if self.playing and self.position() < self.video["seconds"]:
+            return self._arm()   # it was moved on meanwhile
+        log.info("the video was taken down by itself (%s)", "it ended" if self.playing else "paused too long")
+        self.close()
 
     # ---------------------------------------------------------------- finding videos
     async def search(self, query: str) -> list[dict]:
@@ -213,6 +277,10 @@ class YouTube(Module):
         self.n += 1
         self.commands = [*self.commands, {"n": self.n, "op": op, **({"s": round(s, 1)} if s is not None else {})}][-KEEP_COMMANDS:]
 
+    def _seek(self, to: float) -> None:
+        self.offset, self.since = to, self.ctx.clock()
+        self._command("seek_to", to)
+
     def show(self, video: dict) -> str:
         """Put a video up and start it: the monitor is covered with its box."""
         self.video, self.playing, self.offset, self.since = video, True, 0.0, self.ctx.clock()
@@ -228,8 +296,18 @@ class YouTube(Module):
             screen.uncover(BOX)
         self._changed()
 
+    def _set_volume(self, level: float) -> str:
+        level = int(max(0, min(100, level)))
+        if level:
+            self.unmuted = level
+        elif self.volume:
+            self.unmuted = self.volume
+        self.volume = level
+        return "Muted: it's still playing." if level == 0 else f"Volume {level}."
+
     def control(self, op: str, seconds: float | None = None) -> str:
-        """Do one control (OPS) on the video that's up; returns what Pip says."""
+        """Do one control (OPS) on the video that's up; returns what Pip says. `seconds` is how far (forward, back),
+        the time (go_to) or the level (volume, 0 to 100)."""
         if op == "close":
             if not self.video:
                 return "There's no video up."
@@ -238,16 +316,17 @@ class YouTube(Module):
         if not self.video:
             return "There's no video up. Ask me for one."
         pos, length = self.position(), self.video["seconds"]
-        if op == "pause":
-            if self.playing:
-                self.offset, self.since, self.playing = pos, self.ctx.clock(), False
-                self._command("pause")
+        if op == "pause":   # always sent: the monitor's player may be playing even if the estimate says it's ended
+            self.offset, self.since, self.playing = pos, self.ctx.clock(), False
+            self._command("pause")
             said = "Paused."
         elif op == "play":
-            if not self.playing:
-                self.offset, self.since, self.playing = pos, self.ctx.clock(), True
-                self._command("play")
-            said = "Playing."
+            if pos >= length - 1:   # it had ended: from the start again
+                self._seek(0.0)
+                pos = 0.0
+            self.offset, self.since, self.playing = pos, self.ctx.clock(), True
+            self._command("play")
+            said = "Playing." if pos else "Playing it from the start."
         elif op in ("forward", "back"):
             step = seconds if seconds else self._setting("skip_seconds", 10, 1, 3600)
             step = step if op == "forward" else -step
@@ -260,16 +339,25 @@ class YouTube(Module):
                 return "To what time? Say something like four minutes thirty."
             if length and to >= length:
                 return f"It's only {say_length(length)} long."
-            self.offset, self.since = to, self.ctx.clock()
-            self._command("seek_to", to)
+            self._seek(to)
             if not self.playing:
                 self.playing = True
                 self._command("play")
             said = "From the start." if op == "restart" else f"Going to {say_time(to)}."
         elif op in ("louder", "quieter"):
-            self.volume = max(0, min(100, self.volume + (VOLUME_STEP if op == "louder" else -VOLUME_STEP)))
-            said = "That's as loud as it goes." if self.volume == 100 and op == "louder" else \
-                "Muted." if self.volume == 0 else ("Louder." if op == "louder" else "Quieter.")
+            base = self.volume or (0 if op == "quieter" else self.unmuted - VOLUME_STEP)
+            said = self._set_volume(base + (VOLUME_STEP if op == "louder" else -VOLUME_STEP))
+            if self.volume == 100 and op == "louder":
+                said = "That's as loud as it goes."
+        elif op == "mute":
+            said = self._set_volume(0)
+        elif op == "unmute":
+            said = "Sound's back on." if not self.volume else "It isn't muted."
+            self._set_volume(self.volume or self.unmuted or self._setting("volume", 70))
+        elif op == "volume":
+            if seconds is None:
+                return "To what volume? From 0 to 100."
+            said = self._set_volume(seconds)
         elif op == "next":
             if self.at + 1 >= len(self.found):
                 return "That was the last one I found. Ask me for something else."
@@ -308,18 +396,19 @@ class YouTube(Module):
     def check_control(self, a: dict, call: Call) -> tuple[str, float | None]:
         op = str(a.get("op") or "").strip().lower().replace(" ", "_")
         op = {"stop": "pause", "resume": "play", "unpause": "play", "fast_forward": "forward", "rewind": "back",
-              "seek": "go_to", "goto": "go_to", "take_down": "close", "hide": "close", "different": "next"}.get(op, op)
+              "seek": "go_to", "goto": "go_to", "take_down": "close", "hide": "close", "different": "next",
+              "set_volume": "volume"}.get(op, op)
         if op not in OPS:
             raise Invalid("which video control")
-        seconds = a.get("seconds")
-        if seconds is not None:
+        number = a.get("level") if op == "volume" else a.get("seconds")
+        if number is not None:
             try:
-                seconds = float(seconds)
+                number = float(number)
             except (TypeError, ValueError):
-                seconds = seconds_of(when.numbers(str(seconds).lower()))
-            if seconds is None or not 0 <= seconds <= 24 * 3600:
-                raise Invalid("how many seconds")
-        return op, seconds
+                number = seconds_of(when.numbers(str(number).lower()), at=op == "go_to")
+            if number is None or not 0 <= number <= (100 if op == "volume" else 24 * 3600):
+                raise Invalid("how much")
+        return op, number
 
     def do_control(self, plan: tuple[str, float | None], call: Call) -> str:
         return self.control(*plan)
@@ -328,17 +417,19 @@ class YouTube(Module):
         if not self.video or call.kind == "join":   # join-in checks: nothing (they run every ~40 s)
             return ""
         v = self.video
-        how = "playing" if self.playing else "paused"
-        return (f"Video on the monitor: “{v['title']}” from {v['channel']}, {how} at {say_time(self.position())} "
-                f"of {say_time(v['seconds'])}, volume {self.volume}.")
+        pos = self.position()
+        how = "ended" if self.playing and pos >= v["seconds"] else "playing" if self.playing else "paused"
+        return (f"Video on the monitor: “{v['title']}” from {v['channel']}, {how} at {say_time(pos)} "
+                f"of {say_time(v['seconds'])}, volume {self.volume}{' (muted)' if not self.volume else ''}.")
 
-    # ---------------------------------------------------------------- said to Pip by name
-    def room_heard(self, text: str, call: Call) -> str | None:
-        """"Pip, pause the video", "fast forward a minute", "take it down": done here at once, while a video is up."""
+    # ---------------------------------------------------------------- said to Pip
+    def room_heard(self, text: str, call: Call) -> Done | None:
+        """"Pip, pause the video", "fast forward a minute", "mute it", "take it down": done here at once, while a
+        video is up. A Done: Claude is never asked to do it as well, even if Pip can't say it right now."""
         if call.kind != "direct" or not self.video:
             return None
         found = control_in(text)
-        return self.control(*found) if found else None
+        return Done(self.control(*found)) if found else None
 
     # ---------------------------------------------------------------- the monitor and the Video page
     def tv(self, shown: list[dict]) -> dict:
