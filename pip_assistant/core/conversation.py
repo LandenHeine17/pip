@@ -755,8 +755,10 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.hear(text, speaker, pcm=pcm)
         await self.feed(text, how, speaker, offline=offline)
         self.joining.cancel_wait()
-        if not expected and await self.modules_answer(text, speaker, how):
-            return   # a module answered it instead (the six-seven chant): Claude isn't asked
+        # A module may answer it instead (the six-seven chant): Claude isn't asked. Right after he spoke too (the
+        # follow-up window, D-142), but not the rest of a turn he's holding: that's one request, for Claude.
+        if not self.pending and await self.modules_answer(text, speaker, how):
+            return
         if how == "mentioned":
             if self.answer_id is None and not self.speaking and not offline:
                 self.speaker, self.last_pcm = speaker, pcm
@@ -790,12 +792,17 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
 
         A module that has already done what was asked marks its answer `Done` ("Paused.": the video is paused, D-141):
         said to Pip, that replaces Claude even when he isn't free to say it, so Claude doesn't do it again. Any other
-        answer he can't say right now leaves the request to Claude, as before."""
+        answer he can't say right now leaves the request to Claude, as before.
+
+        A join-in he's only thinking about (nothing said yet) gives way to a module's answer (D-142): the room has
+        moved on anyway, so it would be dropped when Claude's reply came."""
         if self.modules is None:
             return False
         reply = self.modules.room_heard(text, Call(speaker=speaker, kind=how))
         if not reply:
             return False
+        if self.answer_id and self.answer_kind == "join" and not self.join_spoke and not self.speaking:
+            self.cancel_answer("a module answered")
         if not self.can_join():
             return isinstance(reply, Done) and how != "room"
         await self.speak_reply(reply, how)

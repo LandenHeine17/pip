@@ -8,7 +8,8 @@ summary = "Rolls dice."
 says_examples = ["Pip, roll a die", "roll a twenty-sided die"]
 offline = true                      # works without the internet
 permissions = []                    # e.g. ["network:example.com"] to reach a website
-needs = []                          # other modules it uses, e.g. ["google"] (then ctx.module("google") is allowed)
+needs = []                          # other modules it can't work without, e.g. ["google"] (then ctx.module("google") is allowed)
+uses = []                           # other modules it uses only if they're on, e.g. ["home_control"] (ctx.module gives None while off)
 
 [settings.sides]                    # every setting: a default and a plain-language explanation
                                     # (changed on the Settings page, saved under [modules.<name>])

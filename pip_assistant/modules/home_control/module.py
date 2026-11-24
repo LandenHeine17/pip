@@ -24,6 +24,10 @@ Two background jobs (`tasks`):
     devices it talks to (/proc/net/arp; these plugs don't announce themselves), and each one found is asked
     directly whether it's on, so one switched by its own button or the Smart Life app shows within half a minute.
 
+The disco (D-142): other modules may flash the lights on and off for a few seconds (`api.disco`, the six_seven
+module's freak-out). Only lights switched directly flash (the cloud is too slow, and limits how often it's asked);
+each goes back as it was after, unless someone switched it meanwhile.
+
 On the dashboard: a Home card on the front page with an On/Off button for each (`home()`), and the module's own
 Home page (static/index.html, `dashboard` "list" and "switch"), both switching the same way as by voice.
 
@@ -57,6 +61,7 @@ FAN = re.compile(r"\bfans?\b")
 MANY = re.compile(r"\b(all|every|everything|each|lights|lamps|bulbs|fans)\b")   # a group, not one device
 ANY_ONE = re.compile(r"\b(plug|outlet|socket|light|lights|lamp|it|that)\b")     # with only one device: it
 GROUP_NAMES = {"light": "the lights", "fan": "the fans"}
+FLASH_S = 0.4                                                # the disco: the lights swap every this many seconds
 
 
 def words(name: str) -> str:
@@ -101,6 +106,20 @@ class Local:
         return await asyncio.to_thread(self._ask, plug, on)
 
 
+class HomeApi:
+    """What other modules may use (`needs` or `uses` home_control in their module.toml)."""
+
+    def __init__(self, home: "Home"):
+        self._home = home
+
+    def disco(self, seconds: float = 4.0) -> None:
+        """Flash the lights on and off like a disco for `seconds`, then put each back as it was (D-142). Returns at
+        once: the flashing runs in the background. A second one while it's flashing is ignored."""
+        h = self._home
+        if h.party is None or h.party.done():
+            h.party = asyncio.get_running_loop().create_task(h.disco(min(max(float(seconds), 0.0), 15.0)))
+
+
 class Home(Module):
     ARP = Path("/proc/net/arp")   # the Pi's table of the devices it talks to: address, MAC, network
 
@@ -115,6 +134,8 @@ class Home(Module):
         self.token, self.token_until = "", 0.0
         self.switched: dict[str, tuple] = {}     # id → (when Pip last switched it, "direct" or "cloud")
         self.actions = {"plug": Action(self.check_plug, self.do_plug)}
+        self.party: asyncio.Task | None = None   # the disco, while the lights are flashing
+        self.api = HomeApi(self)
 
     # ---------------------------------------------------------------- Tuya's API
     @property
@@ -269,6 +290,8 @@ class Home(Module):
 
     async def check(self) -> None:
         """Ask each plug on pip-plugs whether it's on (one switched by its button or the app shows within 30 s)."""
+        if self.party is not None and not self.party.done():
+            return   # the lights are flashing: they'd look switched (and one busy plug may not answer)
         self.locate()
         changed = False
         for pid in list(self.found):
@@ -365,6 +388,45 @@ class Home(Module):
             self.plugs[pid]["on"] = on
         if publish:
             await self.ctx.publish("changed", {"plugs": len(self.plugs)})   # the card and the page redraw
+
+    async def disco(self, seconds: float) -> None:
+        """The lights flash on and off for `seconds` (every FLASH_S, neighbours opposite, like a disco), then each goes
+        back as it was. Only lights switched directly; one that stops answering drops out. One switched by someone
+        meanwhile (by voice or the dashboard) is left as they switched it."""
+        lights = [pid for pid, p in self.plugs.items()
+                  if self.kind(pid) == "light" and p["online"] and p["on"] is not None and self.near(pid)]
+        if not lights or seconds <= 0:
+            return
+        before = {pid: self.plugs[pid]["on"] for pid in lights}
+        started = self.ctx.clock()
+
+        def theirs(pid):   # switched by someone (voice, the dashboard) since the disco started
+            return (self.switched.get(pid) or (0.0,))[0] >= started
+
+        end, step = time.monotonic() + seconds, 0
+        try:
+            while lights and time.monotonic() < end:
+                t = time.monotonic()
+                want = {pid: (i + step) % 2 == 0 for i, pid in enumerate(lights) if not theirs(pid)}
+                done = await asyncio.gather(*(self.direct(pid, on) for pid, on in want.items()), return_exceptions=True)
+                lights = [pid for pid, r in zip(want, done) if not isinstance(r, BaseException)]
+                step += 1
+                await asyncio.sleep(max(0.0, FLASH_S - (time.monotonic() - t)))
+        finally:
+            for pid, on in before.items():
+                if theirs(pid) and pid in self.plugs:
+                    on = self.plugs[pid]["on"]   # as they switched it (again, in case a flash landed after)
+                try:
+                    await self.direct(pid, on, retry=True)
+                except Exception:
+                    try:   # it has to go back: through the cloud, then
+                        await self.switch(pid, on, publish=False)
+                    except Exception as e:
+                        log.warning("a light didn't go back after the disco: %s", type(e).__name__)
+                        continue
+                if pid in self.plugs:
+                    self.plugs[pid]["on"] = on
+            await self.ctx.publish("changed", {"plugs": len(self.plugs)})
 
     def called(self, pid: str, said: str) -> str:
         """How to name it back: as they called it ("the desk lamp"), else by its name ("the tv lamp")."""

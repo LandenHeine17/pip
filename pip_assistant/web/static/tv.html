@@ -276,10 +276,11 @@ const SCREEN_WORDS = { loading: "Connecting to Pip…", lost: "Trying again…",
 // --- "Six seven" ------------------------------------------------------------------------------
 // A joke kept from Ziggletron (D-35, D-121): when someone says "six seven" (to Pip or just in the room), he
 // freaks out for a few seconds: wide eyes, a grin, a little shake, two hands see-sawing (the meme) and "6" "7"
-// floating up, while he chants it. Hearing it is the six_seven module's job (modules/six_seven), which asks for
-// this reaction; at most once every half a minute so it stays funny (the calm rule, PIP-NEW-062).
+// floating up, while he chants it (and the lamps flash, D-142). Hearing it is the six_seven module's job
+// (modules/six_seven), which asks for this reaction whatever he's doing, and rests `pause_seconds` after each
+// so it stays funny (the calm rule, PIP-NEW-062); that setting is the only limit, so there's none here.
 const SIXSEVEN = {
-  seconds: 4, every: 30,
+  seconds: 4,
   face: { w: 1.08, h: 1.18, smile: .75, mouth: 1.15, gape: .7, lean: .07, lookY: -.15 },
   color: "#ffb347",
 };
@@ -289,7 +290,7 @@ COLORS.sixseven = SIXSEVEN.color;
 const canvas = $("face"), ctx = canvas.getContext("2d");
 const face = { ...REST, ...FACES.loading };
 const body = { color: [168, 168, 180], blink: 1, saccadeX: 0, saccadeY: 0, voice: 0, gape: 0 };
-const live = { state: "loading", detail: "", words: "", endsAt: 0, endsFrom: 0, reaction: null, reactionUntil: 0, sixSevenAt: -Infinity, connected: false,
+const live = { state: "loading", detail: "", words: "", endsAt: 0, endsFrom: 0, reaction: null, reactionUntil: 0, connected: false,
                lastEvent: 0, voiceAt: 0, voiceTarget: 0, activeAt: 0, weather: {}, align: "middle" };
 let particles = [];
 
@@ -315,12 +316,7 @@ function expression() {  // the state (or what exactly he's doing in it), or a r
 }
 function react(name, seconds) { live.reaction = name; live.reactionUntil = performance.now() + seconds * 1000; }
 function reactIf(name, seconds) { if ((live.look || {}).expressions !== false) react(name, seconds); }   // the newer ones (D-128)
-function sixSeven() {
-  const now = performance.now();
-  if (now - live.sixSevenAt < SIXSEVEN.every * 1000) return;
-  live.sixSevenAt = now;
-  react("sixseven", SIXSEVEN.seconds);
-}
+function sixSeven() { react("sixseven", SIXSEVEN.seconds); }
 
 // One eye, as an outline: a rounded square whose top is held down by the lid and bottom pushed up
 // by the cheek. Keeping it one shape means the glow follows the lids properly.

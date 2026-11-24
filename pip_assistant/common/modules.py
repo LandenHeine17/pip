@@ -38,6 +38,7 @@ class ModuleInfo:
     offline: bool = False
     permissions: list = field(default_factory=list)
     needs: list = field(default_factory=list)
+    uses: list = field(default_factory=list)          # modules it uses only if they're on (it works without them)
     settings: dict = field(default_factory=dict)      # merged values
     explain: dict = field(default_factory=dict)       # setting → plain-language explanation
     claude: str = ""                                  # instructions added to Claude's system prompt
@@ -97,7 +98,7 @@ def read(folder: Path, user: dict | None = None) -> ModuleInfo:
     return ModuleInfo(name=name, kind=t["kind"], summary=t["summary"], path=folder,
                       says_examples=list(t.get("says_examples") or []), offline=bool(t.get("offline", False)),
                       permissions=list(t.get("permissions") or []), needs=list(t.get("needs") or []),
-                      settings=merged, explain=explain, claude=(t.get("claude") or {}).get("instructions", "").strip(),
+                      uses=list(t.get("uses") or []), settings=merged, explain=explain, claude=(t.get("claude") or {}).get("instructions", "").strip(),
                       page=dash.get("page", ""), label=dash.get("label", ""), account_panel=dash.get("account_panel", ""),
                       boxes=boxes, enabled=enabled)
 
@@ -148,6 +149,9 @@ def discover(cfg: dict | None = None, root: Path | None = None) -> list[ModuleIn
             raise ModuleError(f"Module '{chain[-1]}' needs '{name}', which doesn't exist.")
         for dep in info.needs:
             visit(dep, chain + (name,))
+        for dep in info.uses:   # only if they're on, so never switched off with them; but no typos
+            if dep not in found:
+                raise ModuleError(f"Module '{name}' uses '{dep}', which doesn't exist.")
         seen.add(name)
         order.append(info)
     for name in found:

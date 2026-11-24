@@ -29,7 +29,8 @@ Pip-core and pip-web never name a module: they ask every module for these (tools
 What a module gets (ModuleContext): its settings; its own tables in pip.db (named <module>_…); its
 own section of secrets.toml; events it publishes (module.<name>.*); heads-ups for its own items
 (`alerts`, ModuleAlerts below); who's in the household (`people`, ModulePeople: names and roles, never
-voices); whether Pip is online; the clock; the modules it `needs` (their small `api`); the kinds of box
+voices); whether Pip is online; the clock; the modules it `needs` or `uses` (their small `api`; one it only
+`uses` may be off, then it's None); the kinds of box
 every module adds to the monitor (`boxes`, for the screen module); and an HTTP client that can only reach
 the hosts its module.toml lists under permissions ("network:<host>"). A module that talks to devices on the
 local network itself declares that too ("lan:<what>", the home_control module's plugs): sockets aren't checked like
@@ -253,7 +254,7 @@ class ModuleContext:
         self.people = ModulePeople(people) if people is not None else None       # names and roles only
         self.secrets = ScopedSecrets(info.name)
         self._db_path = db_path or paths.database()
-        self._modules = modules or {}
+        self._modules = modules if modules is not None else {}   # the registry's own list (filled as modules load)
         self._transport = transport  # tests: a fake internet
 
     def db(self) -> sqlite3.Connection:
@@ -285,9 +286,9 @@ class ModuleContext:
         return con
 
     def module(self, name: str):
-        """Another module's api, if this module declared it in `needs`."""
-        if name not in self.info.needs:
-            raise PermissionError(f"module {self.name} didn't declare it needs {name}")
+        """Another module's api, if this module declared it in `needs` (or in `uses`: then None while it's off)."""
+        if name not in self.info.needs and name not in self.info.uses:
+            raise PermissionError(f"module {self.name} didn't declare it needs or uses {name}")
         m = self._modules.get(name)
         return m.api if m else None
 

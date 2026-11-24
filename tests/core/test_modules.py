@@ -41,6 +41,21 @@ def test_settings_are_checked_and_modules_can_be_switched_off(tmp_path):
         read(tmp_path / "bad")
 
 
+def test_a_module_it_only_uses_may_be_off(tmp_path):
+    """`uses` (D-142, six seven's lamps): another module it uses if it's on; unlike `needs`, it stays on without it."""
+    make(tmp_path, "dice", 'name = "dice"\nkind = "skill"\nsummary = "Dice."\n')
+    make(tmp_path, "party", 'name = "party"\nkind = "skill"\nsummary = "Fun."\nuses = ["dice"]\n')
+    mods = {m.name: m for m in discover({"modules": {"dice": {"enabled": False}}}, root=tmp_path)}
+    assert mods["party"].enabled and mods["party"].uses == ["dice"]
+    ctx = ModuleContext(mods["party"], modules={})
+    assert ctx.module("dice") is None                                   # off: nothing to use
+    with pytest.raises(PermissionError):
+        ctx.module("chess")                                             # not declared
+    make(tmp_path, "typo", 'name = "typo"\nkind = "skill"\nsummary = "x"\nuses = ["dise"]\n')
+    with pytest.raises(ModuleError, match="uses 'dise'"):
+        discover({}, root=tmp_path)
+
+
 def test_a_module_only_sees_its_own_secrets_and_the_rest_of_the_file_is_kept(tmp_path, monkeypatch):
     monkeypatch.setenv("PIP_DATA", str(tmp_path))
     (tmp_path / "secrets.toml").write_text('# Pip secrets\ngroq_api_key = "gsk-1"\n\n[other]\ntoken = "keep me"\n')

@@ -246,3 +246,50 @@ def test_tinytuya_is_asked_for_the_version_first_then_switches(monkeypatch):
     plug = {"id": "a", "ip": "10.47.0.5", "key": "k", "dp": 1, "version": None}
     assert Local._ask(plug, False) == (False, 3.4)
     assert calls == [("status", 3.5), ("status", 3.4), ("set", 3.4, False)]
+
+
+# ---------------------------------------------------------------- the disco (D-142: six seven)
+async def disco_room(tmp_path, monkeypatch):
+    from pip_assistant.modules.home_control import module as hc
+    monkeypatch.setattr(hc, "FLASH_S", 0.01)
+    reg, mod, fake = setup(tmp_path, monkeypatch, ROOM)
+    await mod.refresh()
+    on_network(tmp_path, mod, {"r": True, "b": True, "t": False, "f": True})
+    await mod.check()
+    return reg, mod, fake
+
+
+async def test_the_disco_flashes_only_the_lights_directly_then_puts_them_back(tmp_path, monkeypatch):
+    import asyncio
+    reg, mod, fake = await disco_room(tmp_path, monkeypatch)
+    calls = len(fake.seen)
+    reg.get("home_control").disco(0.1)
+    reg.get("home_control").disco(0.1)                      # a second one while it flashes is ignored
+    await mod.party
+    flashed = [(pid, on) for pid, on, _ in mod.local.sent]
+    assert {pid for pid, _ in flashed} == {"r", "b", "t"}   # never the fan
+    assert ("t", True) in flashed and ("r", False) in flashed   # each went both ways
+    assert mod.local.near == {"r": True, "b": True, "t": False, "f": True}   # back as they were
+    assert [mod.plugs[i]["on"] for i in "rbtf"] == [True, True, False, True]
+    assert len(fake.seen) == calls                          # the cloud was never asked
+    assert mod.party.done()
+    await asyncio.sleep(0)
+
+
+async def test_a_light_switched_during_the_disco_stays_as_switched(tmp_path, monkeypatch):
+    import asyncio
+    reg, mod, fake = await disco_room(tmp_path, monkeypatch)
+    reg.get("home_control").disco(0.2)
+    await asyncio.sleep(0.05)
+    assert await say(reg, "tv lamp", True) == "The tv lamp's on."   # someone wants it on
+    await mod.party
+    assert mod.local.near["t"] is True and mod.local.near["r"] is True and mod.local.near["b"] is True
+
+
+async def test_no_disco_without_lights_on_pips_network(tmp_path, monkeypatch):
+    reg, mod, fake = setup(tmp_path, monkeypatch, ROOM)
+    await mod.refresh()                                     # only through the cloud: too slow for a disco
+    calls = len(fake.seen)
+    reg.get("home_control").disco(1.0)
+    await mod.party
+    assert len(fake.seen) == calls and mod.local.sent == []

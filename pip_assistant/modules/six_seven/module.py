@@ -1,32 +1,47 @@
-"""The six-seven module (D-35, D-121): when someone says six-seven, Pip chants it and his face on the monitor
-freaks out, at any hour.
+"""The six-seven module (D-35, D-121, D-142): when someone says six-seven, Pip freaks out, at any hour: he chants
+it, his face on the monitor freaks out (the hands), and the lamps flash on and off like a disco.
 
 It uses one part only, `room_heard(text, call)`: pip-core offers everything heard, room talk and what's said to
-Pip alike. The rule:
-  - said to Pip (or about him): "six seven" together ("six seven", "6-7", "67"; not "6:07", "167" or "6.7"),
-    so ordinary requests like "a timer for 6 minutes and 7 seconds" still reach Claude. Pip chants instead of
-    asking Claude.
-  - room talk: a six and a seven anywhere in the sentence ("it was seven, then six").
-Either way the face reacts (it asks pip-web for the "sixseven" reaction in web/static/tv.html) and Pip chants
-if he's free to talk. Then it rests `pause_seconds` (module.toml). It reads the words and forgets them: nothing
-is stored or logged.
+Pip alike, whatever he's doing (idle, listening for a reply, thinking, talking), so it's all done here on the Pi
+at once, never waiting for Claude. The rule (D-142): a six straight followed by a seven, anywhere in a sentence
+("six seven", "6-7", "67", "six, seven", "6'7"; not "6:07", "167", "6.7", "6/7", "sixty seven" or "seven six").
+
+What happens (`room_heard`):
+  - the face freaks out (it asks pip-web for the "sixseven" reaction in web/static/tv.html) and the lamps flash
+    (`disco`, through the home_control module's api, if it's on), at once, whatever Pip is doing;
+  - Pip chants if he's free to talk (pip-core decides). Said to him and nothing more ("Pip, six seven!"), the
+    chant is a `Done`: Claude is never asked about it, even when he's too busy to chant. Said to him as part of a
+    request ("Pip, set a timer for 67 minutes"), he freaks out but doesn't chant: the request goes on as usual.
+Then it rests `pause_seconds` (module.toml). It reads the words and forgets them: nothing is stored or logged.
 """
 import asyncio
+import logging
 import re
 
-from pip_assistant.core.modules import Call, Module
+from pip_assistant.core.modules import Call, Done, Module
+
+log = logging.getLogger(__name__)
 
 CHANT = "six seven, six seven, six fucking seven"
-TOGETHER = re.compile(r"(?<![\d.:])\b(?:six[\s,.!?\-–—]*seven|6[ \-–—]?7)\b(?![.:]\d)", re.I)
-SIX = re.compile(r"\b(six|6)\b", re.I)
-SEVEN = re.compile(r"\b(seven|7)\b", re.I)
+# A six straight followed by a seven. Between them: nothing ("67"), spaces, or the marks speech-to-text writes for
+# a little pause ("six, seven", "6-7", "6...7", "6'7"). Not part of a bigger number or a time ("167", "6:07",
+# "6.7", "67.5", "6/7"), and whole words ("sixty seven" and "seventy" don't count).
+TOGETHER = re.compile(r"(?<![\d.:,/])\b(?:six|6(?![.,]\d))(?:\s*[,.!?…'’\"\-–—]+\s*|\s*)(?:seven|7)\b(?![.:,/]\d)", re.I)
+# Words that don't make it a request: his name (and how it's misheard), greetings, laughs, "say".
+FILLER = re.compile(r"\b(?:pip|pipp|pips|pippy|pippie|pippletron|hey|hi|yo|oi|oh|ok|okay|so|say|it's|its|is|that's|"
+                    r"thats|bro|bruh|dude|man|guys|ha|haha+|lol|lmao|yeah|yes|yay|and|um+|uh+|like|go|again)\b", re.I)
 
 
-def heard(text: str, kind: str = "room") -> bool:
-    """Does this set it off? Said to Pip: six-seven together. Room talk: a six and a seven anywhere."""
-    if TOGETHER.search(text or ""):
-        return True
-    return kind == "room" and bool(SIX.search(text or "") and SEVEN.search(text or ""))
+def heard(text: str) -> bool:
+    """Does this set it off? A six straight followed by a seven, anywhere (D-142)."""
+    return bool(TOGETHER.search(text or ""))
+
+
+def only_six_seven(text: str) -> bool:
+    """Is that all they said ("Pip, six seven!", "yo, 6 7 haha")? Then the chant answers it. Anything more is a
+    request ("set a timer for 67 minutes") for Pip's usual answer."""
+    rest = FILLER.sub(" ", TOGETHER.sub(" ", text or ""))
+    return not re.sub(r"[\W_]+", "", rest)
 
 
 class SixSeven(Module):
@@ -36,14 +51,28 @@ class SixSeven(Module):
 
     def room_heard(self, text: str, call: Call) -> str | None:
         now = self.ctx.clock()
-        if now < self.quiet_until or not heard(text, call.kind):
+        if now < self.quiet_until or not heard(text):
             return None
         self.quiet_until = now + float(self.ctx.settings["pause_seconds"])
-        try:   # the face freaks out on the monitor, at the same moment
-            asyncio.get_running_loop().create_task(self.ctx.publish("reaction", {"reaction": "sixseven"}))
+        self.freak_out()
+        if call.kind == "direct" and not only_six_seven(text):
+            return None   # part of a request: the face and the lamps freak out, and the request is answered as usual
+        return Done(CHANT)   # said to Pip, it's his whole answer: never Claude's, even when he can't chant right now
+
+    def freak_out(self) -> None:
+        """The face freaks out on the monitor and the lamps flash, at the same moment (both run in the background)."""
+        try:
+            loop = asyncio.get_running_loop()
         except RuntimeError:   # no loop running (tests)
-            pass
-        return CHANT
+            return
+        loop.create_task(self.ctx.publish("reaction", {"reaction": "sixseven"}))
+        seconds = float(self.ctx.settings["disco_seconds"])
+        home = self.ctx.module("home_control") if seconds > 0 else None   # None when home control is off
+        if home is not None:
+            try:
+                home.disco(seconds)
+            except Exception:
+                log.exception("the lamps' disco didn't start")
 
 
 def setup(ctx) -> Module:

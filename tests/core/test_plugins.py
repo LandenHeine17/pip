@@ -164,3 +164,46 @@ async def test_modules_are_asked_at_any_hour(tmp_path):
     """The owner, 2026-11-10: the six-seven chant may go off in quiet hours too."""
     out, echo, _ = await _room(tmp_path, "00:00-23:59", "did you hear the echo")
     assert out == ["echo"]
+
+
+async def _room_while(tmp_path, heard, before):
+    """Like _room, with `before(conv)` setting what Pip is doing when it's heard."""
+    import asyncio
+
+    from helpers import finish, room, says
+    from helpers import room_setup as setup
+    reg = Registry()
+    reg.modules["echo"] = echo = Echo()
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, heard, modules=reg)
+    before(conv)
+    data, private = room()
+    await ears.emit("heard.utterance", {**data, "reason": "room"}, private)
+    await asyncio.sleep(0.2)
+    out = says(got)
+    await finish(bus, tasks)
+    return out, echo, asks, conv
+
+
+async def test_right_after_he_spoke_room_speech_is_offered_to_modules_too(tmp_path):
+    """D-142: in the follow-up window (he's listening for a reply), "six seven" still gets the chant, not Claude."""
+    import time
+
+    def window(conv):
+        conv.expect_until = conv.follow_until = time.monotonic() + 8
+    out, echo, asks, _ = await _room_while(tmp_path, "say echo", window)
+    assert echo.seen == [("say echo", "direct")] and out == ["echo"] and not asks
+
+
+async def test_not_the_rest_of_a_turn_he_is_holding(tmp_path):
+    def holding(conv):
+        conv.pending = "pip, what's"
+    out, echo, asks, _ = await _room_while(tmp_path, "the echo", holding)
+    assert echo.seen == []
+
+
+async def test_a_join_in_he_is_only_thinking_about_gives_way(tmp_path):
+    """D-142: Pip was thinking about joining in (nothing said yet) when "six seven" came: the chant wins."""
+    def joining(conv):
+        conv.answer_id, conv.answer_kind, conv.join_spoke = "a join-in", "join", False
+    out, echo, asks, conv = await _room_while(tmp_path, "did you hear the echo", joining)
+    assert out == ["echo"] and conv.answer_id is None

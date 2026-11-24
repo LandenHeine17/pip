@@ -1,15 +1,22 @@
-# Six seven (D-35, D-121): when someone says it, to Pip or in the room, Pip chants "six seven, six seven, six
-# fucking seven" and his face on the monitor freaks out, at any hour. It hears everything through the room_heard
-# hook in core/modules.py, keeps nothing of the words, and has no page, tables or box on the monitor.
+# Six seven (D-35, D-121, D-142): when someone says it (a six straight followed by a seven), to Pip or in the
+# room, whatever he's doing, Pip chants "six seven, six seven, six fucking seven", his face on the monitor freaks
+# out and the lamps flash like a disco, at any hour. It's all done on the Pi at once, never by Claude. It hears
+# everything through the room_heard hook in core/modules.py, keeps nothing of the words, and has no page, tables
+# or box on the monitor.
 
 name = "six_seven"
 kind = "skill"
-summary = "Chants six seven (and the face on the monitor freaks out) when someone says it."
+summary = "Chants six seven (the face on the monitor freaks out and the lamps flash) when someone says it."
 says_examples = []
 offline = true                      # needs no internet
 permissions = []
 needs = []
+uses = ["home_control"]             # to flash the lamps, if home control is on (six seven works without it)
 
 [settings.pause_seconds]
 default = 30
-explain = "After a chant, how many seconds Pip stays quiet before he will chant again (so a long chat doesn't set it off over and over)."
+explain = "After a six seven, how many seconds Pip waits before he will freak out again (so a long chat doesn't set it off over and over)."
+
+[settings.disco_seconds]
+default = 4.0
+explain = "How many seconds the lamps flash on and off like a disco at six seven, before each goes back as it was. 0 turns the disco off."
