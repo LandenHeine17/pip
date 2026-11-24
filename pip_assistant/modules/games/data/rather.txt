@@ -1,0 +1,95 @@
+# Would you rather (games module, D-144): the two choices, as said after "Would you rather …", with | between.
+# Lines starting with # are skipped. Keep them fun and clean: they're asked out loud in a shared room.
+be able to fly | be invisible
+be able to talk to animals | speak every human language
+never have to sleep | never have to eat
+live without music | live without movies
+always be ten minutes late | always be twenty minutes early
+have a pet dragon | have a pet unicorn
+be the funniest person in the room | be the smartest person in the room
+only eat pizza for a year | never eat pizza again
+have a rewind button for your life | have a pause button for your life
+explore space | explore the deep ocean
+be famous | be rich
+live in the city | live in the countryside
+have super speed | have super strength
+fight one horse-sized duck | fight a hundred duck-sized horses
+have a personal chef | have a personal driver
+always have to sing instead of talk | always have to dance when you walk
+know the future | change the past
+never use social media again | never watch TV again
+live in a treehouse | live in a houseboat
+have unlimited free flights | have unlimited free food
+be a famous singer | be a famous athlete
+have hands for feet | have feet for hands
+lose your phone | lose your wallet
+have a third eye | have a third arm
+sneeze glitter | burp bubbles
+be stuck in an elevator with your ex | be stuck in an elevator with your boss
+eat a spoonful of hot sauce | eat a spoonful of mayonnaise
+give up coffee | give up chocolate
+have a photographic memory | be able to read minds
+time travel to the past | time travel to the future
+be a wizard | be a superhero
+have no internet for a month | have no hot water for a month
+be really tall | be really short
+have a cat the size of a dog | have a dog the size of a cat
+win the lottery | live twice as long
+only wear pajamas forever | only wear a suit forever
+have every red light turn green for you | never wait in a line again
+be able to breathe underwater | be able to see in the dark
+live in a world without winter | live in a world without summer
+have a voice like a chipmunk | have a voice like Darth Vader
+eat a raw onion | drink a glass of pickle juice
+always know when someone is lying | always get away with lying
+star in a horror movie | star in a romantic comedy
+be the best player on a losing team | be the worst player on a winning team
+have a laugh that sounds like a donkey | have a sneeze that sounds like a foghorn
+read every book in the world | watch every movie in the world
+have unlimited sushi for life | have unlimited tacos for life
+go to the beach | go to the mountains
+be able to teleport | be able to stop time
+have to text in all capital letters | have to text in all emojis
+live on the moon | live at the bottom of the ocean
+have a robot butler | have a clone of yourself
+give up your phone for a week | give up talking for a week
+be a kid again | be ten years older
+only be able to whisper | only be able to shout
+have spaghetti for hair | sweat maple syrup
+never have homework again | never have to clean your room again
+have a pet penguin | have a pet sloth
+be the main character in a video game | be the main character in a cartoon
+have a rocket backpack | have a car that drives itself
+be able to control the weather | be able to talk to plants
+eat only sweet food | eat only salty food
+have to wear clown shoes every day | have to wear a clown nose every day
+always be cold | always be hot
+have a song stuck in your head forever | have an itch you can never scratch
+be great at every sport | be great at every instrument
+get a free pizza every week | get a free vacation every year
+have a giant hamster wheel in your room | have a slide instead of stairs
+see a real dinosaur | see a real alien
+know every language | be able to play every instrument
+never get a cold again | never get a paper cut again
+have your own island | have your own spaceship
+always have perfect hair | always have perfect teeth
+be a famous chef | be a famous movie director
+have a sleepover in a museum | have a sleepover in a toy store
+own a dragon that's the size of a kitten | own a kitten that's the size of a dragon
+be able to fly but only one foot off the ground | be invisible but only when nobody's looking
+have your life narrated by a movie announcer | have a theme song that plays whenever you walk in
+live in a castle | live in a spaceship
+get one wish now | get three wishes in ten years
+lick a frozen pole | sit on a whoopee cushion in a quiet library
+be stuck on a desert island alone | be stuck there with someone who never stops talking
+have a pet that can talk | have a pet that can fly
+walk everywhere backwards | hop everywhere on one foot
+only eat breakfast foods | never eat breakfast foods again
+have a personal assistant | have a personal trainer
+have hiccups for a day | have the giggles for a day
+be the first person on Mars | be the first person to meet a friendly alien
+have one real friend | have a hundred acquaintances
+wear socks that are always wet | wear shoes that are always too small
+travel by zip line everywhere | travel by trampoline everywhere
+be able to shrink to the size of an ant | grow to the size of a building
+always win at board games | always win at video games

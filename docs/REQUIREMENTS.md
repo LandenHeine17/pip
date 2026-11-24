@@ -28,7 +28,7 @@ Where the archive says one thing and a decision says another, **the decision win
 
 Requirement rows below already include their own overrides (struck-through or marked with the decision).
 
-## 1. New requirements (97)
+## 1. New requirements (100)
 
 | ID | Name | What it does | Milestone | Priority | Detail |
 |---|---|---|---|---|---|
@@ -131,6 +131,7 @@ Requirement rows below already include their own overrides (struck-through or ma
 | PIP-NEW-098 | Modules hear everything; six seven | A module may react to anything heard (room talk or speech to Pip, `room_heard`), answer for Pip and make the face react, without pip-core naming it; the `six_seven` module chants, the face freaks out and the lamps flash like a disco when a six is straight followed by a seven (to Pip or in the room, whatever he's doing; inside a request to Pip he freaks out but the request is still done), any hour, then rests 30 s | **Built 2026-11-10 (D-121); changed 2026-11-23 (D-142)** | P3 | — |
 | PIP-NEW-097 | Swappable voice | Every text-to-speech engine (Piper, Kokoro, or a future local or cloud voice) sits behind one voice interface. Engine, voice and speed are chosen in Settings and can be changed at any time; adding an engine is one module from the template (PIP-NEW-092) with no changes elsewhere. On a change, Pip re-learns its own voice for echo rejection and re-makes its cached phrases. The same pattern applies to speech-to-text (PIP-NEW-008) and the AI model (D-05) | M1a (**voice and speed chosen in Settings, 2026-11-09; only the Piper engine so far**) | P1 | [04 Part B](archive/pip-v2-proposals-2026-11/04-SPEECH-RECOGNITION-RESEARCH.md) |
 | PIP-NEW-099 | YouTube videos on the monitor | "Pip, pull up a YouTube video explaining …": Claude makes a search, the `youtube` module finds a video that may play outside YouTube (YouTube Data API, the owner's key) and covers the monitor with it, the face small beside it. Said to Pip by name, pause / play ("stop the video" pauses) / fast forward / go back (10 s, or as said) / go to a time / start over / louder / quieter / mute / a volume / a different one / take down the video are done at once without Claude (also as a reply right after he speaks); other wordings through Claude. The video plays quieter while Pip listens, thinks or talks, and Pip doesn't hear it (tested). Taking it down puts the screen back as it was; it's taken down by itself a minute after it ends or after 30 minutes paused; nothing is kept | **Built 2026-11-23 (D-141)** | P3 | — |
+| PIP-NEW-100 | Games | Trivia (Open Trivia DB, or questions Claude writes for any other topic; A to D on the monitor; the first answer counts, by letter or by the answer, said to Pip or out loud), 20 questions (Pip thinks of something, Claude answers the yes-or-no questions), would you rather (Claude roasts the answers) and guess the song (Deezer's 30-second clips on the monitor, sound only; the song or the singer scores); skip, repeat, play it again, the score and stop by voice without Claude; points to whoever Pip recognises, else "Guest"; an all-time board on a Games page. Only when asked, any hour. A module that plugs in and out on its own: nothing else names it | M3: **Built 2026-11-24 (D-144)** | P3 | — |
 
 ## 2. Ziggletron features and what happens to them (89)
 

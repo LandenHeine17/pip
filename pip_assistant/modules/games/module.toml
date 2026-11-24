@@ -1,0 +1,60 @@
+# Games (D-144): trivia, 20 questions, would you rather and guess the song, played with Pip by voice, the game up
+# on the monitor. Plug and play: nothing else in Pip names it, and it uses only the hooks every module has, so
+# switching it off (Settings → games → enabled, or deleting this folder) leaves Pip as he was.
+# Only when someone asks; any hour. Trivia questions come from Open Trivia DB (opentdb.com, free, no key), or from
+# Claude for a topic it hasn't got; the songs' 30-second clips from Deezer (api.deezer.com, free, no key; the monitor
+# plays them). Keeps each finished game's winner and scores (games_results) for the all-time board; nothing said.
+
+name = "games"
+kind = "skill"
+summary = "Trivia, 20 questions, would you rather and guess the song, by voice, with the game on the monitor."
+says_examples = ["Pip, let's play trivia", "Pip, trivia about science, hard", "Pip, let's play 20 questions",
+                 "Pip, would you rather", "Pip, guess the song, 2000s", "Pip, skip", "Pip, what's the score",
+                 "Pip, stop the game"]
+offline = false                     # the questions and the songs come from the internet (20 questions and would you rather need Claude)
+permissions = ["network:opentdb.com", "network:api.deezer.com"]   # the monitor's browser plays the clips from Deezer itself
+needs = []
+uses = ["screen"]                   # the game on the monitor, if the screen module is on (guess the song needs it)
+
+[settings.trivia_questions]
+default = 10
+explain = "How many questions a game of trivia has (3 to 20)."
+
+[settings.song_rounds]
+default = 5
+explain = "How many songs a game of guess the song has (1 to 15)."
+
+[settings.twenty_limit]
+default = 20
+explain = "How many yes-or-no questions 20 questions allows (5 to 30)."
+
+[settings.clip_volume]
+default = 80
+explain = "Guess the song: the clip's volume on the monitor (0 to 100)."
+
+[settings.duck_volume]
+default = 15
+explain = "Guess the song: the clip's volume while Pip is listening or talking (0 to 100), so you can hear each other."
+
+[claude]
+instructions = """
+Games: only when they ask to play (never suggest one yourself), reply with ONLY: ACTION {"do": "game", "game": \
+"trivia"} (game: trivia, twenty (20 questions), rather (would you rather), song (guess the song)). Trivia: "category" \
+if their topic is one of General Knowledge, Books, Film, Music, Musicals & Theatres, Television, Video Games, Board \
+Games, Science & Nature, Computers, Mathematics, Mythology, Sports, Geography, History, Politics, Art, Celebrities, \
+Animals, Vehicles, Comics, Gadgets, Anime & Manga, Cartoons; "difficulty" (easy, medium, hard) if they say. Any other \
+topic: "topic" plus 8 questions you write, short and certainly true: "questions": [{"q": "...?", "right": "...", \
+"wrong": ["...", "...", "..."]}]. Song: "topic" for a decade or genre if they say ("2000s", "country"). While a game \
+is on (a line says so), Pip runs it; {"do": "game", "op": "stop"} ends it, "op": "next" skips; in would you rather, \
+{"do": "game", "op": "next", "a": "...", "b": "..."} asks one you made up.
+"""
+
+[monitor.game]                      # the game: put up and taken down by this module (the screen's api cover/uncover)
+label = "Game"
+size = [9, 8]
+once = true
+aliases = ["games", "trivia", "scoreboard"]
+
+[dashboard]
+page = "index.html"
+label = "Games"

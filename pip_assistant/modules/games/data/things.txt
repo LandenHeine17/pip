@@ -1,0 +1,238 @@
+# What Pip may think of in 20 questions (games module, D-144). One per line:
+#   what kind of thing it is, as Pip says it ("I'm thinking of an animal"): its name | other names it may be guessed by
+# Lines starting with # are skipped. Keep them things everyone in the room would know.
+an animal: penguin | penguins
+an animal: giraffe | giraffes
+an animal: elephant | elephants
+an animal: kangaroo | kangaroos
+an animal: octopus | octopi | octopuses
+an animal: dolphin | dolphins
+an animal: shark | sharks
+an animal: owl | owls
+an animal: bat | bats
+an animal: snake | snakes
+an animal: frog | frogs
+an animal: turtle | tortoise | turtles
+an animal: cat | kitten | cats
+an animal: dog | puppy | dogs
+an animal: horse | pony | horses
+an animal: cow | cows
+an animal: pig | pigs
+an animal: chicken | hen | rooster
+an animal: lion | lions
+an animal: tiger | tigers
+an animal: bear | bears
+an animal: panda | pandas | panda bear
+an animal: koala | koala bear
+an animal: zebra | zebras
+an animal: camel | camels
+an animal: monkey | monkeys
+an animal: gorilla | gorillas
+an animal: squirrel | squirrels
+an animal: rabbit | bunny | rabbits
+an animal: mouse | mice
+an animal: spider | spiders
+an animal: bee | bees | honeybee
+an animal: butterfly | butterflies
+an animal: ant | ants
+an animal: whale | whales | blue whale
+an animal: crocodile | alligator
+an animal: flamingo | flamingos
+an animal: parrot | parrots
+an animal: eagle | eagles
+an animal: goldfish
+an animal: hedgehog | hedgehogs
+an animal: sloth | sloths
+an animal: raccoon | raccoons
+an animal: llama | alpaca
+an animal: moose
+an animal: polar bear
+an animal: jellyfish
+an animal: snail | snails
+an animal: deer | reindeer
+an animal: goat | goats
+something you eat: pizza
+something you eat: banana | bananas
+something you eat: apple | apples
+something you eat: taco | tacos
+something you eat: hamburger | burger | cheeseburger
+something you eat: hot dog | hotdog
+something you eat: ice cream
+something you eat: chocolate
+something you eat: popcorn
+something you eat: spaghetti | pasta
+something you eat: sushi
+something you eat: pancake | pancakes
+something you eat: waffle | waffles
+something you eat: cereal
+something you eat: egg | eggs
+something you eat: cheese
+something you eat: bread | toast
+something you eat: carrot | carrots
+something you eat: potato | potatoes | french fries | fries
+something you eat: strawberry | strawberries
+something you eat: watermelon
+something you eat: pineapple
+something you eat: lemon | lemons
+something you eat: avocado | guacamole
+something you eat: donut | doughnut
+something you eat: cookie | cookies
+something you eat: birthday cake | cake
+something you eat: peanut butter
+something you eat: ramen | instant noodles
+something you eat: burrito
+something you eat: bacon
+something you eat: corn | corn on the cob
+something you eat: grilled cheese
+something you eat: pickle | pickles
+something you eat: marshmallow | marshmallows
+something you drink: coffee
+something you drink: milk
+something you drink: orange juice
+something you drink: lemonade
+something you drink: hot chocolate | hot cocoa
+something you drink: tea
+something you drink: soda | pop | cola
+a thing: toothbrush
+a thing: umbrella
+a thing: pillow
+a thing: mirror
+a thing: refrigerator | fridge
+a thing: microwave
+a thing: toaster
+a thing: lamp
+a thing: chair
+a thing: bed
+a thing: backpack
+a thing: laptop | computer
+a thing: phone | smartphone | cell phone
+a thing: television | tv
+a thing: remote control | remote | tv remote
+a thing: headphones | earbuds
+a thing: alarm clock | clock
+a thing: key | keys
+a thing: wallet
+a thing: sunglasses
+a thing: hat | baseball cap | cap
+a thing: shoe | shoes | sneaker | sneakers
+a thing: sock | socks
+a thing: scissors
+a thing: pencil
+a thing: pen
+a thing: book
+a thing: candle
+a thing: balloon | balloons
+a thing: guitar
+a thing: piano | keyboard
+a thing: drum | drums
+a thing: violin
+a thing: trumpet
+a thing: soccer ball
+a thing: basketball
+a thing: skateboard
+a thing: bicycle | bike
+a thing: camera
+a thing: light bulb | lightbulb
+a thing: fan
+a thing: vacuum cleaner | vacuum
+a thing: washing machine
+a thing: shower
+a thing: bathtub | bath
+a thing: toilet
+a thing: trash can | garbage can | bin
+a thing: hammer
+a thing: ladder
+a thing: rubber duck
+a thing: teddy bear
+a thing: video game controller | controller
+a thing: credit card
+a thing: coin | coins | penny | quarter
+a thing: dice | die
+a thing: mug | coffee mug | cup
+a thing: fork
+a thing: spoon
+a thing: frying pan | pan
+a thing: blanket
+a thing: tent
+a thing: kite
+a thing: magnet
+a thing: battery
+a thing: stapler
+a thing: calculator
+a thing: snow globe
+a thing: crayon | crayons
+a thing: paperclip | paper clip
+a thing: sticky note | post it note
+a vehicle: car
+a vehicle: bus | school bus
+a vehicle: train
+a vehicle: airplane | plane | jet
+a vehicle: helicopter
+a vehicle: submarine
+a vehicle: rocket | spaceship
+a vehicle: boat | ship
+a vehicle: motorcycle | motorbike
+a vehicle: tractor
+a vehicle: fire truck | fire engine
+a vehicle: hot air balloon
+a vehicle: canoe | kayak
+a vehicle: scooter
+a place: the beach | beach
+a place: the moon | moon
+a place: the library | library
+a place: the zoo | zoo
+a place: the airport | airport
+a place: a hospital | hospital
+a place: the gym | gym
+a place: a movie theater | movie theater | cinema
+a place: the Eiffel Tower | eiffel tower
+a place: the Grand Canyon | grand canyon
+a place: Disney World | disneyland | disney
+a place: the North Pole | north pole
+a place: Antarctica
+a place: Paris
+a place: New York | new york city | nyc
+a place: Hawaii
+a place: the Statue of Liberty | statue of liberty
+a place: Mount Everest | everest
+a place: the pyramids | pyramids | the pyramids of giza
+a place: a volcano | volcano
+a place: the desert | desert
+a place: the rainforest | rainforest | jungle
+a thing in nature: rainbow
+a thing in nature: snowflake | snow
+a thing in nature: lightning | thunderstorm
+a thing in nature: tornado
+a thing in nature: the sun | sun
+a thing in nature: a cloud | cloud | clouds
+a thing in nature: a tree | tree
+a thing in nature: a rose | rose | flower
+a thing in nature: sunflower
+a thing in nature: cactus
+a thing in nature: a mushroom | mushroom
+a thing in nature: an iceberg | iceberg
+a thing in nature: a waterfall | waterfall
+a thing in nature: a star | star
+a thing in nature: the ocean | ocean | sea
+a sport: soccer | football
+a sport: basketball
+a sport: baseball
+a sport: tennis
+a sport: golf
+a sport: swimming
+a sport: bowling
+a sport: chess
+a sport: skiing | snowboarding
+a sport: ice hockey | hockey
+a job: firefighter | fireman
+a job: astronaut
+a job: teacher
+a job: doctor
+a job: chef | cook
+a job: pilot
+a job: police officer | cop | policeman
+a job: dentist
+a job: farmer
+a job: mail carrier | mailman | postman
+a job: lifeguard
+a job: magician

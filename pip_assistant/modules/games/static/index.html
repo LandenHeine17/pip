@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Games</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+table.board{width:100%;border-collapse:collapse;font-size:.95rem}
+table.board th,table.board td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--soft)}
+table.board th:first-child,table.board td:first-child{text-align:left}
+table.board td.total{font-weight:700}
+.now{padding:12px;border-radius:12px;background:var(--soft)}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+.chip{padding:4px 10px;border-radius:999px;background:var(--soft);font-size:.86rem}
+.recent{font-size:.9rem;color:var(--muted);margin:3px 0}
+h2{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:18px 0 6px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+    <div><h1>Games</h1><div class="sub">Trivia, 20 questions, would you rather and guess the song (D-144)</div></div></div>
+</header>
+<section>
+  <div id="now"></div>
+
+  <h2>All-time wins</h2>
+  <div id="board"><div class="empty">Loading…</div></div>
+  <div class="row"><button class="danger" id="reset">Reset the scores</button></div>
+
+  <h2>Last games</h2>
+  <div id="recent"></div>
+
+  <h2>Things to say</h2>
+  <div class="row">
+    <span class="chip">"Pip, let's play trivia"</span><span class="chip">"Pip, trivia about science, hard"</span>
+    <span class="chip">"Pip, trivia about Minecraft"</span><span class="chip">"Pip, let's play 20 questions"</span>
+    <span class="chip">"Pip, would you rather"</span><span class="chip">"Pip, guess the song, 2000s"</span>
+    <span class="chip">"Pip, skip" / "next"</span><span class="chip">"Pip, repeat the question"</span>
+    <span class="chip">"Pip, play it again"</span><span class="chip">"Pip, what's the score?"</span><span class="chip">"Pip, stop the game"</span>
+  </div>
+  <div class="sub">A game goes up on the monitor, Pip's face small beside it. In trivia, answer with the letter or the answer,
+    to Pip or just out loud; the first answer counts. In guess the song, name the song or who sings it (a 30-second clip from
+    Deezer plays on the monitor's speaker). In 20 questions Pip thinks of something and Claude answers your yes-or-no
+    questions; in would you rather, Claude roasts your choices. Points go to whoever Pip recognises by voice, else
+    "Guest"; 20 questions nobody guesses is a win for Pip. Only finished games count here. Pip never starts a game himself.
+    Switch the whole thing off in <a href="/settings">Settings → games</a>.</div>
+</section>
+</main>
+<script src="/pip.js"></script>
+<script>
+const NAMES = {trivia: "Trivia", twenty: "20 questions", song: "Guess the song"};
+function when(t) { return new Date(t * 1000).toLocaleString([], {weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"}); }
+function show(r) {
+  const p = r.playing;
+  $("now").innerHTML = p ? `<div class="now"><b>Playing now: ${esc(p.name)}</b>${p.over ? " (finished)" : ""}
+      <div class="sub">${Object.entries(p.scores || {}).map(([n, s]) => `${esc(n)} ${s}`).join(" · ") || "No points yet."}</div>
+      <div class="row"><button id="stop">Take it down</button></div></div>` : "";
+  const games = Object.keys(NAMES);
+  $("board").innerHTML = r.board.length ? `<table class="board"><tr><th>Who</th>${games.map(g => `<th>${NAMES[g]}</th>`).join("")}<th>Total</th></tr>
+    ${r.board.map(w => `<tr><td>${esc(w.name)}</td>${games.map(g => `<td>${w[g] || ""}</td>`).join("")}<td class="total">${w.total}</td></tr>`).join("")}</table>`
+    : `<div class="empty">No games finished yet.</div>`;
+  $("recent").innerHTML = r.recent.map(g => `<div class="recent">${esc(when(g.at))} · ${esc(NAMES[g.game] || g.game)} ·
+      ${g.winner ? "won by " + esc(g.winner) : "no winner"}${Object.keys(g.scores).length ? " (" + Object.entries(g.scores).map(([n, s]) => esc(n) + " " + s).join(", ") + ")" : ""}</div>`).join("")
+    || `<div class="empty">None yet.</div>`;
+  if (p) $("stop").onclick = async () => { const x = await pip.act(pip.post("stop")); if (x) show(x); };
+}
+async function load() { const r = await pip.act(pip.get("list")); if (r) show(r); }
+$("reset").onclick = async () => {
+  if (!confirm("Forget every game's result? The all-time wins start again from nothing.")) return;
+  const r = await pip.act(pip.post("reset")); if (r) show(r);
+};
+pip.live(load);
+load();
+</script>
+</body>
+</html>

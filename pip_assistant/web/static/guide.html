@@ -344,7 +344,7 @@ tour: [
 <h2>Modules</h2>
 <p>Every feature that isn't Pip's core is a <b>module</b>: a folder in <code>pip_assistant/modules/</code> with a description file
 (<code>module.toml</code>) and a little code (<code>module.py</code>). Pip finds them at startup. Today: google, calendar, todos, screen,
-six_seven, websearch, recall, home_control, youtube, routines (and _template, the example).</p>
+six_seven, websearch, recall, home_control, youtube, routines, games (and _template, the example).</p>
 <div class="note"><b>The rule (D-120):</b> Pip's programs <b>never name a module</b>. pip-core and pip-web ask <i>every</i> module the same
 questions through <b>hooks</b>, so a module can be added, changed or switched off without touching them.
 [[tools/check_map.py#modules_named|tools/check_map.py]] refuses a commit that breaks this, and the tests check it too.</div>
@@ -399,6 +399,8 @@ tour: [
   {title: "A module that runs routines", text: "routines (D-143): \"Pip, goodnight\" said in so many words is caught in room_heard and answered at once (a Done): the say and read-out steps become the words, and the switching runs in the background through home control's api.switch. In other words, Claude's ACTION {\"do\": \"routine\", …} runs it and waits, so Pip can say what didn't switch.", ref: "modules/routines/module.py#Routines.room_heard"},
   {title: "Hearing the alarms", text: "The schedule tells its listeners when alerts ring, stop, snooze or go unanswered (with the alerts themselves); the conversation passes it to every module. The routines module turns the lamps on when the wake-up alarm rings and returns the morning briefing once it's stopped.", ref: "core/conversation.py#Conversation.alerts_to_modules"},
   {title: "Said once he's free", text: "What a module returned for an alarm waits until Pip isn't ringing, answering, speaking or holding someone's turn (after his reply to \"stop\"), then is said; given up after a minute.", ref: "core/conversation.py#Conversation.say_when_free"},
+  {title: "A module that plugs in and out", text: "games (D-144): built using only the hooks every module has, so switching it off leaves Pip as he was. Claude's game action starts one; then everything heard is handed to the game: an answer gets a Done reply (Claude isn't asked), the controls are done at once, and anything else goes to Claude, who reads about the game in its summary.", ref: "modules/games/module.py#Games.room_heard"},
+  {title: "Hearing an answer", text: "Trivia: a letter (\"bee\" is B) or a choice's words, compared loosely, since speech-to-text spells things its own way. The first answer counts.", ref: "modules/games/trivia.py#Trivia.pick"},
   {title: "A module that remembers conversations", text: "recall (D-128): it hears every line (room_heard) and, once the room has been quiet 10 minutes, asks Claude for a few lines of notes. Only the notes are kept, 30 days; the words are dropped.", ref: "modules/recall/module.py#Recall.write_notes"},
   {title: "Asking Claude for a summary", text: "A module-neutral call any module may use if its module.toml permits \"claude:summarize\": the lines go to pip-thinker privately, and only the notes come back.", ref: "core/modules.py#ModuleContext.summarize"},
   {title: "The guard", text: "Reads the code of Pip's programs and fails if any names a module.", ref: "tools/check_map.py#modules_named"},

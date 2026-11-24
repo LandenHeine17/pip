@@ -324,6 +324,14 @@ flowchart TD
 - **"Pip, I'm heading out"**: everything off, lamps and fan. Anything that rings with nobody answering while you're out is kept, and **"Pip, I'm back"** turns the lamps on and tells you, once.
 - Said to Pip in a routine's own words, it runs at once on the Pi without Claude; in other words ("night night, Pip") Claude works out which one. The page's "Run now" does it for real and shows what Pip would say.
 
+### Games (built 2026-11-24, D-144)
+- The `games` module plugs in and out on its own: switch it off in Settings → games and Pip is as he was. Only when someone asks ("Pip, let's play trivia"), at any hour; the game goes up on the monitor, Pip's face small beside it.
+- **Trivia**: ten questions from Open Trivia DB ("trivia about science, hard"), or eight Claude writes for any other topic ("trivia about Minecraft"). Answer with the letter or the answer, to Pip or just out loud; the first answer counts.
+- **20 questions**: Pip thinks of something and says what kind of thing; Claude answers the yes-or-no questions. Name it to win; if nobody does in 20, Pip wins.
+- **Would you rather**: Pip asks, the two choices go up, and Claude roasts what you pick. "Next" asks another.
+- **Guess the song**: a 30-second clip from Deezer plays on the monitor (never the title); name the song or who sings it. "Play it again" replays it.
+- "Skip", "repeat the question", "what's the score", "stop the game" are done at once. Points go to whoever Pip recognises by voice, else "Guest"; finished games count on the Games page's all-time board.
+
 ### The owner's conversation rules (CB-001–050), where they stand (2026-11-12)
 From the owner's spec `~/Pip_Conversational_Behavior_Specification_v2.md` (background; decisions win).
 
