@@ -76,6 +76,10 @@ class Schedule:
         self._wake = asyncio.Event()          # "something changed": re-check what's due now
         self.last_rung: tuple[str, float] | None = None  # (id, when): "snooze that" / "change that alarm"
         self.watchers: list = []              # called with no arguments when ringing starts or stops (Pip's state)
+        # Called with (event, rows) when alerts start ringing, are stopped, snoozed or go unanswered: "ringing",
+        # "stopped", "snoozed", "unanswered"; rows are the alerts as they were (label, kind, repeat…). pip-core
+        # passes them to the modules (Module.on_alert: the routines module's wake-up alarm, D-143).
+        self.listeners: list = []
 
     # ---------------------------------------------------------------- storage
     def _now_dt(self) -> datetime:
@@ -246,6 +250,7 @@ class Schedule:
             self.ringing.append(a["id"])
             self.last_rung = (a["id"], self.clock())
             await self._event("alert.ringing", {"id": a["id"], "kind": a["kind"]}, {"label": a["label"]})
+        self._tell("ringing", due)
         if self._ring_task and not self._ring_task.done():
             self._ring_task.cancel()  # a new one takes over: announce it now, ring time starts again
         self._ring_task = asyncio.create_task(self._ring())
@@ -264,12 +269,13 @@ class Schedule:
                 await asyncio.sleep(self.repeat_every)
                 if self.clock() - started >= self.ring_s:
                     ids, self.ringing = list(self.ringing), []
-                    for i in ids:
-                        if r := self.get(i):
-                            self._finish(r, "done")
+                    rows = [r for r in (self.get(i) for i in ids) if r]
+                    for r in rows:
+                        self._finish(r, "done")
                     await self._stop_sound()
                     self._notify()
                     await self._event("alert.unanswered", {"count": len(ids)})
+                    self._tell("unanswered", rows)
                     return
         except asyncio.CancelledError:
             pass
@@ -295,13 +301,14 @@ class Schedule:
         ids, self.ringing = list(self.ringing), []
         if self._ring_task:
             self._ring_task.cancel()
-        for i in ids:
-            if r := self.get(i):
-                self._finish(r, "done")
+        rows = [r for r in (self.get(i) for i in ids) if r]
+        for r in rows:
+            self._finish(r, "done")
         await self._stop_sound()
         self._notify()
         if ids:
             await self._event("alert.stopped", {"how": how, "count": len(ids)})
+            self._tell("stopped", rows)
         return len(ids)
 
     async def snooze(self, minutes: float | None = None, how: str = "voice") -> int:
@@ -310,6 +317,7 @@ class Schedule:
         ids, self.ringing = list(self.ringing), []
         if self._ring_task:
             self._ring_task.cancel()
+        rows = [r for r in (self.get(i) for i in ids) if r]
         for i in ids:
             row = self.get(i)
             # A snoozed timer counts down the snooze now, so its bar on the dashboard is out of that (owner's
@@ -320,6 +328,7 @@ class Schedule:
         self._notify()
         if ids:
             await self._event("alert.snoozed", {"how": how, "minutes": minutes, "count": len(ids)})
+            self._tell("snoozed", rows)
         return len(ids)
 
     async def hush(self, seconds: float | None = None) -> None:
@@ -351,6 +360,14 @@ class Schedule:
                 w()
             except Exception:
                 log.exception("schedule watcher failed")
+
+    def _tell(self, event: str, rows: list[dict]) -> None:
+        """Tell the listeners (pip-core → the modules) that these alerts started ringing, stopped, …"""
+        for f in self.listeners:
+            try:
+                f(event, [dict(r) for r in rows])
+            except Exception:
+                log.exception("schedule listener failed")
 
     def _changed(self, what: str, row: dict) -> None:
         self._wake.set()

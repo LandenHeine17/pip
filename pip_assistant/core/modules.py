@@ -22,19 +22,21 @@ setup returns a Module. Each of its parts is optional:
     room_may_see(a)   may this timer, alarm or heads-up show on the room's monitor? (the calendar hides the
                       heads-ups of events it mayn't mention to everyone)
     people_links(id)  links for a person on the dashboard's People card ("Connect Google")
+    on_alert(event, alerts)  timers and alarms ringing, stopped, snoozed or unanswered; may return something for
+                      Pip to say once he's free (the routines module's morning briefing after the wake-up alarm)
     api               a small object other modules may use (each module documents its own)
 
 Pip-core and pip-web never name a module: they ask every module for these (tools/check_map.py checks).
 
 What a module gets (ModuleContext): its settings; its own tables in pip.db (named <module>_…); its
-own section of secrets.toml; events it publishes (module.<name>.*); heads-ups for its own items
-(`alerts`, ModuleAlerts below); who's in the household (`people`, ModulePeople: names and roles, never
-voices); whether Pip is online; the clock; the modules it `needs` or `uses` (their small `api`; one it only
-`uses` may be off, then it's None); the kinds of box
-every module adds to the monitor (`boxes`, for the screen module); and an HTTP client that can only reach
+own section of secrets.toml; events it publishes (module.<name>.*); heads-ups for its own items, and a look
+at the alarms set (`alerts`, ModuleAlerts below); who's in the household (`people`, ModulePeople: names and
+roles, never voices); where Pip lives (`location`, for the weather); whether Pip is online; the clock; the
+modules it `needs` or `uses` (their small `api`; one it only `uses` may be off, then it's None); the kinds of
+box every module adds to the monitor (`boxes`, for the screen module); and an HTTP client that can only reach
 the hosts its module.toml lists under permissions ("network:<host>"). A module that talks to devices on the
-local network itself declares that too ("lan:<what>", the home_control module's plugs): sockets aren't checked like
-the HTTP client, so the declaration is what a reviewer goes by. Nothing else of pip-core.
+local network itself declares that too ("lan:<what>", the home_control module's plugs): sockets aren't checked
+like the HTTP client, so the declaration is what a reviewer goes by. Nothing else of pip-core.
 """
 import asyncio
 import importlib
@@ -172,6 +174,13 @@ class Module:
         forget them: don't store or log what people said."""
         return None
 
+    async def on_alert(self, event: str, alerts: list[dict]) -> str | None:
+        """Timers, alarms, reminders or heads-ups (`alerts`: rows with "kind", "label", "repeat", "due"…) have
+        started ringing ("ringing"), been stopped by someone ("stopped"), snoozed ("snoozed"), or rung with nobody
+        answering ("unanswered"). Return something for Pip to say, or None: he says it once he's free (after his
+        reply to "stop"; dropped if he's still busy a minute later). Labels are what people said: don't log them."""
+        return None
+
     def room_may_see(self, alert: dict) -> bool | None:
         """May this alert (a timer, alarm, reminder or heads-up) show on the room's monitor? None: not
         this module's business. An alert linked to an item (`event_id`) shows only if its module says yes."""
@@ -222,6 +231,14 @@ class ModuleAlerts:
         """How many heads-ups (any module's) are waiting."""
         return len(self._s.active(("event",)))
 
+    def upcoming(self, kind: str = "alarm") -> list[dict]:
+        """The timers, alarms or reminders set (read-only), soonest first: [{"id", "kind", "label", "due",
+        "repeat"}]. The routines module says "your alarm's at 7:30" at goodnight (D-143)."""
+        if kind not in ("timer", "alarm", "reminder"):
+            raise ValueError(f"no such kind: {kind}")
+        return [{k: a[k] for k in ("id", "kind", "label", "due", "repeat")} for a in self._s.active((kind,))
+                if a["state"] == "waiting"]
+
 
 class ModulePeople:
     """Who's in the household (core/people.py), read-only: id, name and role. Never voices or anything else."""
@@ -246,8 +263,10 @@ class ModulePeople:
 
 class ModuleContext:
     def __init__(self, info: ModuleInfo, bus=None, schedule=None, people=None, net=None, clock=time.time,
-                 db_path=None, modules: dict | None = None, transport=None, boxes: dict | None = None):
+                 db_path=None, modules: dict | None = None, transport=None, boxes: dict | None = None,
+                 location: str = ""):
         self.info, self.name, self.settings = info, info.name, info.settings
+        self.location = location   # where Pip lives ("Lincoln, Nebraska": settings [thinker] location, D-63)
         self.boxes = boxes or {}   # every loaded module's kinds of monitor box ({kind: {label, size, …, "module"}})
         self.bus, self.net, self.clock = bus, net, clock
         self.alerts = ModuleAlerts(schedule) if schedule is not None else None   # heads-ups for its own items
@@ -334,6 +353,7 @@ class Registry:
         reg = cls()
         infos = [i for i in (infos if infos is not None else enabled(cfg)) if i.enabled]
         boxes = {kind: {**b, "module": i.name} for i in infos for kind, b in i.boxes.items()}
+        ctx_kw.setdefault("location", str((cfg or {}).get("thinker", {}).get("location") or ""))
         for info in infos:
             try:
                 code = importlib.import_module(f"pip_assistant.modules.{info.name}.module")
@@ -425,6 +445,17 @@ class Registry:
             except Exception:
                 log.exception("module %s room_heard failed", name)   # never log the words themselves
         return None
+
+    async def on_alert(self, event: str, alerts: list[dict]) -> str:
+        """Tell every module that alerts rang, stopped, … (Module.on_alert); what they want said, joined."""
+        said = []
+        for name, m in self.modules.items():
+            try:
+                if text := await m.on_alert(event, alerts):
+                    said.append(text)
+            except Exception:
+                log.exception("module %s on_alert failed", name)
+        return " ".join(said)
 
     def people_links(self, person_id: str) -> list[dict]:
         return [link for _, links in self._each("people_links", lambda m: m.people_links(person_id), []) for link in links or []]

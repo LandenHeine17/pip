@@ -293,3 +293,21 @@ async def test_no_disco_without_lights_on_pips_network(tmp_path, monkeypatch):
     reg.get("home_control").disco(1.0)
     await mod.party
     assert len(fake.seen) == calls and mod.local.sent == []
+
+
+async def test_other_modules_switch_by_name_and_hear_what_didnt(tmp_path, monkeypatch):
+    """The api routines uses (D-143): a device or group by what it's called; back come the ones that didn't switch."""
+    reg, mod, fake = setup(tmp_path, monkeypatch, ROOM, nicknames="robo-lamp = desk lamp")
+    home = mod.api
+    with pytest.raises(LookupError):
+        await home.switch("lights", False)                                     # nothing fetched yet
+    await mod.refresh()
+    assert await home.switch("lights", False) == []
+    assert [fake.plugs[i][1] for i in "rbtf"] == [False, False, False, True]
+    assert await home.switch("fans", False) == [] and fake.plugs["f"][1] is False
+    del fake.plugs["t"]
+    assert await home.switch("everything", True) == ["the tv lamp"]
+    with pytest.raises(LookupError):
+        await home.switch("the heater", True)
+    assert [d["kind"] for d in home.devices()] == ["light", "light", "light", "fan"]
+    assert home.devices()[0] == {"name": "robo-lamp", "kind": "light", "on": True}

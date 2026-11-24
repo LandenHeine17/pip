@@ -1,0 +1,41 @@
+# Routines (D-143, PIP-NEW-041, PIP-NEW-088): a few steps run together by one phrase or by the wake-up alarm.
+# "Pip, goodnight": the lights off, the fan on, then when the alarm's set for and tomorrow's first event.
+# The wake-up alarm (an alarm with "wake up" in its name: "Pip, set my wake-up alarm for 8"): every lamp comes on
+# as it rings, and once someone stops it Pip gives the morning briefing (weather, today's events, to-dos, something
+# fun). "I'm heading out": everything off. "I'm back": the lights on, and any alarm, timer or reminder that rang
+# with nobody answering while you were out. Your own routines ("movie time") are made on the Routines page.
+# Shared: anyone in the room can run them. Keeps the routines and, while you're out, what rang; nothing said.
+
+name = "routines"
+kind = "skill"
+summary = "Goodnight, the wake-up alarm with a morning briefing, heading out and back, and your own routines."
+says_examples = ["Pip, goodnight", "Pip, set my wake-up alarm for 7:30", "Pip, I'm heading out", "Pip, I'm back",
+                 "Pip, movie time"]
+offline = false                     # the routines' switching works offline; the weather and the fun line don't
+# The weather comes from Open-Meteo, the same as the monitor's and what Claude is told (proposal 07 §6); the fun
+# line from Wikipedia's "on this day".
+permissions = ["network:api.open-meteo.com", "network:geocoding-api.open-meteo.com", "network:en.wikipedia.org"]
+needs = []
+uses = ["home_control", "calendar", "todos"]   # each step is skipped if its module is off
+
+[settings.wake_label]
+default = "wake up"
+explain = "An alarm whose name has these words in it is the wake-up alarm: the lamps come on as it rings and Pip gives the morning briefing once it's stopped. (\"Pip, set my wake-up alarm for 8\" names it this.)"
+
+[settings.fun]
+default = true
+explain = "End the morning briefing with something fun: what happened on this day (from Wikipedia), or a joke."
+
+[claude]
+instructions = """
+Routines (shared, anyone may run them): to run one, reply with ONLY: ACTION {"do": "routine", "name": "goodnight"} \
+(names are in the Routines line; "night night" means goodnight, "I'm off" means heading out). Only when they say it \
+to you, not when they say goodnight to each other. A wake-up alarm is an ordinary alarm labelled "wake up": "set my \
+wake-up alarm for 8" → ACTION {"do": "add", "kind": "alarm", "at": "...", "label": "wake up"}; the lamps come on \
+when it rings and the morning briefing follows by itself. Routines are made and changed on the dashboard's Routines \
+page only.
+"""
+
+[dashboard]
+page = "index.html"
+label = "Routines"

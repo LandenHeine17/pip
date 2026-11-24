@@ -177,6 +177,8 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         if schedule is not None:
             schedule.watchers.append(self.refresh_state)
             schedule.watchers.append(self.ringing_changed)   # listening off: the mic comes on for an alarm (D-127)
+            if modules is not None:   # modules hear about alarms too, and may have something to say (D-143)
+                schedule.listeners.append(self.alerts_to_modules)
         self.wait_after_name = c.get("wait_after_name_seconds", 5.0)
         self.name_lookback = c.get("name_lookback_seconds", 30.0)
         self.name_alone_wait = c.get("name_alone_wait_seconds", 2.5)
@@ -337,6 +339,35 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         await self.say(text, reason)
         shown = {"total_s": round(time.perf_counter() - t0, digits)} if t0 is not None else {}
         await self.show("pip", text, **shown, local=True)
+
+    def alerts_to_modules(self, event: str, rows: list[dict]) -> None:
+        """The schedule's alerts rang, stopped, … (Schedule.listeners): every module hears it (Module.on_alert),
+        and what they want said is said when he's free (the morning briefing after the wake-up alarm, D-143)."""
+        async def tell():
+            text = await self.modules.on_alert(event, rows)
+            if text:
+                await self.say_when_free(text, "module")
+        if _loop_running():
+            asyncio.ensure_future(tell())
+
+    def free_to_say(self) -> bool:
+        """Nothing else going on: not ringing, answering, speaking, learning a voice or waiting on someone's turn.
+        (Unlike can_join, listening may be off: he was asked for it, by stopping the alarm.)"""
+        return (not self.ringing and self.answer_id is None and not self.speaking and not self.pending
+                and not self.enrolling and not self.transcribing and time.monotonic() >= self.say_pending_until)
+
+    async def say_when_free(self, text: str, reason: str = "module", within: float = 60.0, first: float = 0.5) -> bool:
+        """Say something a module asked for once he's free (`free_to_say`): after his reply to "stop", say. Dropped
+        if he isn't free within `within` seconds. Returns whether it was said."""
+        TYPED.set(None)   # (this runs in its own task: a typed "stop" mustn't swallow it into the chat box)
+        await asyncio.sleep(first)   # his answer to what stopped the alarm starts first
+        end = time.monotonic() + within
+        while not self.free_to_say():
+            if time.monotonic() >= end:
+                return False
+            await asyncio.sleep(0.25)
+        await self.speak_reply(text, reason)
+        return True
 
     @property
     def listening(self) -> bool:

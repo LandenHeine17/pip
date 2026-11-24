@@ -317,6 +317,13 @@ flowchart TD
 - Pip becomes the device hub on the Pi, with no Home Assistant (D-18, D-36): the Eightree plugs already switch over the local Tuya protocol (above); still to come, ESP32/ESPHome devices announcing themselves over MQTT and appearing on the dashboard for approval. New brands are added as one adapter module each.
 - Music from local files on Pip's speaker (D-20).
 
+### Routines (built 2026-11-24, D-143)
+- A routine is a few steps done together by one phrase: switch a device or group, say a line, read something out. Anyone in the room can run them. Five come built in, and your own are made on the dashboard's **Routines** page (not by voice); the built-ins can be changed there and put back.
+- **"Pip, goodnight"**: every lamp off at once, the fan on, then when the next alarm is set for and tomorrow's first event.
+- **The wake-up alarm**: an ordinary alarm with "wake up" in its name ("Pip, set my wake-up alarm for 7:30 on weekdays"). As it rings, every lamp comes on (they're plugs, so on or off, no dimming). Once someone stops it, Pip gives the **morning briefing**: the weather (the same source as the monitor), today's events, the open to-dos, and something fun (a cheerful "on this day" from Wikipedia, else a joke). Snoozing doesn't give the briefing, and nobody answering gives none. "Pip, good morning" gives it too. The briefing has nobody in particular asking, so it reads only the events and to-dos everyone may hear.
+- **"Pip, I'm heading out"**: everything off, lamps and fan. Anything that rings with nobody answering while you're out is kept, and **"Pip, I'm back"** turns the lamps on and tells you, once.
+- Said to Pip in a routine's own words, it runs at once on the Pi without Claude; in other words ("night night, Pip") Claude works out which one. The page's "Run now" does it for real and shows what Pip would say.
+
 ### The owner's conversation rules (CB-001–050), where they stand (2026-11-12)
 From the owner's spec `~/Pip_Conversational_Behavior_Specification_v2.md` (background; decisions win).
 

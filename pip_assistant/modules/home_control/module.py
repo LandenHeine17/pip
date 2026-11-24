@@ -119,6 +119,27 @@ class HomeApi:
         if h.party is None or h.party.done():
             h.party = asyncio.get_running_loop().create_task(h.disco(min(max(float(seconds), 0.0), 15.0)))
 
+    async def switch(self, target: str, on: bool) -> list[str]:
+        """Switch a device or a group by what it's called, as by voice: a name or nickname ("desk lamp"), "lights"
+        (every light, not the fan), "fans" or "everything" (the routines module, D-143). Returns the names of any
+        it couldn't reach ([]: all switched). Raises LookupError if nothing's called that (or none are found yet)."""
+        h = self._home
+        ids = h.find(target) if h.plugs else None
+        if not ids:
+            raise LookupError("no such device")
+        done = await asyncio.gather(*(h.switch(pid, on, publish=False) for pid in ids), return_exceptions=True)
+        await h.ctx.publish("changed", {"plugs": len(h.plugs)})
+        missed = [pid for pid, r in zip(ids, done) if isinstance(r, BaseException)]
+        for pid in missed:
+            log.warning("switching a plug failed: %s", type(done[ids.index(pid)]).__name__)
+        return [h.called(pid, "") for pid in missed]
+
+    def devices(self) -> list[dict]:
+        """Each device: {"name", "kind" (light / fan / plug), "on" (None if offline or not known)}."""
+        h = self._home
+        return [{"name": p["name"], "kind": h.kind(pid), "on": p["on"] if p["online"] else None}
+                for pid, p in h.plugs.items()]
+
 
 class Home(Module):
     ARP = Path("/proc/net/arp")   # the Pi's table of the devices it talks to: address, MAC, network

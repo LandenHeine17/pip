@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Routines</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+.rt{padding:12px;border-radius:12px;background:var(--soft);margin-bottom:10px}
+.rt .top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rt .name{font-weight:700;flex:1;min-width:8em}
+.rt .meta{color:var(--muted);font-size:.84rem;margin-top:2px}
+.rt ol{margin:6px 0 0 1.2em;padding:0}
+.rt li{margin:2px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0;align-items:center}
+.chip{padding:4px 10px;border-radius:999px;background:var(--soft);font-size:.86rem}
+h2{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:18px 0 6px}
+#editor{padding:12px;border-radius:12px;border:2px solid var(--soft);margin-bottom:12px}
+#editor[hidden]{display:none}
+#editor label{display:block;font-size:.84rem;color:var(--muted);margin:8px 0 2px}
+#editor input.wide{width:100%;box-sizing:border-box}
+.step{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0}
+.step input{flex:1;min-width:8em}
+#said{color:var(--muted);font-size:.9rem;margin:6px 0;min-height:1.2em}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+    <div><h1>Routines</h1><div class="sub">A few things done together by one phrase, or by the wake-up alarm (D-143)</div></div></div>
+</header>
+<section>
+  <div id="wake" class="sub"></div>
+  <div id="said"></div>
+  <div id="editor" hidden>
+    <label for="e-name">Name</label>
+    <input id="e-name" class="wide" maxlength="40" placeholder="Movie time">
+    <label for="e-phrases">What you say to run it (commas between; empty: its name)</label>
+    <input id="e-phrases" class="wide" maxlength="250" placeholder="movie time, movie night">
+    <label>Steps, in order</label>
+    <div id="e-steps"></div>
+    <div class="row"><button type="button" id="e-add">Add a step</button></div>
+    <div class="row"><button class="primary" id="e-save">Save</button><button class="ghost" id="e-cancel">Cancel</button></div>
+  </div>
+  <div id="list"><div class="empty">Loading…</div></div>
+  <div class="row"><button id="new">New routine</button></div>
+
+  <h2>Things to say</h2>
+  <div class="row">
+    <span class="chip">"Pip, goodnight"</span><span class="chip">"Pip, set my wake-up alarm for 7:30 on weekdays"</span>
+    <span class="chip">"Pip, good morning"</span><span class="chip">"Pip, I'm heading out"</span><span class="chip">"Pip, I'm back"</span>
+  </div>
+  <div class="sub">Said to Pip in a routine's own words, it runs at once without asking Claude; in other words
+    ("night night, Pip") Claude works out which one you mean. The wake-up alarm is any alarm with
+    <b id="label">wake up</b> in its name: as it rings every lamp comes on (Wake-up), and once someone stops it Pip
+    gives the Morning briefing. Snoozing it doesn't. "I'm heading out" also starts keeping any timer, alarm or
+    reminder that rings with nobody answering, for "I'm back" to tell you once. The morning briefing only reads
+    the events and to-dos everyone in the room may hear.
+    "Run now" does the routine for real and shows what Pip would say, without saying it.</div>
+</section>
+</main>
+<script src="/pip.js"></script>
+<script>
+let data = null, editing = null;   // editing: the routine being changed ({} for a new one)
+const GROUPS = [["lights", "The lights (every lamp)"], ["fans", "The fans"], ["everything", "Everything"]];
+
+function targets() {
+  const devs = (data.devices || []).map(d => [d.name, d.name]);
+  return GROUPS.concat(devs);
+}
+function stepText(s) {
+  if (s.do === "switch") {
+    const t = GROUPS.find(g => g[0] === s.target);
+    return `Turn ${s.on ? "on" : "off"} ${t ? t[1].replace(/ \(.*/, "").toLowerCase() : esc(s.target)}`;
+  }
+  if (s.do === "say") return `Say "${esc(s.text)}"`;
+  return `Read out: ${esc((data.reads[s.what] || s.what).toLowerCase())}`;
+}
+function starts(r) {
+  if (r.starts === "rings") return "When the wake-up alarm rings";
+  if (r.starts === "stopped") return "When someone stops the wake-up alarm" + (r.phrases.length ? `, or "${r.phrases.map(esc).join('", "')}"` : "");
+  return r.phrases.length ? `"${r.phrases.map(esc).join('", "')}"` : esc(r.name);
+}
+function when(t) { return new Date(t * 1000).toLocaleString([], {weekday: "short", hour: "numeric", minute: "2-digit"}); }
+
+function show() {
+  $("label").textContent = data.wake_label || "wake up";
+  $("wake").innerHTML = (data.wake ? `Next wake-up alarm: <b>${esc(when(data.wake.due))}</b>${data.wake.repeat ? " (" + esc(data.wake.repeat) + ")" : ""}.`
+                                   : `No wake-up alarm set. Say "Pip, set my wake-up alarm for 8".`)
+    + (data.out_since ? ` · Out since ${esc(when(data.out_since))}.` : "")
+    + (data.last ? ` · Last run: ${esc(data.last.name)}, ${esc(when(data.last.at))}.` : "")
+    + (data.devices === null ? " · Home control is off: switch steps are skipped." : "");
+  $("list").innerHTML = data.routines.map(r => `<div class="rt">
+      <div class="top"><span class="name">${esc(r.name)}${r.builtin ? "" : ' <span class="tag">yours</span>'}</span>
+        <button data-run="${esc(r.id)}">Run now</button><button data-edit="${esc(r.id)}">Change</button>
+        ${r.builtin ? `<button class="ghost" data-reset="${esc(r.id)}">Put back</button>` : `<button class="danger" data-del="${esc(r.id)}">Delete</button>`}</div>
+      <div class="meta">Runs: ${starts(r)}</div>
+      <ol>${r.steps.map(s => `<li>${stepText(s)}</li>`).join("")}</ol></div>`).join("");
+}
+async function load() {
+  const r = await pip.act(pip.get("list"));
+  if (r) { data = r; show(); }
+}
+
+// ---- the editor
+function stepRow(s) {
+  const opt = (v, label, sel) => `<option value="${esc(v)}"${sel ? " selected" : ""}>${esc(label)}</option>`;
+  let fields = "";
+  if (s.do === "switch") {
+    const ts = targets();
+    if (s.target && !ts.some(t => t[0] === s.target)) ts.push([s.target, s.target + " (not found)"]);
+    fields = `<select class="target">${ts.map(t => opt(t[0], t[1], t[0] === s.target)).join("")}</select>
+      <select class="on">${opt("true", "on", s.on)}${opt("false", "off", !s.on)}</select>`;
+  } else if (s.do === "say") {
+    fields = `<input class="text" maxlength="200" value="${esc(s.text || "")}" placeholder="Enjoy the movie!">`;
+  } else {
+    fields = `<select class="what">${Object.entries(data.reads).map(([k, v]) => opt(k, v, k === s.what)).join("")}</select>`;
+  }
+  return `<div class="step"><select class="do">${opt("switch", "Switch", s.do === "switch")}${opt("say", "Say", s.do === "say")}${opt("read", "Read out", s.do === "read")}</select>
+    ${fields}<button type="button" class="ghost up" title="Move up">↑</button><button type="button" class="ghost rm" title="Remove">✕</button></div>`;
+}
+function readSteps() {
+  return [...document.querySelectorAll("#e-steps .step")].map(el => {
+    const d = el.querySelector(".do").value;
+    if (d === "switch") return {do: d, target: el.querySelector(".target").value, on: el.querySelector(".on").value === "true"};
+    if (d === "say") return {do: d, text: el.querySelector(".text").value};
+    return {do: d, what: el.querySelector(".what").value};
+  });
+}
+function drawSteps(steps) { $("e-steps").innerHTML = steps.map(stepRow).join(""); }
+function edit(r) {
+  editing = r || {};
+  $("e-name").value = editing.name || "";
+  $("e-phrases").value = (editing.phrases || []).join(", ");
+  $("e-phrases").disabled = false;
+  drawSteps(editing.steps || [{do: "switch", target: "lights", on: true}]);
+  $("editor").hidden = false;
+  $("e-name").focus();
+}
+$("e-steps").addEventListener("change", ev => {
+  if (!ev.target.classList.contains("do")) return;
+  const steps = readSteps();
+  const i = [...document.querySelectorAll("#e-steps .step")].indexOf(ev.target.closest(".step"));
+  steps[i] = ev.target.value === "switch" ? {do: "switch", target: "lights", on: true}
+           : ev.target.value === "say" ? {do: "say", text: ""} : {do: "read", what: "weather"};
+  drawSteps(steps);
+});
+$("e-steps").addEventListener("click", ev => {
+  const row = ev.target.closest(".step"); if (!row) return;
+  const steps = readSteps(), i = [...document.querySelectorAll("#e-steps .step")].indexOf(row);
+  if (ev.target.classList.contains("rm")) steps.splice(i, 1);
+  else if (ev.target.classList.contains("up") && i > 0) [steps[i - 1], steps[i]] = [steps[i], steps[i - 1]];
+  else return;
+  drawSteps(steps);
+});
+$("e-add").onclick = () => drawSteps(readSteps().concat([{do: "say", text: ""}]));
+$("e-cancel").onclick = () => { $("editor").hidden = true; editing = null; };
+$("e-save").onclick = async () => {
+  const body = {name: $("e-name").value, phrases: $("e-phrases").value.split(",").map(s => s.trim()).filter(Boolean),
+                steps: readSteps()};
+  if (editing.id) body.id = editing.id;
+  if (await pip.act(pip.post("save", body))) { $("editor").hidden = true; editing = null; load(); }
+};
+$("new").onclick = () => edit(null);
+
+document.addEventListener("click", async ev => {
+  const b = ev.target.closest("button[data-run],button[data-edit],button[data-reset],button[data-del]"); if (!b) return;
+  if (b.dataset.edit) return edit(data.routines.find(r => r.id === b.dataset.edit));
+  if (b.dataset.del && !confirm("Delete this routine?")) return;
+  if (b.dataset.reset && !confirm("Put this routine back as it came?")) return;
+  b.disabled = true;
+  if (b.dataset.run) {
+    $("said").textContent = "Running…";
+    const r = await pip.act(pip.post("run", {id: b.dataset.run}));
+    $("said").textContent = r ? `Pip would say: "${r.said}"` : "";
+  } else if (await pip.act(pip.post(b.dataset.reset ? "reset" : "delete", {id: b.dataset.reset || b.dataset.del}))) load();
+  b.disabled = false;
+});
+pip.live(() => { if (!editing) load(); });
+load();
+</script>
+</body>
+</html>
