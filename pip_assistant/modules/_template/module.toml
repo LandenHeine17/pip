@@ -28,6 +28,8 @@ size = [3, 2]                       # [w, h] it likes on the 12 × 8 grid
 once = true                         # at most one on the screen
 aliases = ["die", "last roll"]      # other words for it
 
-[dashboard]                         # a page on Pip's dashboard (in static/), with a button on the front page;
+[dashboard]                         # a page on Pip's dashboard (in static/), listed in the dashboard's menu;
 page = "index.html"                 # it is served at /m/<name>/ and its requests reach module.py's dashboard()
 label = "Dice"
+# group = "fun"                      # the menu's group: house (Around the house), fun or pip (Pip himself); else More
+icon = "🎲"                         # its icon in the menu

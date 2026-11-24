@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Talk</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+main{max-width:900px}
+#feed{display:flex;flex-direction:column;gap:8px}
+</style>
+</head>
+<body>
+<!-- Talk (D-148): the conversation feed (D-108), live and never saved, and the chat box (D-131). The feed and the box
+     are drawn by talk.js, which the Overview uses too. -->
+<main>
+<div class="pagehead"><h1>Talk</h1>
+  <span class="sub"><label style="display:inline-flex;gap:5px;align-items:center"><input type="checkbox" id="showroom" checked> everything heard</label> · live, never saved</span></div>
+<section>
+  <div id="chat"></div>
+  <div id="feed"></div>
+  <div class="sub" style="margin-top:10px">Grey: talk in the room that wasn't for Pip. Green: said to Pip. The lines across are what Pip did
+    (chimed, waited for you to finish, decided not to answer). Typed messages are answered like the same words said to him,
+    by the person picked; tick "say it out loud" to hear the answer in the room.</div>
+</section>
+</main>
+<script src="/pip.js"></script>
+<script src="/talk.js"></script>
+<script>
+$("showroom").onchange = () => Talk.render();
+Talk.mount({feed: $("feed"), chat: $("chat"), limit: 80, all: () => $("showroom").checked,
+            empty: "Say \"Pippletron\" or \"Hey Pip\" and ask something, or type to him above."});
+</script>
+</body>
+</html>

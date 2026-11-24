@@ -40,3 +40,5 @@ Changing the screen that's showing keeps the change.
 [dashboard]
 page = "index.html"
 label = "Screen"
+group = "pip"
+icon = "🖥️"

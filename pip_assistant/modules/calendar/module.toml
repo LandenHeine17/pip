@@ -65,4 +65,6 @@ aliases = ["events", "upcoming", "coming up", "schedule"]
 [dashboard]
 page = "index.html"
 label = "Calendar"
+group = "house"
+icon = "📅"
 account_panel = "account.js"        # its part of a Google account's settings page

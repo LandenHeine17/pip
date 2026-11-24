@@ -58,3 +58,5 @@ aliases = ["games", "trivia", "scoreboard"]
 [dashboard]
 page = "index.html"
 label = "Games"
+group = "fun"
+icon = "🎲"

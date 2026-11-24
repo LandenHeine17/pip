@@ -15,7 +15,7 @@ isn't needed to answer anything, so here it costs nothing until someone asks for
   - **Bringing one up**: with each request Claude gets a few titles (`summary`, at most 200 letters: starred
     ones first, the rest changing daily), so he can refer to one; the words he looks up.
   - **The monitor**: `show_moment` covers the monitor with one for a minute (the screen module's `api.cover`).
-  - **Memories that are really moments** can be moved here from the dashboard's Memory card (`take_memory`).
+  - **Memories that are really moments** can be moved here from the dashboard's Memory page (`take_memory`).
   - Its page (Hall of Fame): read, star, edit, add, show on the monitor, delete.
 """
 import asyncio
@@ -82,7 +82,7 @@ def people_in(lines: list[str]) -> str:
 
 
 class HallOfFame(Module):
-    takes_memories = "Hall of Fame"     # the Memory card's "Move to Hall of Fame" (core/modules.py take_memory)
+    takes_memories = "Hall of Fame"     # the Memory page's "Move to Hall of Fame" (core/modules.py take_memory)
 
     def __init__(self, ctx):
         self.ctx = ctx
@@ -295,7 +295,7 @@ class HallOfFame(Module):
 
     # ---------------------------------------------------------------- memories moved here
     async def take_memory(self, memory: dict) -> bool:
-        """A memory that's really a funny moment, moved here from the Memory card (the owner's click). There are
+        """A memory that's really a funny moment, moved here from the Memory page (the owner's click). There are
         no exact words for it: the memory's text is the moment, marked as from a memory, with its own date and
         the people it was about (`about_names`), so removing one of them removes it too."""
         text = re.sub(r"\s+", " ", str(memory.get("text") or "")).strip()

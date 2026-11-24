@@ -1,4 +1,4 @@
-"""The calendar's dashboard page (/m/calendar/), its card on the dashboard's front page, its box on the monitor,
+"""The calendar's dashboard page (/m/calendar/), its card on the dashboard's Overview, its box on the monitor,
 and its part of a Google account's settings page (part of the calendar module; module.py puts it together).
 """
 from datetime import date, datetime, timedelta
@@ -42,9 +42,9 @@ class DashboardPage:
                 and (o["all_day"] or o["repeat"] or o["at"] == o["start"]
                      or datetime.fromtimestamp(o["at"]).date() == today)]
 
-    # ---------------------------------------------------------------- the dashboard's front page and the monitor
+    # ---------------------------------------------------------------- the dashboard's Overview and the monitor
     def home(self) -> dict:
-        """The "next two weeks" card on the dashboard's front page; its ✕ removes an event (dashboard "delete")."""
+        """The "next two weeks" card on the dashboard's Overview; its ✕ removes an event (dashboard "delete")."""
         return {"title": "Calendar · next two weeks", "link": "/m/calendar/", "empty": "Nothing on the calendar.",
                 "items": self.upcoming(14), "remove": "delete"}
 

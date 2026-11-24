@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · People</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+.people{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.people section{margin:0}
+a.person{display:block;color:inherit;text-decoration:none;transition:transform .08s}
+a.person:hover{transform:translateY(-1px)}
+.avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2));flex:none}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.pill.good{background:var(--goodbg);color:var(--good)} .pill.warn{background:var(--warnbg);color:var(--warn)} .pill.plain{background:var(--soft);color:var(--muted)}
+</style>
+</head>
+<body>
+<!-- People (D-148): everyone Pip knows, each leading to their profile (/person?id=…: voice, Google, memories),
+     visitors this visit, and adding someone. The sentences to read while Pip learns a voice show on every page (pip.js). -->
+<main>
+<div class="pagehead"><h1>People</h1><span class="sub" id="peoplesum"></span></div>
+<div class="people" id="people"></div>
+<section style="margin-top:14px">
+  <div class="head"><h2>Add someone</h2></div>
+  <form id="personadd" style="margin-top:0"><input id="pname" placeholder="Name" maxlength="40" style="flex:1;min-width:8em" required>
+    <select id="prole"><option value="member">Member</option><option value="admin">Admin</option></select><button class="primary">Add person</button></form>
+  <div class="sub" style="margin-top:8px"><b>Teaching Pip your voice:</b> once your name is on this list, just say <b>"Pip, I'm</b> <i>your name</i><b>"</b> (or "Pip, learn my voice"). Pip says hi, beeps, and five short sentences appear at the top of the dashboard: read each one out loud after the beep. It takes about a minute. Check with "Pip, who am I?".<br>
+  Voiceprints stay on the Pi. Pip hears everyone in the room; to stop him listening, use the <b>Listening</b> switch at the top (or clap twice, once a clap microphone is chosen in <a href="/settings">Settings</a>). Visitors who say "Pip, I'm Sam" are remembered for that visit only; if they live here, press <b>Add to household</b>.</div>
+</section>
+</main>
+<script src="/pip.js"></script>
+<script>
+let ppl = {people: [], guests: [], links: {}};
+const when = ts => new Date(ts * 1000).toLocaleString([], {weekday: "short", hour: "numeric", minute: "2-digit"});
+function render(){
+  const memories = ppl._mem || [];
+  $("people").innerHTML = ppl.people.map(p => {
+    const n = memories.filter(m => m.status === "active" && (m.owner === p.id || (m.about || []).includes(p.id))).length;
+    // each module's links for this person (core/modules.py people_links), like "Connect Google", as a chip
+    const links = ((ppl.links || {})[p.id] || []).map(l => `<span class="pill plain">${esc(l.label)}</span>`).join("");
+    return `<a class="person" href="/person?id=${encodeURIComponent(p.id)}"><section>
+      <div style="display:flex;gap:12px;align-items:center"><div class="avatar">${esc(p.name.slice(0, 1).toUpperCase())}</div>
+        <div style="flex:1;min-width:0"><b>${esc(p.name)}</b> <span class="pill plain">${esc(p.role)}</span>
+        <div class="sub">${p.last_heard ? "last heard " + when(p.last_heard) : "not heard yet"}</div></div><span class="sub">›</span></div>
+      <div class="chips">${!ppl.voice_model ? "" : p.voice_samples ? `<span class="pill good">voice learned</span>` : `<span class="pill warn">voice not learned</span>`}
+        <span class="pill plain">${n} ${n === 1 ? "memory" : "memories"}</span>${links}</div></section></a>`;
+  }).join("") + (ppl.guests.length ? `<section><div class="label">Visiting</div><div class="items">${ppl.guests.map(g => `<div class="item"><div><b>${esc(g.name)}</b><div class="sub">forgotten after 2 hours of quiet</div></div>
+      <button onclick="pAct({action:'guest_join',id:${js(g.id)}})">Add to household</button></div>`).join("")}</div></section>` : "")
+    || `<div class="empty">Nobody added yet. Add yourself first (as Admin).</div>`;
+  $("peoplesum").textContent = ppl.voice_model ? `${ppl.people.length} ${ppl.people.length === 1 ? "person" : "people"}` : "voice model not installed";
+}
+async function load(){
+  try { const [r, m] = await Promise.all([getJSON("/api/people"), getJSON("/api/memory").catch(() => ({}))]);
+    if (r.people) { ppl = r; ppl._mem = m.memories || []; render(); } } catch (e) {}
+}
+async function pAct(body){ try { const r = await postJSON("/api/people/action", body); if (r.error) alert(r.error); return r; } catch (e) { alert("Couldn't reach Pip"); } finally { load(); } }
+$("personadd").onsubmit = async ev => { ev.preventDefault(); const r = await pAct({action: "add", name: $("pname").value, role: $("prole").value});
+  if (r && r.ok) location.href = `/person?id=${encodeURIComponent(r.id)}`; };
+pip.on("people", load);
+load();
+</script>
+</body>
+</html>

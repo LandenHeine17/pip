@@ -182,6 +182,31 @@ class Todos(Module):
         return f"Removed {t['title']} from the list."
 
     # ---------------------------------------------------------------- the dashboard page
+    # ---------------------------------------------------------------- the dashboard
+    HOME_ITEMS = 6   # open to-dos on the Overview's card; the rest are on the To-dos page
+
+    def home(self) -> dict | None:
+        """The to-dos card on the dashboard's Overview (D-148): open to-dos, soonest due first, each with a box that
+        ticks it off (dashboard "done"). Titles are personal: the card travels privately, like every home card."""
+        accounts, names = self._accounts(), self._names()
+        lists = {x["id"]: x for x in self.store.lists()}
+        open_ = [t for t in self.store.items() if not t["done"]]
+
+        def sub(t: dict) -> str:
+            lst = lists.get(t["list_id"]) or {}
+            whose = self.whose(lst, accounts, names)
+            due = ""
+            if t["due"]:
+                try:
+                    due = "due " + date.fromisoformat(t["due"]).strftime("%a %b %-d")
+                except ValueError:
+                    due = "due " + t["due"]
+            return " · ".join(x for x in (f"{whose}'s list" if whose else lst.get("name", ""), due) if x)
+        more = len(open_) - self.HOME_ITEMS
+        return {"title": "To-dos" + (f" · {more} more" if more > 0 else ""), "link": f"/m/{self.ctx.name}/",
+                "empty": "Nothing to do.", "check": "done",
+                "items": [{"id": t["id"], "title": t["title"], "sub": sub(t)} for t in open_[:self.HOME_ITEMS]]}
+
     async def dashboard(self, action: str, args: dict) -> dict:
         s = self.store
         if action == "list":
@@ -201,6 +226,13 @@ class Todos(Module):
         if action == "add":
             t = s.add(str(args.get("title", "")), str(args.get("list_id") or self.household()), due=str(args.get("due") or ""))
             return {"ok": True, "id": t["id"]}
+        if action == "done":   # the Overview's tick box: only ever ticks off (a second tick changes nothing)
+            t = s.item(str(args.get("id")))
+            if not t:
+                raise ValueError("That to-do is gone")
+            if not t["done"]:
+                s.update(t["id"], done=True)
+            return {"ok": True}
         if action == "toggle":
             t = s.item(str(args.get("id")))
             if not t:

@@ -4,7 +4,7 @@
     sync.py        two-way sync with each connected person's Google calendars
     visibility.py  whose calendar it is, and who may hear about it (private events, "only me" accounts)
     actions.py     what Claude reads about the calendar, and Claude's calendar actions
-    dashboard.py   the calendar page's requests, the front page's two-week card, the monitor's box
+    dashboard.py   the calendar page's requests, the Overview's two-week card, the monitor's box
     offline.py     Pip's own calendar phrases, for when he's offline (core/commands.py runs them)
     api.py         what other modules may use (ctx.module("calendar"))
     module.py      this file: puts the parts together (one Calendar), and the sync loop

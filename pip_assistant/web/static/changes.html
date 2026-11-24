@@ -38,8 +38,8 @@ textarea{font:inherit;font-size:.9rem;padding:8px 12px;border-radius:12px;border
 <body>
 <main>
 <header>
-  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
-    <div><h1>Changes</h1><div class="sub">Changes to Pip himself · you approve the plan, then the finished change · <a href="/">dashboard</a></div></div></div>
+  <div class="brand">
+    <div><h1>Changes</h1><div class="sub">Changes to Pip himself · you approve the plan, then the finished change</div></div></div>
 </header>
 
 <div class="notice" id="paused" hidden></div>
@@ -267,11 +267,8 @@ $("askform").onsubmit = async ev => {
 };
 
 function live(){
-  if (location.search.includes("nolive")) return;
-  const es = new EventSource("/api/stream");
-  es.addEventListener("builder", ev => {   // if the dashboard forwards the builder's news; the polling covers it otherwise
+  pip.on("builder", d => {   // if the dashboard forwards the builder's news; the polling covers it otherwise
     loadList();
-    let d = {}; try{ d = JSON.parse(ev.data); }catch(e){}
     if (openId && (!d.id || d.id === openId)) openChange(openId, true);
   });
 }

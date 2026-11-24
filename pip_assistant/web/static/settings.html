@@ -33,6 +33,10 @@ textarea:focus{border-color:var(--accent);outline:none}
 .counts{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0}
 .counts .card{min-width:9em}
 .counts .big{font-size:1.3rem;font-weight:700;font-variant-numeric:tabular-nums}
+.jump{position:sticky;top:52px;z-index:5;display:flex;gap:6px;overflow-x:auto;padding:6px 0 10px;margin-bottom:6px;background:var(--bg);scrollbar-width:none}
+.jump a{flex:none;padding:5px 12px;border-radius:999px;background:var(--card);box-shadow:var(--shadow);color:var(--ink);font-size:.84rem;font-weight:600;text-decoration:none;white-space:nowrap}
+.jump a:hover{background:var(--accentbg);color:var(--accent)}
+section{scroll-margin-top:110px} .subhead{scroll-margin-top:110px}
 #bar{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);width:min(880px,calc(100% - 24px));display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;
   padding:12px 16px;border-radius:16px;background:var(--card);box-shadow:var(--shadow);border:1px solid var(--line);z-index:10}
 #bar[hidden]{display:none}
@@ -89,10 +93,12 @@ details.adv[open]>summary h2::before{content:"▾ "}
 <body>
 <main>
 <header>
-  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
-    <div><h1>Settings</h1><div class="sub"><a href="/">← dashboard</a> · changes apply when Pip is quiet; ones marked <span class="live" style="margin:0">instant</span> apply straight away</div></div></div>
+  <div class="brand">
+    <div><h1>Settings</h1><div class="sub">Changes apply when Pip is quiet; ones marked <span class="live" style="margin:0">instant</span> apply straight away</div></div></div>
 </header>
 <div id="loaderr" class="empty" hidden></div>
+<!-- Jump to a section (D-148): drawn from the sections' titles below -->
+<nav class="jump" id="jump"></nav>
 
 <section>
   <div class="head"><h2>Voice &amp; sounds</h2></div>
@@ -233,7 +239,7 @@ function render(){
       $(id).innerHTML = html;
     } else $(id).innerHTML = g.settings.map(rowHTML).join("");
   }
-  $("g-modules").innerHTML = S.modules.map(m => `<div class="subhead">${esc(m.name)}</div>
+  $("g-modules").innerHTML = S.modules.map(m => `<div class="subhead" id="mod-${esc(m.name)}">${esc(m.name)}</div>
     ${m.summary ? `<div class="sub">${esc(m.summary)}</div>` : ""}${m.settings.map(rowHTML).join("")}`).join("")
     || `<div class="empty">No module settings.</div>`;
   $("modtitle").textContent = S.modules.map(m => m.name).join(" · ") || "Modules";
@@ -661,7 +667,7 @@ function renderMigrate(m, report){
       <div class="card"><div class="big">${esc(c.refused ?? 0)}</div><div class="sub">left out (look like passwords or codes)</div></div>
       <div class="card"><div class="big">${m.personality ? "Yes" : "No"}</div><div class="sub">personality found</div></div>
     </div>
-    <div class="sub">Of ${esc(plural(c.total ?? 0, "memory", "memories"))} in Ziggletron. <b>Memories</b> go to the <a href="/">memory inbox</a>, waiting for you to approve each one; nothing is used until you do.
+    <div class="sub">Of ${esc(plural(c.total ?? 0, "memory", "memories"))} in Ziggletron. <b>Memories</b> go to the <a href="/memory">memory inbox</a>, waiting for you to approve each one; nothing is used until you do.
       <b>The personality</b> replaces Pip's current one; his current text stays in the version list above, so "Use this one" undoes it.</div>
     ${m.done_at ? `<div class="sub" style="margin-top:6px">Last imported ${esc(new Date(m.done_at * 1000).toLocaleString())}. Importing again skips what's already here.</div>` : ""}
     <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="primary" id="mimport">Import from Ziggletron</button><span class="sub" id="mmsg"></span></div>
@@ -686,7 +692,20 @@ async function doImport(){
   pDirty = false; loadPersonality();
 }
 
-load().then(s => { if (s && s.applying && s.applying.length) showApplying(s); });
+// The row of section shortcuts at the top: one per section, named by its title
+function jumpBar(){
+  const secs = [...document.querySelectorAll("main > section")].filter(x => x.querySelector("h2"));
+  $("jump").innerHTML = secs.map((x, i) => { x.id = x.id || "s-" + (i + 1);
+    const h = x.querySelector("h2"), name = h.id === "modtitle" ? "Modules" : h.textContent.trim();
+    return `<a href="#${x.id}">${esc(name)}</a>`; }).join("");
+  $("jump").querySelectorAll("a").forEach(a => a.onclick = () => { const d = document.querySelector(a.getAttribute("href") + " details"); if (d) d.open = true; });
+}
+jumpBar();
+load().then(s => {
+  if (s && s.applying && s.applying.length) showApplying(s);
+  // /settings#mod-<name> (a module's page links here): its settings, once they're drawn
+  if (location.hash) { const el = document.querySelector(location.hash); if (el) el.scrollIntoView({block: "start"}); }
+});
 loadPersonality(); loadMigrate();
 </script>
 </body>

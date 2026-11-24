@@ -173,7 +173,7 @@ async def test_your_data_and_removing_a_person(env):
 
 
 async def test_a_memory_that_is_really_a_moment_is_moved_from_the_memory_card(env):
-    """D-147: the Memory card's "Move to Hall of Fame". pip-core doesn't name the module: it asks which modules
+    """D-147: the Memory page's "Move to Hall of Fame". pip-core doesn't name the module: it asks which modules
     take memories, hands the memory over, and deletes it only once the module has kept it."""
     from pip_assistant.common.messages import Message
     from pip_assistant.core.dashapi import memory_move, memory_snapshot

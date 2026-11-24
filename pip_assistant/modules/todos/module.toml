@@ -39,4 +39,6 @@ explain = "to-do list"
 [dashboard]
 page = "index.html"
 label = "To-dos"
+group = "house"
+icon = "✅"
 account_panel = "account.js"        # its part of a Google account's settings page

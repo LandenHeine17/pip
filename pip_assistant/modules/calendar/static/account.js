@@ -33,7 +33,7 @@
       </tbody></table>
       <div class="sub" style="margin-top:10px"><b>Ignore</b>: Pip doesn't fetch it, it's not on the calendar page, and he never hears about it.
         <b>Heads-ups</b>: "Only ones you set" means events where you added a reminder yourself in Google, not the calendar's
-        automatic one, so classes and the like stay quiet. <b>Two-week list</b>: the list on Pip's main dashboard.</div></section>`;
+        automatic one, so classes and the like stay quiet. <b>Two-week list</b>: the list on the dashboard's Overview.</div></section>`;
     el.querySelectorAll("[data-pref]").forEach(x => x.onchange = () =>
       save(pip.post("set_pref", {account: acc.id, key: x.dataset.pref, value: x.type === "checkbox" ? x.checked : x.value}, "calendar")));
     el.querySelectorAll("[data-cal]").forEach(x => x.onchange = () => {

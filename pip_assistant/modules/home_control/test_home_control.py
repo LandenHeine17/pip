@@ -169,20 +169,18 @@ async def test_devices_on_pips_network_are_checked_directly_and_keys_stay_privat
     await mod.refresh()
     assert mod.plugs["a"]["on"] is True
     page = await mod.dashboard("list", {})
-    everything = repr(published) + caplog.text + reg.summary(Call()) + repr(mod.home()) + json.dumps(page)
+    everything = repr(published) + caplog.text + reg.summary(Call()) + json.dumps(page)
     assert "KEY-" not in everything and mac_of("a") not in everything.lower()
 
 
-async def test_the_home_page_and_card(tmp_path, monkeypatch):
+async def test_the_home_page(tmp_path, monkeypatch):
     reg, mod, fake = setup(tmp_path, monkeypatch, {**ROOM, "f": ("Fan", True, False)}, nicknames="robo-lamp = desk lamp")
-    assert reg.home_cards() == []                                             # nothing fetched yet: no card
     on_network(tmp_path, mod, {"r": True})
     await mod.refresh()
     await mod.check()
-    [card] = reg.home_cards()
-    assert card["title"] == "Home" and card["switch"] == "switch" and card["module"] == "home_control"
-    assert [(i["title"], i["on"], i["sub"]) for i in card["items"]][-1] == ("Fan", None, "offline")
+    assert reg.home_cards() == []                                             # D-148: no switches on the Overview
     page = await mod.dashboard("list", {})
+    assert [(d["name"], d["online"]) for d in page["devices"]][-1] == ("Fan", False)
     robo = page["devices"][0]
     assert (robo["name"], robo["kind"], robo["also"], robo["direct"], robo["ip"], robo["version"]) == \
         ("robo-lamp", "light", ["desk lamp"], True, "10.47.0.20", 3.5)

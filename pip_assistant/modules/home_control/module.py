@@ -28,8 +28,8 @@ The disco (D-142): other modules may flash the lights on and off for a few secon
 module's freak-out). Only lights switched directly flash (the cloud is too slow, and limits how often it's asked);
 each goes back as it was after, unless someone switched it meanwhile.
 
-On the dashboard: a Home card on the front page with an On/Off button for each (`home()`), and the module's own
-Home page (static/index.html, `dashboard` "list" and "switch"), both switching the same way as by voice.
+On the dashboard: the module's own Home page (static/index.html, `dashboard` "list" and "switch"), switching the
+same way as by voice. (It used to have a card on the front page too; the Overview leaves it out, D-148.)
 
 Tuya's API (https://developer.tuya.com/en/docs/cloud/): every request is signed with HMAC-SHA256 of the
 project's access secret (`sign`); a token (`/v1.0/token`) is fetched first and kept until it expires. The keys
@@ -477,15 +477,6 @@ class Home(Module):
         return line + ", but I couldn't reach " + " or ".join(self.called(pid, "") for pid in missed) + "."
 
     # ---------------------------------------------------------------- the dashboard
-    def home(self) -> dict | None:
-        """A card on the front page with an On/Off button for each device (index.html draws it; the button sends
-        "switch" below). No card until the devices have been fetched (no Tuya keys, no card)."""
-        if not self.plugs:
-            return None
-        return {"title": "Home", "link": "", "empty": "No devices found.", "switch": "switch",
-                "items": [{"id": pid, "title": p["name"], "on": p["on"] if p["online"] else None,
-                           "sub": "" if p["online"] else "offline"} for pid, p in self.plugs.items()]}
-
     def page(self) -> dict:
         """What the Home page shows: each device, how Pip reaches it, the groups (no keys, MACs)."""
         devices = []

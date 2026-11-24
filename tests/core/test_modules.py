@@ -41,6 +41,17 @@ def test_settings_are_checked_and_modules_can_be_switched_off(tmp_path):
         read(tmp_path / "bad")
 
 
+def test_each_module_says_where_it_goes_in_the_dashboards_menu(tmp_path):
+    """D-148: group, icon and tab under [dashboard]; a group that isn't one of the menu's is refused."""
+    make(tmp_path, "dice", 'name = "dice"\nkind = "skill"\nsummary = "Rolls."\n[dashboard]\ngroup = "fun"\nicon = "🎲"\ntab = true\n')
+    dice = read(tmp_path / "dice")
+    assert (dice.group, dice.icon, dice.tab, dice.page) == ("fun", "🎲", True, "")
+    make(tmp_path, "odd", 'name = "odd"\nkind = "skill"\nsummary = "x"\n[dashboard]\ngroup = "games"\n')
+    with pytest.raises(ModuleError, match="group must be one of"):
+        read(tmp_path / "odd")
+    assert all(m.group for m in discover({}) if not m.name.startswith("_"))   # every real module has its place
+
+
 def test_a_module_it_only_uses_may_be_off(tmp_path):
     """`uses` (D-142, six seven's lamps): another module it uses if it's on; unlike `needs`, it stays on without it."""
     make(tmp_path, "dice", 'name = "dice"\nkind = "skill"\nsummary = "Dice."\n')
@@ -132,14 +143,19 @@ def test_the_dashboard_serves_module_pages_and_passes_requests_privately():
 
     bus = Bus()
     client = TestClient(build_app(bus, State(), {}))
-    # every module with a dashboard page gets a button, whichever modules are installed (no fixed list, so a new
-    # module's page doesn't need this test changed)
+    # every module that's on is in the dashboard's menu, with a page, whichever modules are installed (no fixed list,
+    # so a new module doesn't need this test changed); one without a page of its own gets the page made for it (D-148)
     from pip_assistant.common.modules import enabled
-    with_page = [m.label or m.name.title() for m in sorted(enabled({}), key=lambda m: m.label or m.name) if m.page]
-    labels = [m["label"] for m in client.get("/api/modules").json()]
-    assert labels == with_page and {"Calendar", "To-dos"} <= set(labels)
+    on = enabled({})
+    listed = client.get("/api/modules").json()
+    assert sorted(m["name"] for m in listed) == sorted(m.name for m in on) and {"Calendar", "To-dos"} <= {m["label"] for m in listed}
+    assert all(m["page"] == f"/m/{m['name']}/" and m["group"] in ("", "house", "fun", "pip") for m in listed)
     page = client.get("/m/calendar/")
     assert page.status_code == 200 and "text/html" in page.headers["content-type"]
+    if pageless := [m.name for m in on if not m.page]:
+        made = client.get(f"/m/{pageless[0]}/")
+        assert made.status_code == 200 and "pip.modules()" in made.text
+    assert client.get("/m/no_such_module/").status_code == 404
     assert client.get("/m/calendar/../module.py").status_code == 404           # nothing outside static/
     assert client.get("/m/calendar/%2e%2e/module.toml").status_code == 404
     r = client.post("/api/m/todos", json={"action": "add", "title": "milk"}).json()

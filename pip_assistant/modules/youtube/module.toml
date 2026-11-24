@@ -60,3 +60,5 @@ aliases = ["youtube", "youtube video"]
 [dashboard]
 page = "index.html"
 label = "Video"
+group = "fun"
+icon = "▶️"

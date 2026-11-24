@@ -39,3 +39,5 @@ page only.
 [dashboard]
 page = "index.html"
 label = "Routines"
+group = "house"
+icon = "🌙"

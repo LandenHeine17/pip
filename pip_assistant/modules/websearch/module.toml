@@ -26,3 +26,8 @@ ACTION {"do": "look", "kind": "web", "query": "huskers football score"}
 Use the weather and what you're told first, and never search for things you already know. When you get the
 results, answer in a sentence or two from them; never read out links or sources.
 """
+
+[dashboard]                          # no page of its own: the dashboard makes one (web/static/module.html)
+label = "Web search"
+group = "pip"
+icon = "🔎"

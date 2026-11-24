@@ -16,3 +16,6 @@ explain = "The address Google sends you back to after signing in (http://127.0.0
 [dashboard]
 page = "index.html"
 label = "Google"
+person_panel = "person.js"          # its part of a person's profile page: their account, its calendars and lists
+group = "pip"
+icon = "🔑"

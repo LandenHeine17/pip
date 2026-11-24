@@ -96,7 +96,7 @@ def build(cfg: dict) -> Core:
     from .yourdata import YourData   # Settings → Your data: export and delete everything (PIP-NEW-034, D-128)
     your_data = YourData(memory, people, modules, conv)
     bus.core_handlers["core.data"] = lambda m: privately(your_data.handle, m)
-    # The front page's chat box: typed to Pip, answered like speech (D-131); the words travel privately
+    # The Overview's chat box: typed to Pip, answered like speech (D-131); the words travel privately
     bus.core_handlers["core.chat"] = lambda m: privately(lambda d: chat(conv, people, schedule, d), m)
     return Core(bus, trace, schedule, net, modules)
 

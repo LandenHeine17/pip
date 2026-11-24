@@ -47,3 +47,5 @@ aliases = ["hall of fame", "moment", "funny moments"]
 [dashboard]
 page = "index.html"
 label = "Hall of Fame"
+group = "fun"
+icon = "🏆"

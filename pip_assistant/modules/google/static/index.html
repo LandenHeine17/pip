@@ -14,7 +14,7 @@ code{background:var(--soft);padding:1px 6px;border-radius:6px;font-size:.85em}
 <body>
 <main>
 <header>
-  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+  <div class="brand">
     <div><h1>Google</h1><div class="sub">Connect household members' Google accounts, for their calendars and to-dos</div></div></div>
 </header>
 
@@ -45,7 +45,7 @@ code{background:var(--soft);padding:1px 6px;border-radius:6px;font-size:.85em}
     <form id="finish"><input name="pasted" placeholder="http://127.0.0.1:…/?state=…&code=…" style="flex:1;min-width:14em" required><button class="primary">Finish</button></form>
   </div>
   <div class="sub" style="margin-top:8px">On Google's "what Pip can access" screen, tick <b>Select all</b>: the boxes start unticked.</div>
-  <div class="sub" style="margin-top:4px">People are added on <a href="/">Pip's dashboard</a> (People &amp; voices). Each person connects their own account.</div>
+  <div class="sub" style="margin-top:4px">People are added on the dashboard's <a href="/people">People</a> page. Each person connects their own account, and their Google settings are on their profile there.</div>
 </section>
 
 <section>
@@ -80,7 +80,7 @@ function render(){
       <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><label class="sub">Pip may mention
         <select onchange="sharing(${js(a.id)}, this.value)"><option value="everyone" ${a.sharing==="everyone"?"selected":""}>to everyone</option>
         <option value="me" ${a.sharing==="me"?"selected":""}>only to ${esc(a.person)}</option></select></label>
-      <a class="ghost" style="padding:6px 10px" href="account.html?id=${a.id}">Settings</a>
+      <a class="ghost" style="padding:6px 10px" href="/person?id=${encodeURIComponent(a.person_id)}#google" title="Their calendars and to-do lists, on their profile">Settings</a>
       <button class="ghost" onclick="disconnect(${js(a.id)}, ${js(a.email)})">Disconnect</button></span></div>`).join("")
     || `<div class="empty">Nobody connected yet.</div>`;
 }

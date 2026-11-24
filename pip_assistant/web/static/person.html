@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Profile</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+main{max-width:980px}
+.profilehead{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:8px 0 18px}
+.avatar{width:60px;height:60px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:1.5rem;color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2));flex:none}
+.cardsgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:18px;align-items:start}
+.cardsgrid section{margin:0}
+.btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+#panels{display:flex;flex-direction:column;gap:18px;margin-top:18px}
+#panels section{margin:0}
+/* for the modules' parts (a Google account's calendars and to-do lists, their static/account.js) */
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 0}
+.row .what{min-width:12em;font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:.9rem}
+th{text-align:left;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:6px 8px}
+td{padding:8px;border-top:1px solid var(--line);vertical-align:middle}
+td.c{text-align:center}
+tr.off td:not(:first-child):not(:nth-child(2)){opacity:.35}
+tr.off .cname{text-decoration:line-through;opacity:.6}
+.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:8px;vertical-align:middle}
+@media (max-width:640px){th.hide,td.hide{display:none}}
+</style>
+</head>
+<body>
+<!-- A person's profile (D-148): /person?id=<their id>. Their voice, role and name; each module's part for this
+     person (module.toml person_panel: the Google account and its calendars and to-do lists); their memories; and
+     removing them. Everything here is about one person, so it travels privately, like everything about people. -->
+<main>
+<a href="/people" class="sub" style="text-decoration:none">‹ People</a>
+<div class="profilehead" id="head"></div>
+<div class="cardsgrid">
+  <section id="voice"><div class="head"><h2>🎙️ Voice</h2></div><div id="voicebody" class="sub">Loading…</div></section>
+  <section id="mems"><div class="head"><h2>🧠 Memories</h2><a id="memlink" href="/memory">All in Memory ›</a></div><div id="membody"></div></section>
+</div>
+<!-- Below: each module's part of this profile, drawn by its own script (static/person.js), in its own box -->
+<div id="panels"></div>
+<section id="elsewhere" style="margin-top:18px" hidden><div class="head"><h2>Elsewhere in Pip</h2></div><div class="btns" id="links"></div></section>
+<div style="margin-top:18px"><button class="ghost" id="remove" style="color:var(--bad)">Remove from Pip</button></div>
+</main>
+<script src="/pip.js"></script>
+<script>
+const pid = new URLSearchParams(location.search).get("id") || "";
+let ppl = {people: []}, me = null, mems = [];
+// Each module's part of this page: its static/person.js calls PipPerson.panel(module, draw), and draw(el, person)
+// fills its own element (person: {id, name, role}). It's drawn again when the person changes.
+const drawers = {};
+window.PipPerson = { panel(module, draw) { drawers[module] = draw; if (me) draw(slot(module), me); } };
+function slot(module) {
+  let el = document.getElementById("panel-" + module);
+  if (!el) { el = document.createElement("div"); el.id = "panel-" + module; $("panels").appendChild(el); }
+  return el;
+}
+let scripts = false;
+async function loadPanels(){
+  if (scripts) return; scripts = true;
+  for (const m of (await pip.modules()).filter(m => m.person)) {
+    slot(m.name);
+    const tag = document.createElement("script"); tag.src = m.person; document.body.appendChild(tag);
+  }
+}
+
+function render(){
+  if (!me) { document.querySelector("main").innerHTML = `<a href="/people" class="sub">‹ People</a><section style="margin-top:12px"><div class="empty">There's nobody with that id. <a href="/people">Back to People</a></div></section>`; return; }
+  document.title = `Pip · ${me.name}`;
+  const admin = me.role === "admin";
+  $("head").innerHTML = `<div class="avatar">${esc(me.name.slice(0, 1).toUpperCase())}</div>
+    <div style="flex:1;min-width:12em"><h1>${esc(me.name)}</h1><div class="sub">${admin ? "Admin: can approve changes and memories" : "Member"} · ${me.last_heard ? "last heard " + new Date(me.last_heard * 1000).toLocaleString([], {weekday: "short", hour: "numeric", minute: "2-digit"}) : "not heard yet"}</div></div>
+    <span style="display:flex;gap:6px;align-items:center"><button class="ghost" onclick="rename()">Rename</button>
+    <select onchange="pAct({action:'role',id:${js(me.id)},role:this.value})"><option value="member" ${admin ? "" : "selected"}>Member</option><option value="admin" ${admin ? "selected" : ""}>Admin</option></select></span>`;
+  const first = me.name.split(" ")[0];
+  $("voicebody").innerHTML = !ppl.voice_model ? `<div class="empty">The voice model isn't installed, so Pip can't learn voices yet.</div>`
+    : (me.voice_samples ? `<div class="item"><div><b>Voice learned</b><div class="sub">${me.voice_samples} samples · Pip knows it's ${esc(first)} when they talk</div></div><span class="pill ok">✓</span></div>`
+      : `<div class="item" style="background:var(--warnbg)"><div><b>Not learned yet</b><div class="sub">Say "Pip, I'm ${esc(first)}", or press Learn: Pip says hi, beeps, and five short sentences appear at the top. Read each one after the beep (about a minute).</div></div></div>`)
+      + `<div class="btns"><button class="${me.voice_samples ? "" : "primary"}" onclick="pAct({action:'enrol_start',id:${js(me.id)}})">${me.voice_samples ? "Re-learn voice" : "Learn voice now"}</button>
+        ${ppl.m0_recordings && admin && !me.voice_samples ? `<button title="Uses 8 recordings you already made in the M0 tests: nothing to read" onclick="pAct({action:'voice_from_m0',id:${js(me.id)}})">Use my M0 recordings</button>` : ""}
+        ${me.voice_samples ? `<button class="ghost" onclick="if(confirm(${js(`Forget ${me.name}’s voice?`)})) pAct({action:'forget_voice',id:${js(me.id)}})">Forget voice</button>` : ""}</div>
+      <div class="sub" style="margin-top:8px">Voiceprints stay on the Pi. Check with "Pip, who am I?".</div>`;
+  const theirs = mems.filter(m => m.status !== "archived" && (m.owner === me.id || (m.about || []).includes(me.id)));
+  const own = theirs.filter(m => m.owner === me.id && m.visibility === "private").length;
+  $("memlink").href = `/memory?person=${encodeURIComponent(me.id)}`;
+  $("membody").innerHTML = (theirs.length ? `<div class="items">${theirs.slice(0, 6).map(m => `<div class="item"><div><b>${esc(m.text)}</b>
+      <div class="sub">${m.status === "pending" ? "waiting for approval · " : ""}${m.owner === me.id && m.visibility === "private" ? "private" : "household"}</div></div></div>`).join("")}</div>`
+      : `<div class="empty">Nothing remembered about ${esc(first)} yet.</div>`)
+    + `<div class="sub" style="margin-top:8px">${theirs.length} in all${own ? ` · ${own} private (used only when Pip recognises ${esc(first)}'s voice)` : ""}.</div>`;
+  // links modules add for this person (core/modules.py people_links), except the ones that lead back here
+  const links = ((ppl.links || {})[me.id] || []).filter(l => !String(l.href).startsWith("/person"));
+  $("elsewhere").hidden = !links.length;
+  $("links").innerHTML = links.map(l => `<a href="${esc(l.href)}"><button>${esc(l.label)}</button></a>`).join("");
+  $("remove").textContent = `Remove ${me.name} from Pip`;
+  for (const [module, draw] of Object.entries(drawers)) draw(slot(module), me);
+}
+async function load(){
+  try {
+    const [r, m] = await Promise.all([getJSON("/api/people"), getJSON("/api/memory").catch(() => ({}))]);
+    if (!r.people) return;
+    ppl = r; mems = m.memories || []; me = r.people.find(p => p.id === pid) || null;
+    render(); if (me) loadPanels();
+  } catch (e) {}
+}
+async function pAct(body){ try { const r = await postJSON("/api/people/action", body); if (r.error) alert(r.error); return r; } catch (e) { alert("Couldn't reach Pip"); } finally { load(); } }
+async function rename(){ const n = prompt("Name", me.name); if (n && n.trim() && n.trim() !== me.name) pAct({action: "rename", id: me.id, name: n.trim()}); }
+$("remove").onclick = async () => {
+  if (!confirm(`Remove ${me.name}, their voice and memories about them?`)) return;
+  const r = await pAct({action: "remove", id: me.id}); if (r && r.ok) location.href = "/people";
+};
+pip.on("people", load);
+load();
+</script>
+</body>
+</html>

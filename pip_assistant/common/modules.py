@@ -6,7 +6,8 @@ Each feature that plugs into Pip is a folder in pip_assistant/modules/:
     ├── module.toml   what it is, what it may do, its settings (the part people read and edit)
     ├── module.py     setup(ctx) → the code (pip-core runs it; see core/modules.py)
     ├── static/       its dashboard page, if it has one (served at /m/calendar/); monitor.js if it adds
-    │                 boxes to the monitor; account.js if it adds a part to a Google account's page
+    │                 boxes to the monitor; account.js if it adds a part to a Google account's settings;
+    │                 person.js if it adds a part to a person's profile page
     └── test_*.py     its tests
 
 Folders starting with "_" (like _template) are examples and never loaded.
@@ -22,6 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "modules"
 KINDS = ("skill", "widget", "provider", "device", "plugin")
+GROUPS = ("", "house", "fun", "pip")   # the dashboard menu's groups: Around the house, Fun, Pip himself
 
 
 class ModuleError(ValueError):
@@ -42,9 +44,14 @@ class ModuleInfo:
     settings: dict = field(default_factory=dict)      # merged values
     explain: dict = field(default_factory=dict)       # setting → plain-language explanation
     claude: str = ""                                  # instructions added to Claude's system prompt
-    page: str = ""                                    # dashboard page (in static/), if any
-    label: str = ""                                   # its button on the main dashboard
-    account_panel: str = ""                           # its part of a Google account's settings page (in static/)
+    page: str = ""                                    # dashboard page (in static/), if any; without one it gets
+                                                      # a page made for it (web/static/module.html)
+    label: str = ""                                   # its name in the dashboard's menu
+    group: str = ""                                   # where the menu lists it: house, fun or pip (else "More")
+    icon: str = ""                                    # its icon in the menu (an emoji)
+    tab: bool = False                                 # also a tab at the bottom of the dashboard on a phone
+    account_panel: str = ""                           # its part of a Google account's settings (in static/)
+    person_panel: str = ""                            # its part of a person's profile page (in static/)
     boxes: dict = field(default_factory=dict)         # kinds of box it adds to the monitor ([monitor.<kind>])
     enabled: bool = True
 
@@ -92,6 +99,8 @@ def read(folder: Path, user: dict | None = None) -> ModuleInfo:
             raise ModuleError(f"Unknown setting 'modules.{name}.{key}'. Check {f}.")
         merged[key] = _check_value(f"modules.{name}.{key}", defaults[key], value)
     dash = t.get("dashboard") or {}
+    if dash.get("group", "") not in GROUPS:
+        raise ModuleError(f"{f}: [dashboard] group must be one of {', '.join(g for g in GROUPS if g)} (or left out)")
     boxes = {kind: _box(f, kind, b) for kind, b in (t.get("monitor") or {}).items()}
     if boxes and not (folder / "static" / "monitor.js").is_file():
         raise ModuleError(f"{f}: a module that adds boxes to the monitor draws them in static/monitor.js")
@@ -99,7 +108,9 @@ def read(folder: Path, user: dict | None = None) -> ModuleInfo:
                       says_examples=list(t.get("says_examples") or []), offline=bool(t.get("offline", False)),
                       permissions=list(t.get("permissions") or []), needs=list(t.get("needs") or []),
                       uses=list(t.get("uses") or []), settings=merged, explain=explain, claude=(t.get("claude") or {}).get("instructions", "").strip(),
-                      page=dash.get("page", ""), label=dash.get("label", ""), account_panel=dash.get("account_panel", ""),
+                      page=dash.get("page", ""), label=dash.get("label", ""), group=str(dash.get("group", "")),
+                      icon=str(dash.get("icon", "")), tab=bool(dash.get("tab", False)),
+                      account_panel=dash.get("account_panel", ""), person_panel=dash.get("person_panel", ""),
                       boxes=boxes, enabled=enabled)
 
 

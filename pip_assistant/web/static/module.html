@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Module</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+main{max-width:860px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{padding:4px 11px;border-radius:999px;background:var(--soft);font-size:.88rem}
+</style>
+</head>
+<body>
+<!-- The page made for a module that has none of its own (D-148): served at /m/<name>/ by pip-web, with what its
+     module.toml says (/api/modules): what it does, things to say, and a link to its settings. Every module has a
+     page in the dashboard's menu this way. -->
+<main>
+<div class="pagehead"><h1 id="title">…</h1></div>
+<section>
+  <div class="head"><h2>What it does</h2></div>
+  <div id="summary" class="sub"></div>
+</section>
+<section id="sayit" hidden>
+  <div class="head"><h2>Things to say</h2></div>
+  <div class="chips" id="says"></div>
+</section>
+<section>
+  <div class="head"><h2>Settings</h2></div>
+  <div class="sub">Its settings are in <a id="settings" href="/settings">Settings</a>, with the other modules' (switching it off is
+    <code>enabled = false</code> under its name in <code>~/pip-data/settings.toml</code>).</div>
+</section>
+</main>
+<script src="/pip.js"></script>
+<script>
+pip.modules().then(mods => {
+  const m = (mods || []).find(x => x.name === pip.module);
+  if (!m) { $("title").textContent = "Not found"; $("summary").textContent = "That module isn't on."; return; }
+  document.title = `Pip · ${m.label}`;
+  $("title").textContent = `${m.icon ? m.icon + " " : ""}${m.label}`;
+  $("summary").textContent = m.summary;
+  $("sayit").hidden = !(m.says || []).length;
+  $("says").innerHTML = (m.says || []).map(s => `<span class="chip">"${esc(s)}"</span>`).join("");
+  $("settings").href = `/settings#mod-${encodeURIComponent(m.name)}`;
+});
+</script>
+</body>
+</html>

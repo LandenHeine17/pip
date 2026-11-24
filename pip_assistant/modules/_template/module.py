@@ -12,7 +12,7 @@ setup returns a Module. Every part is optional:
     actions            ACTION verbs Claude may use ("roll"): checked first, then done
     summary(call)      what Claude should know with every request (keep it short: it costs tokens each time)
     offline()          its own phrases for when Pip is offline ("roll a die")
-    home()             a card on the dashboard's front page (the last rolls)
+    home()             a card on the dashboard's Overview (the last rolls)
     tv(shown)          what its box on the monitor shows (module.toml [monitor.dice]; static/monitor.js draws it)
     dashboard(...)     its own page's requests (static/index.html)
     tasks()            background jobs (none here)

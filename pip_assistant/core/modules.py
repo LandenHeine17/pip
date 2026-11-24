@@ -14,14 +14,14 @@ setup returns a Module. Each of its parts is optional:
     dashboard(...)    answers its dashboard page (/m/<name>/ ↔ /api/m/<name>)
     tasks()           background jobs (e.g. syncing every two minutes)
     offline()         its part of Pip's own offline commands (OfflineItems below; the calendar's phrases)
-    home()            a card on the dashboard's front page (the calendar's next two weeks)
+    home()            a card on the dashboard's Overview (the calendar's next two weeks)
     tv(shown)         what its boxes on the monitor show (the box kinds are in module.toml's [monitor.<kind>],
                       drawn by static/monitor.js); tv_layout() is only for the module that lays out the screen
     room_heard(text, call)  everything heard (call.kind: room / direct / mentioned): a module may answer with
                       something for Pip to say instead (the six-seven chant), and ask the monitor's face to react
     room_may_see(a)   may this timer, alarm or heads-up show on the room's monitor? (the calendar hides the
                       heads-ups of events it mayn't mention to everyone)
-    people_links(id)  links for a person on the dashboard's People card ("Connect Google")
+    people_links(id)  links for a person on the dashboard's People page ("Connect Google")
     on_alert(event, alerts)  timers and alarms ringing, stopped, snoozed or unanswered; may return something for
                       Pip to say once he's free (the routines module's morning briefing after the wake-up alarm)
     api               a small object other modules may use (each module documents its own)
@@ -146,13 +146,13 @@ class Module:
         return None
 
     def home(self) -> dict | None:
-        """A card on the dashboard's front page, or None. Sent privately (titles are personal):
+        """A card on the dashboard's Overview, or None. Sent privately (titles are personal):
         {"title": "Calendar · next two weeks", "link": "/m/<its name>/", "empty": "Nothing on the calendar.",
          "items": [{"id", "title", "at" (timestamp), "all_day", "repeat", "private", "color"}],
          "remove": "delete" (its dashboard action that removes one item by "id"; "" for none)}
-        Or a card of switches (the smart plugs): {"title", "link", "empty", "switch": "<its dashboard action>",
-         "items": [{"id", "title", "on" (True/False, or None if unknown), "sub" (a short note, e.g. "offline")}]};
-        each item gets an On/Off button that sends that action {"id", "on"}."""
+        Or a card of things to tick off (the to-dos): {"title", "link", "empty", "check": "<its dashboard action>",
+         "items": [{"id", "title", "sub" (a short note: whose, when it's due)}]}; each item gets a box that sends
+         that action {"id"} when ticked."""
         return None
 
     def tv(self, shown: list[dict]) -> dict:
@@ -187,7 +187,7 @@ class Module:
         return None
 
     def people_links(self, person_id: str) -> list[dict]:
-        """Links for one person on the dashboard's People card: [{"label", "href"}]."""
+        """Links for one person on the dashboard's People page: [{"label", "href"}]."""
         return []
 
     def export_data(self) -> dict | None:
@@ -204,7 +204,7 @@ class Module:
         (their accounts, their notes…). Returns how many things were removed."""
         return 0
 
-    # A module that can take over a memory from the dashboard's Memory card (D-147: a memory that's really a funny
+    # A module that can take over a memory from the dashboard's Memory page (D-147: a memory that's really a funny
     # moment) names its button here ("Hall of Fame" → "Move to Hall of Fame"). "" = it doesn't take memories.
     takes_memories: str = ""
 
@@ -421,7 +421,7 @@ class Registry:
         return out
 
     def home_cards(self) -> list[dict]:
-        """The cards modules add to the dashboard's front page, each with its module's name."""
+        """The cards modules add to the dashboard's Overview, each with its module's name."""
         return [{**card, "module": name} for name, card in self._each("home", lambda m: m.home(), None) if card]
 
     def tv(self) -> dict:
@@ -498,7 +498,7 @@ class Registry:
                 for i in self.infos.values() if i.page]
 
     def memory_takers(self) -> list[dict]:
-        """The modules a memory can be moved to from the Memory card: [{"module", "label"}] (Module.takes_memories)."""
+        """The modules a memory can be moved to from the Memory page: [{"module", "label"}] (Module.takes_memories)."""
         return [{"module": name, "label": m.takes_memories} for name, m in self.modules.items() if m.takes_memories]
 
     async def take_memory(self, name: str, memory: dict) -> bool:

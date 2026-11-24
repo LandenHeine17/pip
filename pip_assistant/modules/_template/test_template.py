@@ -23,7 +23,7 @@ def test_offline_the_dashboard_and_the_monitor(reg):
     [offline] = reg.offline_items()
     assert offline.rules[0]("roll a 20-sided die", None).startswith("It's a ")
     assert offline.rules[0]("what's the weather", None) is None
-    [card] = reg.home_cards()                                   # the front page's card: the last roll
+    [card] = reg.home_cards()                                   # the Overview's card: the last roll
     assert card["module"] == "_template" and card["items"][0]["title"].endswith("(d20)")
     assert reg.tv()["boxes"] == {}                              # its box isn't on the screen
     assert reg.modules["_template"].tv([{"type": "dice"}])["dice"]["sides"] == 20

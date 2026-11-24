@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Health &amp; trace</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+.notice{padding:10px 14px;border-radius:14px;background:var(--warnbg);color:var(--warn);font-weight:600;font-size:.88rem;margin-bottom:10px}
+.notice[hidden]{display:none}
+</style>
+</head>
+<body>
+<!-- Health & trace (D-148): Pip's programs and how they're doing, how much he used Claude, the release that's
+     running, and the decision trace (what happened, never the words said). -->
+<main>
+<div class="pagehead"><h1>Health &amp; trace</h1><span class="sub" id="release"></span></div>
+<section>
+  <div class="head"><h2>Programs</h2><span class="sub" id="progsum"></span></div>
+  <div class="notice" id="usagepause" hidden></div>
+  <div class="cards" id="programs"></div>
+  <div class="sub" id="usage" style="margin-top:10px" title="Pip's plan doesn't say how much is left, so there's no warning before the limit: only a notice once Claude says it's reached."></div>
+  <div class="sub" style="margin-top:8px">Each program sends a heartbeat every 2 s. One that goes quiet is shown as stuck and restarted automatically.
+    What Pip sends to Claude, and what it costs: <a href="/prompts">Claude</a>.</div>
+</section>
+<section>
+  <div class="head"><h2>Decision trace</h2><span class="sub">what happened, never the words said · kept 48 h</span></div>
+  <div class="scroll"><table>
+    <thead><tr><th>Time</th><th>Kind</th><th>What</th><th>From → to</th><th>Details</th></tr></thead>
+    <tbody id="trace"><tr><td colspan="5" class="sub">Nothing yet.</td></tr></tbody>
+  </table></div>
+</section>
+</main>
+<script src="/pip.js"></script>
+<script>
+const WHAT = {core: "The conductor: routes messages, keeps the trace, watches health",
+  ears: "Microphone, “stop”, Pip’s voice", thinker: "Claude and the offline fallback",
+  web: "This dashboard and the TV page", builder: "Self-changes: writes plans, builds and checks the changes you approve"};
+const ORDER = ["core", "ears", "thinker", "web", "builder"];
+const STATE = {ok: ["ok", "Running"], stuck: ["stuck", "Stuck"], missing: ["missing", "Not running"]};
+function dur(s){ if (s == null) return "–"; s = Math.round(s); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m`; }
+function renderHealth(p){
+  const names = [...ORDER.filter(n => p[n]), ...Object.keys(p).filter(n => !ORDER.includes(n))];
+  const bad = names.filter(n => p[n].state !== "ok");
+  $("progsum").textContent = names.length ? (bad.length ? `${bad.length} need attention` : `all ${names.length} running`) : "";
+  $("programs").innerHTML = names.map(n => {
+    const h = p[n], [cls, label] = STATE[h.state] || ["missing", h.state];
+    return `<div class="card"><div class="name">pip-${esc(n)} <span class="pill ${cls}">${label}</span></div>
+      <div class="what">${esc(WHAT[n] || "")}</div>
+      <div class="kv">memory ${h.rss_mb != null ? esc(h.rss_mb) + " MB" : "–"} · up ${dur(h.uptime_s)}${h.seen_s_ago != null && n !== "core" ? ` · seen ${esc(h.seen_s_ago)}s ago` : ""}</div>
+      ${h.activity ? `<div class="kv">${esc({listening: "Listening", speaking: "Speaking", muted_or_quiet: "Muted or very quiet"}[h.activity] || h.activity)}${h.level_dbfs != null ? ` · mic ${esc(h.level_dbfs)} dBFS` : ""}</div>` : ""}
+      ${h.stage ? `<div class="kv">${esc(h.stage)}</div>` : ""}</div>`;
+  }).join("") || `<div class="empty">Waiting for pip-core…</div>`;
+  renderUsage(p.thinker || {}); renderRelease((p.core || {}).release);
+}
+// How much Pip used Claude today (D-69), and the pause after the plan's usage limit
+const hhmm = ts => new Date(ts * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+function renderUsage(t){
+  const u = t.usage_today, w = t.usage_week;
+  $("usage").textContent = u ? `Claude today: ${u.requests} request${u.requests === 1 ? "" : "s"}${u.cost_usd ? ` (≈$${u.cost_usd.toFixed(2)})` : ""}${u.errors ? ` · ${u.errors} failed` : ""}`
+    + (w ? ` · last 7 days: ${w.requests}${w.cost_usd ? ` (≈$${w.cost_usd.toFixed(2)})` : ""}` : "") : "";
+  const until = t.paused_until, paused = !!(until && until * 1000 > Date.now());
+  $("usagepause").hidden = !paused;
+  if (paused) $("usagepause").textContent = `Claude's usage limit reached: joining in and self-changes paused until ${hhmm(until)}. Replies to people keep trying.`;
+}
+// The running release (versioned installs, PIP-NEW-080): a short commit id, or an object with one
+function renderRelease(r){
+  const sha = !r ? "" : typeof r === "string" ? r : (r.sha || r.id || r.commit || "");
+  const at = r && typeof r === "object" && r.time ? new Date(typeof r.time === "number" ? r.time * 1000 : r.time) : null;
+  $("release").textContent = sha === "dev" ? "running from the repo (no release)" : sha ? `release ${String(sha).slice(0, 7)}${at && !isNaN(at) ? " · " + at.toLocaleDateString([], {month: "short", day: "numeric"}) : ""}` : "";
+}
+function row(e, fresh){
+  const t = new Date(e.ts * 1000).toLocaleTimeString();
+  const det = Object.keys(e.data || {}).length ? `<code>${esc(JSON.stringify(e.data))}</code>` : "";
+  return `<tr class="${fresh ? "fresh" : ""}"><td class="t">${t}</td><td class="k-${esc(e.kind)}">${esc(e.kind)}</td><td>${esc(e.type)}</td>
+    <td>${esc(e.source || "?")}${e.target ? " → " + esc(e.target) : ""}</td><td>${det}</td></tr>`;
+}
+let rows = [];
+function renderTrace(){ $("trace").innerHTML = rows.length ? rows.map((e, i) => row(e, i === 0 && e._fresh)).join("") : `<tr><td colspan="5" class="sub">Nothing yet.</td></tr>`; }
+async function loadTrace(){ try { rows = await getJSON("/api/trace"); renderTrace(); } catch (e) {} }
+async function loadHealth(){ try { const h = await getJSON("/api/health"); renderHealth(h.programs || {}); } catch (e) {} }
+pip.on("health", renderHealth);
+pip.on("trace", e => { e._fresh = true; rows.unshift(e); rows = rows.slice(0, 200); renderTrace(); });
+loadHealth(); loadTrace();
+</script>
+</body>
+</html>

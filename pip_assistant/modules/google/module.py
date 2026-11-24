@@ -295,10 +295,10 @@ class Google(Module):
         return await self.api.forget_person(person_id, name)
 
     def people_links(self, person_id: str) -> list[dict]:
-        """On the dashboard's People card: that person's Google settings, or a button to connect their account."""
-        accs = self.api.accounts(person_id)
-        if accs:
-            return [{"label": "Google settings", "href": f"/m/google/account.html?id={accs[-1]['id']}"}]
+        """On the dashboard's People page, a chip for each person: Google connected or not. (Their Google settings
+        are on their profile page, drawn by static/person.js, D-148.)"""
+        if self.api.accounts(person_id):
+            return [{"label": "Google connected", "href": f"/person?id={person_id}#google"}]
         return [{"label": "Connect Google", "href": f"/m/google/?person={person_id}"}]
 
     async def dashboard(self, action: str, args: dict) -> dict:

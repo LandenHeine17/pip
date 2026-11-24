@@ -3,7 +3,7 @@
     alerts_snapshot   the timers card (core.alerts), with the cards modules add (the calendar's next two weeks)
     tv_snapshot       what the face on the monitor shows (core.tv): timers, and each module's boxes
     alert_action      the timers card's buttons and forms (core.alert_action)
-    chat              the front page's chat box: a message typed to Pip, answered like speech (core.chat)
+    chat              the Overview's chat box: a message typed to Pip, answered like speech (core.chat)
     people_action     people and voices (core.people_action)
     memory_snapshot   the Memory Center's list (core.memory)
     memory_action     the Memory Center's buttons (core.memory_action); memory_move its "Move to …" (D-147)
@@ -24,7 +24,7 @@ from .schedule import Schedule
 
 
 def alerts_snapshot(schedule: Schedule, modules: Registry) -> dict:
-    """The dashboard's timers card, plus the cards modules add to the front page (the calendar's next two weeks).
+    """The dashboard's timers card, plus the cards modules add to the Overview (the calendar's next two weeks).
     Heads-ups (kind "event") are listed only for the next 24 hours; the rest are just counted (D-109)."""
     snap = schedule.snapshot()
     soon = snap["now"] + 86400
@@ -60,7 +60,7 @@ def face_status(conv: Conversation, net) -> dict:
 
 
 def people_snapshot(people: People, modules: Registry, conv: Conversation) -> dict:
-    """The People card: everyone, voice learning in progress, and the links modules add for each person
+    """The People page: everyone, voice learning in progress, and the links modules add for each person
     ("Connect Google"). Sent privately."""
     snap = people.snapshot()
     links = {p["id"]: ls for p in snap.get("people", []) if (ls := modules.people_links(p["id"]))}
@@ -185,7 +185,7 @@ def memory_action(memory: Memory, people: People, m: Message):
 
 async def alert_action(schedule: Schedule, conv: Conversation, m: Message) -> dict:
     """Buttons and forms on the dashboard: shut off, snooze, cancel, new timer (FEAT-039). (A module's card
-    on the front page, like the calendar's, removes its items through its own dashboard requests.)"""
+    on the Overview, like the calendar's, removes its items through its own dashboard requests.)"""
     from ..common import when
     act = m.data.get("action")
     if act == "stop":
@@ -205,7 +205,7 @@ async def alert_action(schedule: Schedule, conv: Conversation, m: Message) -> di
 
 
 async def chat(conv: Conversation, people: People, schedule: Schedule, d: dict) -> dict:
-    """The front page's chat box: a message typed to Pip (core/conversation.py `typed`). {"text", "person" (whose
+    """The Overview's chat box: a message typed to Pip (core/conversation.py `typed`). {"text", "person" (whose
     message it is: a household member picked on the page, or "" for someone), "aloud" (say the reply in the
     room too)} → {"reply"}. Like anything said to Pip, a typed message answers a ringing alarm: "snooze" snoozes,
     "okay" stops it, and anything else goes on to Claude, who's told it's ringing (D-94). Private both ways."""

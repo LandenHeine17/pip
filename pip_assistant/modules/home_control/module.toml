@@ -36,6 +36,9 @@ explain = "The addresses of Pip's own Wi-Fi network for the plugs (pip-plugs, ma
 [dashboard]
 page = "index.html"
 label = "Home"
+group = "house"
+icon = "💡"
+tab = true                          # also a tab at the bottom of the dashboard on a phone
 
 [claude]
 instructions = """

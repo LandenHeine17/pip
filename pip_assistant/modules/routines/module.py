@@ -190,7 +190,7 @@ class Routines(Module):
 
     def before(self, r: dict) -> None:
         """What running it changes besides its steps: heading out starts keeping what rings; it's remembered as
-        the last routine run (the front page's card)."""
+        the last routine run (the Overview's card)."""
         if r["builtin"] == "out":
             self.set_state("out_since", self.ctx.clock())
             self.set_state("missed", [])

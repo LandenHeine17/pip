@@ -1,9 +1,11 @@
 """Start pip-web: Pip's web pages. It serves
 
-    /          the dashboard (static/index.html): health, the Listening switch, the conversation feed,
-               timers and calendar, people, memory, preferences, the decision trace
+    /          the dashboard's Overview (static/index.html): what needs you, timers, the chat box, and the
+               cards modules add (the calendar's next two weeks, the to-dos); its other pages are in PAGES
+               below (Talk, People and each person's profile, Memory, System, Settings, Changes, Claude,
+               Guide). Every page but the Guide shares one menu and status bar, drawn by static/pip.js.
     /tv        the face on the monitor and its boxes (static/tv.html, D-110), with its own data and stream
-    /m/<name>/ each module's own page
+    /m/<name>/ each module's own page (a module without one gets static/module.html, made from its module.toml)
 
 pip-web keeps nothing itself: `/api/...` requests are passed to pip-core over the bus, and `listen`
 turns what pip-core publishes into live streams for the pages (`/api/stream`, `/api/tv/stream`).
@@ -75,8 +77,14 @@ class State:
                 q.put_nowait((kind, data))
 
 
+# The dashboard's pages: address → file in static/. Each is read fresh when asked for, so an edit shows without a
+# restart. The menu (static/pip.js) links to them; the Guide keeps its own chapter list instead of the menu.
+PAGES = {"/": "index.html", "/talk": "talk.html", "/people": "people.html", "/person": "person.html",
+         "/memory": "memory.html", "/system": "system.html", "/settings": "settings.html", "/changes": "changes.html",
+         "/prompts": "prompts.html", "/guide": "guide.html"}
+
+
 def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
-    page = resources.files("pip_assistant.web").joinpath("static/index.html").read_text()
     tv_page = resources.files("pip_assistant.web").joinpath("static/tv.html").read_text()
     weather = Weather((cfg or {}).get("thinker", {}).get("location", "Lincoln, Nebraska"))
     face_look = dict((cfg or {}).get("face", {}))   # how the face looks on the monitor (Settings → Face, D-128)
@@ -92,17 +100,32 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
     async def script(request):
         return Response(js, media_type="text/javascript", headers={"Cache-Control": "no-store"})
 
+    async def talk_script(request):
+        """The conversation feed and the chat box, shared by the Overview and the Talk page."""
+        return Response(static_text("talk.js"), media_type="text/javascript", headers={"Cache-Control": "no-store"})
+
     async def module_list(request):
-        """Modules with a dashboard page (their buttons); "account" is a module's part of a Google account's page."""
-        return JSONResponse([{"name": m.name, "label": m.label or m.name.title(), "page": f"/m/{m.name}/",
-                              **({"account": f"/m/{m.name}/{m.account_panel}"} if m.account_panel else {})}
-                             for m in sorted(mods.values(), key=lambda m: m.label or m.name) if m.page])
+        """Every module that's on, for the dashboard's menu: its page (its own, or one made for it), the menu's group
+        and icon, whether it's a tab on a phone, what it does and things to say (its settings are on the Settings
+        page, which has the current ones); "account" is its part of a Google
+        account's settings, "person" its part of a person's profile page."""
+        def label(m):
+            return m.label or m.name.replace("_", " ").capitalize()
+        return JSONResponse([{"name": m.name, "label": label(m), "page": f"/m/{m.name}/", "own_page": bool(m.page),
+                              "group": m.group, "icon": m.icon, "tab": m.tab, "summary": m.summary,
+                              "says": m.says_examples,
+                              **({"account": f"/m/{m.name}/{m.account_panel}"} if m.account_panel else {}),
+                              **({"person": f"/m/{m.name}/{m.person_panel}"} if m.person_panel else {})}
+                             for m in sorted(mods.values(), key=lambda m: label(m).lower())])
 
     async def module_file(request):
-        """A file from a module's static/ folder (its dashboard page). Nothing outside that folder."""
+        """A file from a module's static/ folder (its dashboard page). Nothing outside that folder. A module without
+        a page of its own gets the one made for every such module (static/module.html: what it does, its settings)."""
         m = mods.get(request.path_params["name"])
         rel = request.path_params.get("path") or (m.page if m else "")
-        if m is None or not rel:
+        if m is not None and not rel:
+            return HTMLResponse(static_text("module.html"), headers={"Cache-Control": "no-store"})
+        if m is None:
             return JSONResponse({"error": "no such module page"}, status_code=404)
         root = (m.path / "static").resolve()
         f = (root / rel).resolve()
@@ -140,8 +163,14 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         r, failed = await ask("module.request", {"module": name, "action": action}, args, timeout=60)
         return failed or JSONResponse(r.private if r.private else r.data)
 
-    async def index(request):
-        return HTMLResponse(page, headers={"Cache-Control": "no-store"})
+    def static_text(name: str) -> str:
+        return resources.files("pip_assistant.web").joinpath("static", name).read_text()
+
+    def page(name: str):
+        """One of the dashboard's pages (PAGES)."""
+        async def handler(request):
+            return HTMLResponse(static_text(name), headers={"Cache-Control": "no-store"})
+        return handler
 
     async def health(request):
         return JSONResponse({"version": __version__, "connected": bus.connected.is_set(), "programs": state.health,
@@ -265,20 +294,7 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
     async def tv(request):
         return HTMLResponse(tv_page, headers={"Cache-Control": "no-store"})
 
-    async def settings_page(request):
-        """The Settings page (step 8, D-117). Read fresh each time, so it never needs a restart to update."""
-        html = resources.files("pip_assistant.web").joinpath("static/settings.html").read_text()
-        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
-    async def changes_page(request):
-        """The Changes page (M1b): Pip's self-changes, waiting for the owner's approvals."""
-        html = resources.files("pip_assistant.web").joinpath("static/changes.html").read_text()
-        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
-
-    async def guide_page(request):
-        """The Guide (/guide): how Pip's code does everything, with live code, diagrams and step-by-step tours."""
-        html = resources.files("pip_assistant.web").joinpath("static/guide.html").read_text()
-        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
     async def source_api(request):
         """The Guide's code panels: a file, one function in it, or the index of every file (web/source.py). Read-only."""
@@ -290,10 +306,6 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
                                 status_code=404)
         return JSONResponse(body, headers={"Cache-Control": "no-store"})
 
-    async def prompts_page(request):
-        """What Pip sends to Claude (owner's feedback, 2026-11-10): the fixed text, and each request's size and tokens."""
-        html = resources.files("pip_assistant.web").joinpath("static/prompts.html").read_text()
-        return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
     def passed_to_core(msg_type: str, timeout: float = 15, target: str = "core", get: str = "get"):
         """A route that hands its request to pip-core (or another program): GET → {"action": get}, POST → the
@@ -344,7 +356,8 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
     async def tv_stream(request):
         return sse(state.tv_listeners)
 
-    return Starlette(routes=[Route("/", index), Route("/pip.css", stylesheet), Route("/pip.js", script), Route("/api/modules", module_list),
+    return Starlette(routes=[*(Route(path, page(name)) for path, name in PAGES.items()), Route("/pip.css", stylesheet), Route("/pip.js", script), Route("/talk.js", talk_script),
+                             Route("/api/modules", module_list),
                              Route("/tv", tv), Route("/api/tv", tv_data), Route("/api/tv/stream", tv_stream), Route("/api/tv/vitals", tv_vitals),
                              Route("/m/{name}/", module_file), Route("/m/{name}/{path:path}", module_file),
                              Route("/api/m/{name}", module_api, methods=["GET", "POST"]),
@@ -354,15 +367,12 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
                              Route("/api/memory", memory), Route("/api/memory/action", memory_action, methods=["POST"]),
                              Route("/api/mic", mic, methods=["GET", "POST"]),
                              Route("/api/prefs", prefs, methods=["GET", "POST"]), Route("/api/stream", stream),
-                             Route("/settings", settings_page),
                              Route("/api/settings", passed_to_core("core.settings", 300), methods=["GET", "POST"]),
                              Route("/api/data", passed_to_core("core.data", 60), methods=["GET", "POST"]),
                              Route("/api/chat", passed_to_core("core.chat", 120), methods=["POST"]),
                              Route("/api/personality", passed_to_core("core.personality", 70), methods=["GET", "POST"]),
                              Route("/api/migrate", passed_to_core("core.migrate", 60), methods=["GET", "POST"]),
-                             Route("/changes", changes_page),
-                             Route("/prompts", prompts_page),
-                             Route("/guide", guide_page), Route("/api/source", source_api),
+                             Route("/api/source", source_api),
                              Route("/api/prompts", passed_to_core("thinker.prompt", 10, target="thinker")),
                              Route("/api/changes", passed_to_core("builder.page", 30, target="builder", get="list"),
                                    methods=["GET", "POST"])])

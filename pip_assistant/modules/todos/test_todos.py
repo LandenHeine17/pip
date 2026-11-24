@@ -128,3 +128,21 @@ async def test_someone_elses_only_me_to_do_cant_be_ticked_off_or_changed(env):
     with pytest.raises(Invalid):
         say(reg, "change_task", {**ref, "title": "x"}, me(landen))
     assert say(reg, "complete_task", ref, me(sam)) == "Ticked off pick up prescription."
+
+
+async def test_the_overview_card_ticks_off_and_never_unticks(env):
+    """D-148: the dashboard's Overview shows open to-dos, each with a box that ticks it off (dashboard "done")."""
+    reg, todos, fake, people = env
+    for i in range(8):
+        say(reg, "add_task", {"title": f"thing {i}", **({"due": "2026-11-09"} if i == 7 else {})})
+    [card] = reg.home_cards()
+    assert card["check"] == "done" and card["module"] == "todos" and len(card["items"]) == todos.HOME_ITEMS
+    assert card["items"][0]["title"] == "thing 7" and "due Mon Nov 9" in card["items"][0]["sub"]   # soonest due first
+    assert card["title"] == "To-dos · 2 more"
+    first = card["items"][0]["id"]
+    assert await todos.dashboard("done", {"id": first}) == {"ok": True}
+    assert await todos.dashboard("done", {"id": first}) == {"ok": True}           # a second tick changes nothing
+    assert todos.store.item(first)["done"]
+    assert first not in [i["id"] for i in reg.home_cards()[0]["items"]]
+    with pytest.raises(ValueError):                                            # the page is told it's gone
+        await todos.dashboard("done", {"id": "nope"})

@@ -20,3 +20,8 @@ explain = "After a six seven, how many seconds Pip waits before he will freak ou
 [settings.disco_seconds]
 default = 4.0
 explain = "How many seconds the lamps flash on and off like a disco at six seven, before each goes back as it was. 0 turns the disco off."
+
+[dashboard]                          # no page of its own: the dashboard makes one (web/static/module.html)
+label = "Six seven"
+group = "fun"
+icon = "🔢"

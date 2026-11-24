@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Memory</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+main{max-width:980px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 6px 3px 12px;border-radius:999px;background:var(--accentbg);color:var(--accent);font-weight:600;font-size:.86rem}
+</style>
+</head>
+<body>
+<!-- Memory (D-148): the Memory Center (PIP-NEW-029/030): the inbox waiting for approval, search, kinds, archived,
+     memories to review (D-128, D-147), add one. /memory?person=<id> shows only memories that are theirs or about
+     them (a person's profile links here); /memory?review=1 starts on "to review". -->
+<main>
+<div class="pagehead"><h1>Memory</h1><span class="sub" id="memsum"></span></div>
+<section>
+  <div id="inbox"></div>
+  <div id="who" style="margin-bottom:10px" hidden></div>
+  <form id="memsearch" style="margin-top:0"><input id="memq" placeholder="Search memories" style="flex:1;min-width:10em">
+    <select id="memcat"><option value="">All kinds</option></select>
+    <label class="sub" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="memarch" style="width:auto">archived</label>
+    <label class="sub" style="display:flex;align-items:center;gap:4px" title="Possible contradictions, memories that may belong somewhere else, and memories over 6 months old"><input type="checkbox" id="memrev" style="width:auto">to review</label></form>
+  <div class="items" id="memories" style="margin-top:10px"></div>
+</section>
+<section>
+  <div class="head"><h2>Add a memory</h2></div>
+  <form id="memadd" style="margin-top:0"><input id="mtext" placeholder="e.g. The bins go out Tuesday night" style="flex:1;min-width:14em" maxlength="300" required>
+    <select id="mcat"></select><input id="mabout" placeholder="About (names, optional)" style="width:11em">
+    <label class="sub" style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="mpriv" style="width:auto">private</label>
+    <button class="primary">Add</button></form>
+  <div class="sub" style="margin-top:8px">Say "Pip, remember…" or "Pip, forget…". Sensitive things and things about someone else wait here for approval. Nothing overheard is ever saved. Household memories are used for everyone; private ones only when their owner's voice is recognised.</div>
+</section>
+</main>
+<script src="/pip.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+let person = params.get("person") || "";
+if (params.get("review")) $("memrev").checked = true;
+let mem = {memories: [], categories: {}};
+const VIS = v => v === "private" ? "private" : "household";
+// A memory flagged "Move? …" may belong somewhere else (D-147: a funny moment rather than a fact). The modules that
+// take memories (mem.takers, from pip-core) each get a "Move to …" button; nothing moves without a click.
+const MOVE = "Move?";
+function renderMemory(){
+  const takers = mem.takers || [];
+  const q = $("memq").value.toLowerCase(), cat = $("memcat").value, arch = $("memarch").checked;
+  const mine = m => !person || m.owner === person || (m.about || []).includes(person);
+  const pend = mem.memories.filter(m => m.status === "pending" && mine(m));
+  $("inbox").innerHTML = pend.length ? `<div class="label">Inbox · waiting for approval</div><div class="items" style="margin-bottom:14px">${pend.map(m => `
+    <div class="item" style="background:var(--warnbg)"><div><b>${esc(m.text)}</b><div class="sub">${esc(m.why_pending || "")}${m.source ? " · " + esc(m.source) : ""}</div></div>
+    <span style="display:flex;gap:6px"><button class="primary" onclick="memAct({action:'approve',id:${js(m.id)}})">Approve</button>
+    <button onclick="memEdit(${js(m.id)})">Edit</button><button class="ghost" onclick="memAct({action:'reject',id:${js(m.id)}})">Reject</button></span></div>`).join("")}</div>` : "";
+  const who = person && (mem.memories.find(m => m.owner === person) || {}).owner_name
+    || (person && (() => { for (const m of mem.memories) { const i = (m.about || []).indexOf(person); if (i >= 0) return m.about_names[i]; } })()) || "";
+  $("who").hidden = !person;
+  $("who").innerHTML = person ? `<span class="chip">Theirs or about ${esc(who || "this person")}<button class="ghost" style="padding:2px 8px" onclick="showAll()" title="Show everyone's">✕</button></span>` : "";
+  const rev = $("memrev").checked, old = Date.now() / 1000 - 182 * 86400;
+  const rows = mem.memories.filter(m => m.status !== "pending" && mine(m) && (arch ? m.status === "archived" : m.status === "active")
+    && (!cat || m.category === cat) && (!q || m.text.toLowerCase().includes(q)) && (!rev || m.review || m.created < old));
+  $("memories").innerHTML = rows.map(m => `<div class="item"><div style="min-width:0"><span class="tag">${esc(mem.categories[m.category] || m.category)}</span><b>${esc(m.text)}</b>
+      <div class="sub">${VIS(m.visibility)}${m.owner_name ? " · " + esc(m.owner_name) + "'s" : ""}${m.about_names.length ? " · about " + esc(m.about_names.join(", ")) : ""} · <span title="Why Pip remembers this">from ${esc(m.source || "unknown")}, ${new Date(m.created * 1000).toLocaleDateString()}</span></div>
+      ${m.review ? `<div style="margin-top:6px;padding:6px 10px;border-radius:10px;background:var(--warnbg)"><span class="sub">${esc(m.review)}</span>
+        <span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${m.review.startsWith(MOVE) ? takers.map(t => `<button onclick="memAct({action:'move',id:${js(m.id)},to:${js(t.module)}})">Move to ${esc(t.label)}</button>`).join("") + `<button class="ghost" onclick="memAct({action:'keep_both',id:${js(m.id)}})">Keep as a memory</button>`
+        : `<button onclick="memAct({action:'keep_new',id:${js(m.id)}})">Keep this one</button>
+        <button onclick="memAct({action:'keep_old',id:${js(m.id)}})">Keep the old one</button><button class="ghost" onclick="memAct({action:'keep_both',id:${js(m.id)}})">Both are right</button>`}</span></div>` : ""}</div>
+      <span style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end"><button class="ghost" title="Edit" onclick="memEdit(${js(m.id)})">Edit</button>
+      <button class="ghost" title="${m.visibility === 'private' ? 'Make household' : 'Make private'}" onclick="memAct({action:'visibility',id:${js(m.id)},value:'${m.visibility === 'private' ? 'household' : 'private'}'})">${m.visibility === 'private' ? 'Share' : 'Private'}</button>
+      ${m.status === "archived" ? `<button class="ghost" title="Restore" onclick="memAct({action:'restore',id:${js(m.id)}})">Restore</button>` : `<button class="ghost" title="Archive (kept, not used)" onclick="memAct({action:'archive',id:${js(m.id)}})">Archive</button>`}
+      ${takers.map(t => `<button class="ghost" title="Not something to remember, but worth keeping: move it to ${esc(t.label)}" onclick="if(confirm('Move this memory to ${esc(t.label)}? Pip will no longer use it as a memory.')) memAct({action:'move',id:${js(m.id)},to:${js(t.module)}})">→ ${esc(t.label)}</button>`).join("")}
+      <button class="ghost" title="Delete" onclick="if(confirm('Delete this memory for good?')) memAct({action:'delete',id:${js(m.id)}})">✕</button></span></div>`).join("")
+    || `<div class="empty">${arch ? "Nothing archived." : rev ? "Nothing to review." : "Nothing remembered yet. Say \"Pip, remember…\""}</div>`;
+  const n = mem.memories.filter(m => m.status === "active").length;
+  const allPend = mem.memories.filter(m => m.status === "pending").length;
+  const flagged = mem.memories.filter(m => m.status === "active" && m.review).length;
+  $("memsum").textContent = `${n} remembered${allPend ? ` · ${allPend} waiting` : ""}${flagged ? ` · ${flagged} to check` : ""}`;
+}
+function showAll(){ person = ""; history.replaceState(null, "", "/memory"); renderMemory(); }
+async function loadMemory(){
+  try { const r = await getJSON("/api/memory"); if (!r.memories) return;
+    const first = !Object.keys(mem.categories).length; mem = r;
+    if (first) { const opts = Object.entries(r.categories).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+      $("memcat").innerHTML = `<option value="">All kinds</option>` + opts; $("mcat").innerHTML = opts; $("mcat").value = "household"; }
+    renderMemory(); } catch (e) {}
+}
+async function memAct(body){ try { const r = await postJSON("/api/memory/action", body); if (r.error) alert(r.error); return r; } catch (e) { alert("Couldn't reach Pip"); } finally { loadMemory(); } }
+function memEdit(id){ const m = mem.memories.find(x => x.id === id); const t = prompt("Edit memory", m.text); if (t && t !== m.text) memAct({action: "edit", id, text: t}); }
+$("memq").oninput = renderMemory; $("memcat").onchange = renderMemory; $("memarch").onchange = renderMemory; $("memrev").onchange = renderMemory; $("memsearch").onsubmit = ev => ev.preventDefault();
+$("memadd").onsubmit = async ev => { ev.preventDefault(); const r = await memAct({action: "add", text: $("mtext").value, category: $("mcat").value, about: $("mabout").value, private: $("mpriv").checked});
+  if (r && r.ok) { $("mtext").value = ""; $("mabout").value = ""; $("mpriv").checked = false; if (r.outcome === "duplicate") alert("Pip already remembers that."); } };
+// Pip may have remembered or forgotten something whenever he speaks
+pip.on("conversation", l => { if (l.who === "pip") loadMemory(); });
+loadMemory();
+</script>
+</body>
+</html>

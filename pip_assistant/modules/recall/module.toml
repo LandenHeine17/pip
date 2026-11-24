@@ -32,3 +32,5 @@ about, never claim exact words.
 [dashboard]
 page = "index.html"
 label = "Conversations"
+group = "pip"
+icon = "💬"
