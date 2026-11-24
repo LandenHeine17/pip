@@ -12,7 +12,7 @@ from ..common.program import release_info, setup_logging
 from ..common.messages import Message
 from .bus import Bus
 from .conversation import Conversation
-from .dashapi import (alert_action, alerts_snapshot, chat, face_status, memory_action, memory_snapshot, mic_action, people_action,
+from .dashapi import (alert_action, alerts_snapshot, chat, face_status, memory_action, memory_move, memory_snapshot, mic_action, people_action,
                       people_snapshot, tv_snapshot)
 from .memory import Memory
 from .mic import MicSwitch
@@ -71,8 +71,9 @@ def build(cfg: dict) -> Core:
     bus.core_handlers["core.modules"] = lambda m: {"modules": modules.pages()}
     bus.core_handlers["core.people"] = lambda m: ({"count": len(people.all())}, people_snapshot(people, modules, conv))
     bus.core_handlers["core.people_action"] = lambda m: people_action(people, memory, conv, m)
-    bus.core_handlers["core.memory"] = lambda m: (memory.counts(), memory_snapshot(memory, people))
-    bus.core_handlers["core.memory_action"] = lambda m: memory_action(memory, people, m)
+    bus.core_handlers["core.memory"] = lambda m: (memory.counts(), memory_snapshot(memory, people, modules))
+    bus.core_handlers["core.memory_action"] = lambda m: memory_move(memory, people, modules, m) \
+        if m.data.get("action") == "move" else memory_action(memory, people, m)
     # pip-thinker asks for the memories that go with every request, so the Claude process it starts in advance
     # already has them in its fixed part (D-146). In `private`: memories are never written to the trace.
     bus.core_handlers["core.memory_fixed"] = lambda m: ({}, {"text": memory.fixed_for_claude()})

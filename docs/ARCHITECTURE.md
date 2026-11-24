@@ -231,6 +231,7 @@ flowchart LR
 | `account_panel` (module.toml) | its part of a Google account's settings page | its calendars, the household calendar |
 | `dashboard(action, args)`, `tasks()`, `find(ref)` | its page's requests, background jobs, its items' short ids | the month view; syncing every two minutes |
 | `export_data()`, `wipe_data()`, `forget_person(id, name)` | its part of Settings → Your data (download, delete everything) and of removing a person (D-129) | (recall: the notes; screen: the notes boxes; google: the person's accounts) |
+| `takes_memories`, `take_memory(memory)` | a memory moved to it from the dashboard's Memory card ("Move to …"); the memory is deleted once the module has kept it (D-147) | (hall_of_fame: a memory that's really a funny moment) |
 | `api` | a small documented object other modules may use (`api.py`) | `events_on(day, call)`, `add_event(…)`, both keeping its privacy rule (the screen's: `cover(kind)` / `uncover(kind)`, a box covering the monitor for a while, D-141) |
 
 `tools/check_map.py` (run before every commit) and `tests/core/test_plugins.py` (run by the builder too) fail if a program names a module.
@@ -409,6 +410,8 @@ Built in small steps. Each step ends with something you can try.
 **A tidier conversation (2026-11-19, D-138):** one turn wait for everything that sounds finished (`turn_wait_seconds`; the three that were all 0.7 s since D-137 are gone), a look-up's second round asked the same way as the first, the join-in mood sent with the rest of the context, and repeated or unused code removed from `core/conversation.py`, `core/turns.py` and `thinker/`. The monitor's harmless cage lines are kept out of the journal (`pip-tv.service`).
 
 **Cheaper requests (2026-11-24, D-146):** what Claude is told has a fixed part, which Claude caches, and a message, which is paid for in full each time. The memories that go whoever is talking (`Memory.fixed_for_claude`: household-visible and not about one person) moved from the message to the end of the fixed part (`Thinker.system_prompt`); pip-core sends them with every `thinker.ask` (`memories_fixed`) and answers `core.memory_fixed`, which pip-thinker asks every 20 s (not traced), so the Claude process started in advance has the current ones. The message keeps the memories about the people talking (`Memory.for_claude(split=True)`). The weather moved from the fixed part to the message, so the fixed part only changes with the personality, a module or a memory. Each `thinker.ask` reply carries its sizes and token counts (numbers only) into the trace.
+
+**The Hall of Fame (2026-11-24, D-147):** a module, `hall_of_fame`, built with the hooks every module has (actions `add:moment`, `remove_moment`, `show_moment`, `look:moments`; `summary`; `tv` and a `moment` box; its page; the Your data hooks) plus one new optional hook, `takes_memories` / `take_memory`, through which pip-core's Memory card moves a memory to whichever module takes them (`Registry.memory_takers`, `core.memory_action` with `move` → `memory_move`), without naming it. It keeps the exact lines of a moment in `hall_of_fame_moments`, the owner's exception to "nothing said is kept": only on request, removable by anyone, in Your data, and never traced (its events carry numbers only). `tools/propose_moments.py` flags memories that look like moments for the owner's review.
 
 ## 15. Review
 

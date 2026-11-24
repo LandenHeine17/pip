@@ -1,0 +1,49 @@
+# Hall of Fame (D-147): the funny moments from talking with Pip, kept word for word, apart from his memories.
+# A memory is a fact Pip uses in every answer (and it's sent to Claude with every request); a moment is something
+# to look back on, so it's kept here and only fetched when someone asks. Saved only when someone says so ("Pip, save
+# that to the hall of fame"): never on his own. The owner's exception to "no quotes are kept" (D-128): these are
+# the exact words, of anyone in the room. Anyone can have one removed by voice. Kept in pip.db
+# (hall_of_fame_moments) until removed; never in the logs or the trace.
+# Plug and play: nothing else in Pip names it; switching it off leaves Pip as he was (the moments stay in pip.db).
+
+name = "hall_of_fame"
+kind = "skill"
+summary = "The Hall of Fame: funny moments saved word for word when you ask, looked up, shown on the monitor."
+says_examples = ["Pip, save that to the hall of fame", "Pip, what's in the hall of fame?",
+                 "Pip, show the hall of fame", "Pip, take that one out of the hall of fame"]
+offline = false                     # saving and looking up go through Claude
+permissions = []
+needs = []
+uses = ["screen"]                   # a moment on the monitor, if the screen module is on
+
+[settings.bring_up]
+default = true
+explain = "Pip is told the titles of a few moments with each request, so he can bring one up when it fits. Off: he only knows them when asked."
+
+[settings.max_lines]
+default = 8
+explain = "How many lines of the conversation one moment may keep (1 to 20)."
+
+[settings.show_seconds]
+default = 60
+explain = "How long a moment stays on the monitor after \"show the hall of fame\" (10 to 600 seconds)."
+
+[claude]
+instructions = """
+Hall of Fame (funny moments, ids like #h1a2b3): only when someone asks to save one ("save that to the hall of \
+fame"), reply with ONLY: ACTION {"do": "add", "kind": "moment", "title": "a few words", "lines": ["Sam: ...", \
+"Pip: ..."]} with the lines that made the moment, copied word for word from the conversation with who said each \
+(no times). Never save one on your own. To tell one or say what's in it, look first: {"do": "look", "kind": \
+"moments", "query": "..."} (no query: the latest). On the monitor: {"do": "show_moment", "id": "#h1a2b3"} (no id: \
+any; "off": true takes it down). Remove: {"do": "remove_moment", "id": "#h1a2b3"}.
+"""
+
+[monitor.moment]                    # a moment: put up by "show the hall of fame" (the screen's api cover), or added as a box
+label = "Hall of Fame"
+size = [6, 4]
+once = true
+aliases = ["hall of fame", "moment", "funny moments"]
+
+[dashboard]
+page = "index.html"
+label = "Hall of Fame"

@@ -204,6 +204,15 @@ class Module:
         (their accounts, their notes…). Returns how many things were removed."""
         return 0
 
+    # A module that can take over a memory from the dashboard's Memory card (D-147: a memory that's really a funny
+    # moment) names its button here ("Hall of Fame" → "Move to Hall of Fame"). "" = it doesn't take memories.
+    takes_memories: str = ""
+
+    async def take_memory(self, memory: dict) -> bool:
+        """The owner moved this memory here (`memory`: its text, category, created, about_names…). Keep it in the
+        module's own tables and return True: the memory is then deleted. False: it stays a memory."""
+        return False
+
 
 class HostNotAllowed(PermissionError):
     pass
@@ -487,6 +496,17 @@ class Registry:
     def pages(self) -> list[dict]:
         return [{"name": i.name, "label": i.label or i.name.title(), "page": i.page}
                 for i in self.infos.values() if i.page]
+
+    def memory_takers(self) -> list[dict]:
+        """The modules a memory can be moved to from the Memory card: [{"module", "label"}] (Module.takes_memories)."""
+        return [{"module": name, "label": m.takes_memories} for name, m in self.modules.items() if m.takes_memories]
+
+    async def take_memory(self, name: str, memory: dict) -> bool:
+        """Hand a memory to that module (Module.take_memory). True if it kept it."""
+        m = self.modules.get(name)
+        if m is None or not m.takes_memories:
+            return False
+        return bool(await m.take_memory(memory))
 
     def export_data(self) -> dict:
         out = {}

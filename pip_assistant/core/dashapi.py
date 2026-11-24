@@ -6,7 +6,7 @@
     chat              the front page's chat box: a message typed to Pip, answered like speech (core.chat)
     people_action     people and voices (core.people_action)
     memory_snapshot   the Memory Center's list (core.memory)
-    memory_action     the Memory Center's buttons (core.memory_action)
+    memory_action     the Memory Center's buttons (core.memory_action); memory_move its "Move to …" (D-147)
     mic_action        the Listening switch (core.mic)
 
 Anything personal (names, memories, labels, what was typed) travels in `private`, so it's never logged.
@@ -67,12 +67,13 @@ def people_snapshot(people: People, modules: Registry, conv: Conversation) -> di
     return {**snap, "enrolling": conv.enrol_status(), "links": links}
 
 
-def memory_snapshot(memory: Memory, people: People) -> dict:
-    """The Memory Center's list, with people's names filled in (sent privately)."""
+def memory_snapshot(memory: Memory, people: People, modules: Registry | None = None) -> dict:
+    """The Memory Center's list, with people's names filled in (sent privately), and the modules a memory can be
+    moved to (`takers`: a "Move to …" button each, D-147)."""
     names = {p["id"]: p["name"] for p in people.all()}
     rows = [{**r, "about_names": [names.get(i, "?") for i in r["about"]], "owner_name": names.get(r["owner"], "")}
             for r in memory.items()]
-    return {"memories": rows, "categories": CATEGORIES}
+    return {"memories": rows, "categories": CATEGORIES, "takers": modules.memory_takers() if modules is not None else []}
 
 
 async def people_action(people: People, memory: Memory, conv: Conversation, m: Message):
@@ -121,6 +122,21 @@ async def mic_action(conv: Conversation, m: Message) -> dict:
     if "value" in m.data:
         return {"ok": True, **await conv.set_mic(bool(m.data["value"]))}
     return {"ok": True, **conv.mic.snapshot()}
+
+
+async def memory_move(memory: Memory, people: People, modules: Registry, m: Message) -> dict:
+    """The Memory Center's "Move to …" (D-147): a memory that's really something else (a funny moment) is handed
+    to the module that takes them (Module.take_memory), and deleted here only once that module has kept it."""
+    mid = str(m.data.get("id") or "")
+    row = memory.get(mid)
+    if row is None:
+        return {"error": "That memory is gone."}
+    names = {p["id"]: p["name"] for p in people.all()}
+    row = {**row, "about_names": [names.get(i, "?") for i in row["about"]]}
+    if not await modules.take_memory(str(m.data.get("to") or ""), row):
+        return {"error": "It couldn't be moved, so it's still a memory."}
+    memory.delete(mid)
+    return {"ok": True}
 
 
 def memory_action(memory: Memory, people: People, m: Message):

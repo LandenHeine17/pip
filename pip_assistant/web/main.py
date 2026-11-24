@@ -213,7 +213,7 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         return await core_get("core.memory")
 
     async def memory_action(request):
-        return await core_action(request, "core.memory_action", ("text", "about"), ("action", "id", "category", "private", "value"))
+        return await core_action(request, "core.memory_action", ("text", "about"), ("action", "id", "category", "private", "value", "to"))
 
     async def mic(request):
         """GET: is Pip listening? POST {"value": true/false}: the dashboard's Listening switch (D-91)."""

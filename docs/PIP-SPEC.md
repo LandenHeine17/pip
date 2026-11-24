@@ -87,7 +87,7 @@ flowchart LR
 - He says what actually happened ("Timer's on" only once the timer exists), asks one short question when unsure, and says so when he doesn't know.
 
 ### Memory (built in step 5)
-- Saves things **when you ask** ("Pip, remember the bins go out Tuesday night"). **Never** saves overheard conversation. Never deletes old memories by itself (D-54). Since D-128 he may ask once, "Want me to remember that?", when you tell him something lasting; "yes" saves it.
+- Saves things **when you ask** ("Pip, remember the bins go out Tuesday night"). **Never** saves overheard conversation. Funny moments have their own place, the Hall of Fame (below, D-147). Never deletes old memories by itself (D-54). Since D-128 he may ask once, "Want me to remember that?", when you tell him something lasting; "yes" saves it.
 - New memories are visible to the household by default; one can be made private, and then it's only used when its owner's voice is recognised for sure (D-16). The dashboard has no logins (D-116) and is only on the owner's Tailscale devices, so it shows every memory, private ones too (D-15).
 - **Every memory is saved straight away** (D-119, owner, 2026-11-10): sensitive ones, ones about someone else, ones from a voice Pip doesn't recognise, and ones said while he's offline. Only passwords, codes, card and phone numbers are refused. A memory asked to be private stays private; if Pip didn't recognise the voice, it's used for nobody until its owner is set in the Memory Center.
 - A **Memory Center** on the dashboard: search, add, edit, make private, archive (kept but not used) and delete. Each memory says where it came from and when. A new memory that may contradict one already kept ("Sam's birthday is June 3" after "May 3") is flagged: keep this one, keep the old one, or both are right (D-128). "To review" shows those and memories over 6 months old. Its inbox only holds memories brought over from Ziggletron (D-117) or waiting from before D-119; a private one there is only mentioned to, or approved by voice by, the person who made it.
@@ -269,7 +269,7 @@ Sounds without a human voice in them (a click, a cough, a hiss) are dropped befo
 - Problems (no internet, a usage limit, hearing on the Pi) are never announced out loud: they show on the dashboard and as small icons on the monitor (D-129).
 
 ### Remembering conversations (built 2026-11-13, M2, D-128)
-- Once the room has been quiet 10 minutes, Claude writes Pip **a few lines of notes** about the conversation: the topics, anything planned, who was there. Never quotes, never anything secret; health, money and relationships only as a topic.
+- Once the room has been quiet 10 minutes, Claude writes Pip **a few lines of notes** about the conversation: the topics, anything planned, who was there. Never quotes (the only words kept are a Hall of Fame moment someone asks for, D-147), never anything secret; health, money and relationships only as a topic.
 - Notes are **kept 30 days**, then deleted. The dashboard's **Conversations** page lists them by day; delete any, or all.
 - Pip reads the last day's notes with every request, and looks older ones up when you ask ("what were we talking about last week?", "what did Caleb say about the trip on Tuesday?").
 - Nothing is noted while listening is off, or from an alarm heard with listening off.
@@ -332,6 +332,15 @@ flowchart TD
 - **Would you rather**: Pip asks, the two choices go up, and Claude roasts what you pick. "Next" asks another.
 - **Guess the song**: a 30-second clip from Deezer plays on the monitor (never the title); name the song or who sings it. "Play it again" replays it.
 - "Skip", "repeat the question", "what's the score", "stop the game" are done at once. Points go to whoever Pip recognises by voice, else "Guest"; finished games count on the Games page's all-time board.
+
+### Hall of Fame (built 2026-11-24, D-147)
+- The `hall_of_fame` module: the funny moments from talking with Pip, kept apart from his memories. A memory is a fact he uses in every answer; a moment is something to look back on, so it isn't sent to Claude with every request.
+- **"Pip, save that to the hall of fame"** keeps the lines that made the moment, **word for word**, with who said each (Pip's own lines too; a voice he doesn't know is "Someone"), under a short title. Only when someone asks: he never saves one on his own. At most 8 lines; passwords, codes and numbers are refused; the same moment isn't saved twice.
+- This is the one place where what people said is kept (the owner's exception, D-147). So: **anyone can say "Pip, take that one out of the hall of fame"**; moments are part of Settings → Your data; removing a person removes the moments they're in; nothing of it is in the logs.
+- "What's in the hall of fame?" or "tell me the one about the goose": Pip looks it up (a moment longer to answer) and tells it. With each request he gets only a few titles (starred ones first), so he can bring one up himself; switch that off in Settings (`bring_up`).
+- "Pip, show the hall of fame" puts one on the monitor for a minute ("take it down" removes it); a Hall of Fame box can also be added to a screen, showing a different moment each day.
+- The **Hall of Fame page** lists them: star, edit, add one yourself, show on the monitor, delete.
+- **Memories that are really funny moments** can be moved over: every memory on the dashboard's Memory card has a "→ Hall of Fame" button, and `tools/propose_moments.py` has Claude pick the likely ones, which then wait under "to review" for Move or Keep. A moved memory is a retelling, not exact words.
 
 ### The owner's conversation rules (CB-001–050), where they stand (2026-11-12)
 From the owner's spec `~/Pip_Conversational_Behavior_Specification_v2.md` (background; decisions win).

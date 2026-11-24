@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pip · Hall of Fame</title>
+<link rel="stylesheet" href="/pip.css">
+<style>
+/* The Hall of Fame page (D-147): every saved moment, newest first, starred ones on top. */
+.moment{padding:12px 14px;border-radius:14px;background:var(--soft);margin:10px 0}
+.moment.star{outline:2px solid var(--warn, #d9a400)}
+.moment h3{margin:0 0 2px;font-size:1.05rem}
+.moment .when{font-size:.8rem;color:var(--muted)}
+.moment .line{margin:6px 0 0;line-height:1.35}
+.moment .line b{margin-right:.35em}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+textarea{width:100%;min-height:7em;font:inherit;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:inherit;box-sizing:border-box}
+#add input{width:100%;box-sizing:border-box;margin-bottom:6px}
+h2{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:18px 0 6px}
+.chip{padding:4px 10px;border-radius:999px;background:var(--soft);font-size:.86rem}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="brand"><a href="/" class="logo" style="text-decoration:none">P</a>
+    <div><h1>Hall of Fame</h1><div class="sub">The funny moments, word for word, saved when someone asks (D-147)</div></div></div>
+</header>
+<section>
+  <div class="sub">Say <b>"Pip, save that to the hall of fame"</b> right after something worth keeping: Pip keeps the lines that made
+    it, exactly as he heard them, with who said each. He never saves one on his own. These aren't memories: Pip doesn't carry them
+    into every answer, he looks them up when you ask, and knows a few titles so he can bring one up (starred ones first).
+    Anyone can say "Pip, take that one out of the hall of fame".</div>
+  <div id="list"><div class="empty">Loading…</div></div>
+
+  <h2>Add one yourself</h2>
+  <form id="add">
+    <input id="title" placeholder="A title, a few words" maxlength="80">
+    <textarea id="lines" placeholder="One line each, with who said it:&#10;Sam: …&#10;Pip: …"></textarea>
+    <div class="row"><button class="primary">Add</button></div>
+  </form>
+
+  <h2>Things to say</h2>
+  <div class="row">
+    <span class="chip">"Pip, save that to the hall of fame"</span><span class="chip">"Pip, what's in the hall of fame?"</span>
+    <span class="chip">"Pip, tell me the one about…"</span><span class="chip">"Pip, show the hall of fame"</span>
+    <span class="chip">"Pip, take that one out of the hall of fame"</span>
+  </div>
+  <div class="sub" style="margin-top:10px">Memories that are really funny moments can be moved here from the front page's Memory card
+    ("→ Hall of Fame"). Moments are part of <a href="/settings">Settings → Your data</a> (download, delete everything), and removing a
+    person removes the moments they're in. Switch the whole thing off in Settings → hall_of_fame.</div>
+</section>
+</main>
+<script src="/pip.js"></script>
+<script>
+let data = {moments: []};
+const when = t => new Date(t * 1000).toLocaleDateString(undefined, {weekday: "short", year: "numeric", month: "short", day: "numeric"});
+// "Sam: what he said" → the name in bold; a line without a name is shown as it is
+function line(x) {
+  const m = /^([^:]{1,30}):\s(.*)$/s.exec(x);
+  return `<div class="line">${m ? `<b>${esc(m[1])}:</b>${esc(m[2])}` : esc(x)}</div>`;
+}
+function show(r) {
+  data = r;
+  const sorted = [...r.moments].sort((a, b) => (b.starred - a.starred) || (b.at - a.at));
+  $("list").innerHTML = sorted.map(m => `<div class="moment${m.starred ? " star" : ""}">
+      <h3>${m.starred ? "★ " : ""}${esc(m.title)}</h3>
+      <div class="when">${esc(when(m.at))}${m.source ? " · " + esc(m.source) : ""} · ${esc(m.ref)}${r.showing === m.id ? " · on the monitor now" : ""}</div>
+      ${m.lines.map(line).join("")}
+      <div class="row"><button data-act="star" data-id="${esc(m.id)}" data-on="${m.starred ? "" : "1"}">${m.starred ? "Unstar" : "★ Star"}</button>
+        ${r.has_screen ? (r.showing === m.id ? `<button data-act="hide" data-id="${esc(m.id)}">Take it down</button>`
+                                             : `<button data-act="show" data-id="${esc(m.id)}">Show on the monitor</button>`) : ""}
+        <button class="ghost" data-act="edit" data-id="${esc(m.id)}">Edit</button>
+        <button class="ghost" data-act="delete" data-id="${esc(m.id)}">Delete</button></div></div>`).join("")
+    || `<div class="empty">Nothing here yet. Next time something's funny, say "Pip, save that to the hall of fame".</div>`;
+}
+async function load() { const r = await pip.act(pip.get("list")); if (r) show(r); }
+document.addEventListener("click", async ev => {
+  const b = ev.target.closest("[data-act]"); if (!b) return;
+  const id = b.dataset.id, act = b.dataset.act, m = data.moments.find(x => x.id === id);
+  let body = {id};
+  if (act === "star") body.on = !!b.dataset.on;
+  if (act === "delete" && !confirm("Take this moment out of the Hall of Fame for good?")) return;
+  if (act === "edit") {
+    const title = prompt("Title", m.title); if (title == null) return;
+    const lines = prompt("The lines, separated by  |  (who said it, then a colon)", m.lines.join(" | ")); if (lines == null) return;
+    body = {id, title, lines: lines.split("|").map(x => x.trim()).filter(Boolean)};
+  }
+  const r = await pip.act(pip.post(act, body)); if (r) show(r);
+});
+$("add").onsubmit = async ev => {
+  ev.preventDefault();
+  const r = await pip.act(pip.post("add", {title: $("title").value, lines: $("lines").value.split("\n")}));
+  if (r) { $("title").value = ""; $("lines").value = ""; show(r); }
+};
+pip.live(load);
+load();
+</script>
+</body>
+</html>
