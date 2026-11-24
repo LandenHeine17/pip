@@ -41,15 +41,27 @@ def test_not_otherwise(text):
 def test_the_room_and_pip_both_get_the_chant(reg):
     assert reg.room_heard("six seven", Call(kind="room")) == CHANT
     assert CHANT == "six seven, six seven, six fucking seven"
-    reg.clock.now += 31
     said = reg.room_heard("Pip, six seven!", Call(kind="direct"))
     assert said == CHANT and isinstance(said, Done)   # Claude is never asked about it, even when he's busy
 
 
 def test_a_request_with_67_in_it_still_reaches_claude(reg):
-    """"Pip, set a timer for 67 minutes": he freaks out, but the timer is still set (no chant answers it)."""
+    """"Pip, set a timer for 67 minutes" (or typed in the chat box): he freaks out (the face, the lamps), but the
+    timer is still set: no chant answers it."""
     assert reg.room_heard("Pip, set a timer for 67 minutes", Call(kind="direct")) is None
-    assert reg.clock.now < reg.modules["six_seven"].quiet_until   # it did go off (the face, the lamps)
+    assert reg.room_heard("set a timer for 67 minutes", Call(kind="direct")) is None
+
+
+def test_a_reply_without_his_name_right_after_he_spoke_gets_the_chant(reg):
+    """The owner, 2026-11-24: in listening mode "bro that's so 67" is the room talking, not a request: chant."""
+    said = reg.room_heard("bro that's so 67 honestly", Call(kind="direct", follow_up=True))
+    assert said == CHANT and isinstance(said, Done)
+
+
+def test_every_time_by_default(reg):
+    """The owner, 2026-11-24: "67 will never be unfunny": no rest unless pause_seconds is set."""
+    for _ in range(3):
+        assert reg.room_heard("67", Call(kind="room")) == CHANT
 
 
 def test_only_six_seven():
@@ -59,21 +71,15 @@ def test_only_six_seven():
         assert not only_six_seven(no), no
 
 
-def test_it_waits_before_going_off_again(reg):
-    assert reg.room_heard("six seven", Call(kind="room")) == CHANT
-    reg.clock.now += 29
-    assert reg.room_heard("six seven", Call(kind="room")) is None
-    reg.clock.now += 2
-    assert reg.room_heard("6 7", Call(kind="room")) == CHANT
-
-
-def test_the_pause_is_a_setting(tmp_path):
+def test_a_rest_is_a_setting(tmp_path):
     clock = Clock()
-    info = read(ROOT / "six_seven", {"pause_seconds": 5})
+    info = read(ROOT / "six_seven", {"pause_seconds": 30})
     r = Registry.load({}, infos=[info], db_path=tmp_path / "pip.db", clock=clock)
     assert r.room_heard("six seven", Call(kind="room")) == CHANT
-    clock.now += 6
-    assert r.room_heard("six seven", Call(kind="room")) == CHANT
+    clock.now += 29
+    assert r.room_heard("six seven", Call(kind="room")) is None
+    clock.now += 2
+    assert r.room_heard("6 7", Call(kind="room")) == CHANT
 
 
 def test_it_keeps_no_tables_and_no_pages(reg):

@@ -301,8 +301,8 @@ const SCREEN_WORDS = { loading: "Connecting to Pip…", lost: "Trying again…",
 // A joke kept from Ziggletron (D-35, D-121): when someone says "six seven" (to Pip or just in the room), he
 // freaks out for a few seconds: wide eyes, a grin, a little shake, two hands see-sawing (the meme) and "6" "7"
 // floating up, while he chants it (and the lamps flash, D-142). Hearing it is the six_seven module's job
-// (modules/six_seven), which asks for this reaction whatever he's doing, and rests `pause_seconds` after each
-// so it stays funny (the calm rule, PIP-NEW-062); that setting is the only limit, so there's none here.
+// (modules/six_seven), which asks for this reaction whatever he's doing, every time (the owner: "67 will never be
+// unfunny"; its `pause_seconds` setting can add a rest). No other reaction replaces it while it runs (react()).
 const SIXSEVEN = {
   seconds: 4,
   face: { w: 1.08, h: 1.18, smile: .75, mouth: 1.15, gape: .7, lean: .07, lookY: -.15 },
@@ -338,7 +338,12 @@ function expression() {  // the state (or what exactly he's doing in it), or a r
   }
   return live.detail && FACES[detailed] ? detailed : state;
 }
-function react(name, seconds) { live.reaction = name; live.reactionUntil = performance.now() + seconds * 1000; }
+function react(name, seconds) {
+  // Nothing cuts six seven short (D-142): the little faces for going from listening to thinking ("perked"), being
+  // talked over, thanks or a laugh used to replace it at once, so in listening mode the hands barely showed.
+  if (name !== "sixseven" && live.reaction === "sixseven" && performance.now() < live.reactionUntil) return;
+  live.reaction = name; live.reactionUntil = performance.now() + seconds * 1000;
+}
 function reactIf(name, seconds) { if ((live.look || {}).expressions !== false) react(name, seconds); }   // the newer ones (D-128)
 function sixSeven() { react("sixseven", SIXSEVEN.seconds); }
 

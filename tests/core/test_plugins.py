@@ -104,10 +104,11 @@ def test_pips_programs_never_name_a_module():
 class Echo:
     """A made-up module that answers anything with "echo" in it, to prove the hook needs no module's name in pip-core."""
     def __init__(self):
-        self.seen = []
+        self.seen, self.calls = [], []
 
     def room_heard(self, text, call):
         self.seen.append((text, call.kind))
+        self.calls.append(call)
         if "done" in text:
             return Done("done it")   # already done (like "Paused."): Claude must never be asked as well
         return "echo" if "echo" in text else None
@@ -185,13 +186,17 @@ async def _room_while(tmp_path, heard, before):
 
 
 async def test_right_after_he_spoke_room_speech_is_offered_to_modules_too(tmp_path):
-    """D-142: in the follow-up window (he's listening for a reply), "six seven" still gets the chant, not Claude."""
+    """D-142: in the follow-up window (he's listening for a reply), "six seven" still gets the chant, not Claude;
+    modules are told it's a reply without his name (`call.follow_up`), so the room's "so 67" isn't a request."""
     import time
 
     def window(conv):
         conv.expect_until = conv.follow_until = time.monotonic() + 8
     out, echo, asks, _ = await _room_while(tmp_path, "say echo", window)
     assert echo.seen == [("say echo", "direct")] and out == ["echo"] and not asks
+    assert echo.calls[-1].follow_up
+    out, echo, asks, _ = await _room_while(tmp_path, "pip, say echo", window)
+    assert not echo.calls[-1].follow_up                                        # his name: a request to him
 
 
 async def test_not_the_rest_of_a_turn_he_is_holding(tmp_path):

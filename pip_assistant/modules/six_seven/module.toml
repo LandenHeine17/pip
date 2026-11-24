@@ -14,8 +14,8 @@ needs = []
 uses = ["home_control"]             # to flash the lamps, if home control is on (six seven works without it)
 
 [settings.pause_seconds]
-default = 30
-explain = "After a six seven, how many seconds Pip waits before he will freak out again (so a long chat doesn't set it off over and over)."
+default = 0
+explain = "After a six seven, how many seconds Pip waits before he will freak out again. 0: every time (the owner: 67 never gets old)."
 
 [settings.disco_seconds]
 default = 4.0

@@ -68,6 +68,7 @@ class Call:
     speaker: Any = None               # people.Match or None
     now: datetime = field(default_factory=datetime.now)
     kind: str = "direct"              # direct / mentioned / join (a join-in check gets a shorter summary)
+    follow_up: bool = False           # room_heard: said without his name right after he spoke (anyone's reply, D-136)
 
     @property
     def person_id(self) -> str | None:

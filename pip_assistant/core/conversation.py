@@ -639,7 +639,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         await self.feed(text, "direct", self.speaker, stt_s=stt_s, offline=offline, reason=reason)
         # A reply or something said over him can be for a module too ("Pip, louder" right after "Here's the video"),
         # unless it's the rest of a turn he's holding. Said over him, he then carries on where he was cut off.
-        if not self.pending and await self.modules_answer(text, self.speaker, "direct"):
+        if not self.pending and await self.modules_answer(text, self.speaker, "direct", follow_up=ask == "follow_up"):
             await self.resume_paused("a module answered")
             return
         await self.addressed(text, reason, stt_s=stt_s, offline=offline, ended_at=self.speech_ended(msg), ask=ask)
@@ -814,7 +814,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.joining.cancel_wait()
         # A module may answer it instead (the six-seven chant): Claude isn't asked. Right after he spoke too (the
         # follow-up window, D-142), but not the rest of a turn he's holding: that's one request, for Claude.
-        if not self.pending and await self.modules_answer(text, speaker, how):
+        if not self.pending and await self.modules_answer(text, speaker, how, follow_up=ask == "follow_up"):
             return
         if how == "mentioned":
             if self.answer_id is None and not self.speaking and not offline:
@@ -841,9 +841,9 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         if not await self.welcome_back(speaker, quiet_for) and not await self.modules_answer(text, speaker, "room"):
             self.joining.heard()
 
-    async def modules_answer(self, text: str, speaker, how: str) -> bool:
+    async def modules_answer(self, text: str, speaker, how: str, follow_up: bool = False) -> bool:
         """Offer something heard to the modules (room_heard, D-121): room talk, or something said to or about Pip
-        (`how`: room / direct / mentioned). One may answer with something for him to say; for speech to Pip that
+        (`how`: room / direct / mentioned; `follow_up`: said without his name right after he spoke, D-136). One may answer with something for him to say; for speech to Pip that
         answer replaces asking Claude. He says it only when he's free to talk (any hour: the owner, 2026-11-10);
         a module can still react on the monitor's face when he isn't. Nothing is kept of the words.
 
@@ -855,7 +855,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         moved on anyway, so it would be dropped when Claude's reply came."""
         if self.modules is None:
             return False
-        reply = self.modules.room_heard(text, Call(speaker=speaker, kind=how))
+        reply = self.modules.room_heard(text, Call(speaker=speaker, kind=how, follow_up=follow_up))
         if not reply:
             return False
         if self.answer_id and self.answer_kind == "join" and not self.join_spoke and not self.speaking:

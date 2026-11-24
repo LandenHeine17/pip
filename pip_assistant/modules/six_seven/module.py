@@ -9,10 +9,12 @@ at once, never waiting for Claude. The rule (D-142): a six straight followed by 
 What happens (`room_heard`):
   - the face freaks out (it asks pip-web for the "sixseven" reaction in web/static/tv.html) and the lamps flash
     (`disco`, through the home_control module's api, if it's on), at once, whatever Pip is doing;
-  - Pip chants if he's free to talk (pip-core decides). Said to him and nothing more ("Pip, six seven!"), the
-    chant is a `Done`: Claude is never asked about it, even when he's too busy to chant. Said to him as part of a
-    request ("Pip, set a timer for 67 minutes"), he freaks out but doesn't chant: the request goes on as usual.
-Then it rests `pause_seconds` (module.toml). It reads the words and forgets them: nothing is stored or logged.
+  - Pip chants if he's free to talk (pip-core decides). The chant is a `Done`: Claude is never asked about it,
+    even when he's too busy to chant. Only a request to him (by name, or typed in the chat box: "Pip, set a timer
+    for 67 minutes") gets no chant, so the request goes on as usual (the face and the lamps still freak out). A reply without his
+    name right after he spoke ("bro that's so 67") gets the chant: it's the room talking, not a request.
+Then it rests `pause_seconds` (module.toml; 0, every time, by default). It reads the words and forgets them:
+nothing is stored or logged.
 """
 import asyncio
 import logging
@@ -27,7 +29,7 @@ CHANT = "six seven, six seven, six fucking seven"
 # a little pause ("six, seven", "6-7", "6...7", "6'7"). Not part of a bigger number or a time ("167", "6:07",
 # "6.7", "67.5", "6/7"), and whole words ("sixty seven" and "seventy" don't count).
 TOGETHER = re.compile(r"(?<![\d.:,/])\b(?:six|6(?![.,]\d))(?:\s*[,.!?…'’\"\-–—]+\s*|\s*)(?:seven|7)\b(?![.:,/]\d)", re.I)
-# Words that don't make it a request: his name (and how it's misheard), greetings, laughs, "say".
+# Words that don't make it a request: his name, greetings, laughs, "say".
 FILLER = re.compile(r"\b(?:pip|pipp|pips|pippy|pippie|pippletron|hey|hi|yo|oi|oh|ok|okay|so|say|it's|its|is|that's|"
                     r"thats|bro|bruh|dude|man|guys|ha|haha+|lol|lmao|yeah|yes|yay|and|um+|uh+|like|go|again)\b", re.I)
 
@@ -55,8 +57,8 @@ class SixSeven(Module):
             return None
         self.quiet_until = now + float(self.ctx.settings["pause_seconds"])
         self.freak_out()
-        if call.kind == "direct" and not only_six_seven(text):
-            return None   # part of a request: the face and the lamps freak out, and the request is answered as usual
+        if call.kind == "direct" and not call.follow_up and not only_six_seven(text):
+            return None   # a request to him (by name, or typed): the face and the lamps freak out, and it's answered as usual
         return Done(CHANT)   # said to Pip, it's his whole answer: never Claude's, even when he can't chant right now
 
     def freak_out(self) -> None:
