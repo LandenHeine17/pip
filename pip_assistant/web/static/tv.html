@@ -2,13 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pip</title>
 <!-- Pip's face on the monitor (step 7, D-110, D-111). The face and its drawing, and the way boxes are laid
      out and animated, come from Ziggletron's tv.html; the states, colours and kinds of box are Pip's.
      It only watches: no buttons, nothing sent. It gets only what it shows (/api/tv, /api/tv/stream,
      /api/tv/vitals): Pip's state, the mouth level, the screen's layout, and the data of the boxes on it.
      Captions under the face are only lines said to Pip and his replies; room talk comes only while a
-     Conversation box that shows it is on the screen (D-111). -->
+     Conversation box that shows it is on the screen (D-111).
+     The same page is /phone (D-149): on a screen held upright the face goes on top and the boxes stack below
+     it, and static/phone.js adds the one button that lets the phone take over Pip's microphone and speaker. -->
 <style>
     :root {
     --bg: #09090c; --ink: #f1eee8; --muted: #aaa59d; --line: #2a2a31; --track: #24242b;
@@ -122,6 +125,27 @@
   body.face-compact .level { width: 80%; }
   body.no-captions .captions { display: none; }
   body.no-captions.ringing .captions { display: block; height: auto; }
+
+  /* A screen held upright (a phone on /phone, D-149): the same face and boxes, the face on top and the boxes
+     one under another, in the screen's order, each a fixed height; the page scrolls. */
+  @media (orientation: portrait) {
+    :root { font-size: calc(100vw / 36); }
+    html, body { height: auto; overflow: auto; cursor: auto; }
+    .captions { height: 8.5rem; padding-top: .6rem; }
+    .said-to { font-size: 1.4rem; } .said-back { font-size: 1.8rem; }
+    .status .word { font-size: 2.2rem; } .status { min-height: 3rem; }
+    .screen { position: relative; inset: auto; display: flex; flex-direction: column; gap: 1rem;
+              padding: 1rem 1rem 9rem; min-height: 100vh; transform: none !important; }
+    #face-box { flex: none; height: 66vh; grid-area: auto !important; }
+    #board { display: flex; flex-direction: column; gap: 1rem; }
+    #board .box { flex: none; height: 48vh; grid-area: auto !important; }
+    #rail { display: none; }
+    .glow { width: 100%; }
+    .level { width: 60%; }
+    body.no-captions .captions { display: block; }
+    body.face-compact .name, body.face-compact .glow { display: block; }
+    .banner { position: fixed; left: 1rem; right: 1rem; bottom: 8rem; font-size: 2rem; }
+  }
   .body { flex: 1 1 0; min-height: 0; overflow: hidden; }
   /* The newest stays in view, and the oldest fades out instead of being cut through. */
   .stack { display: flex; flex-direction: column; justify-content: flex-end; -webkit-mask-image: linear-gradient(transparent, #000 3rem); mask-image: linear-gradient(transparent, #000 3rem); }
@@ -761,7 +785,10 @@ const BOXES = {
 
 // Modules' kinds of box (module.toml [monitor.<kind>]), each drawn by its module's static/monitor.js.
 const MODULE_BOXES = {};
-const H = { fill, esc, none, at, serverNow, state: () => shown() };   // what a module's drawing may use
+// soundHere(): should this page play sounds (a video, a song clip)? The monitor does while Pip is in the room, a
+// phone that has him does instead (D-149), any other page showing the screen stays quiet.
+const H = { fill, esc, none, at, serverNow, state: () => shown(),   // what a module's drawing may use
+            soundHere: () => window.PipPhone ? window.PipPhone.active : Boolean(data.sound_here) };
 window.PipMonitor = { box(kind, draw) { MODULE_BOXES[kind] = draw; redraw(kind); } };
 const loadedScripts = new Set();
 function loadBoxScripts(urls) {
@@ -887,9 +914,10 @@ async function refresh() {
 // The corner icons (D-128): from pip-core's face_status, refreshed every minute.
 // (Symbols from DejaVu Sans: the Pi has no emoji font.)
 const ICONS = { mic_off: "✕ Not listening", offline: "⚠ No internet", quiet_hours: "☾ Quiet hours",
-                claude_limited: "⌛ Claude's limit", stt_limited: "◔ Hearing on the Pi" };
+                claude_limited: "⌛ Claude's limit", stt_limited: "◔ Hearing on the Pi", phone: "☎ On a phone" };
 function showIcons() {
-  const st = live.status || {}, on = (live.look || {}).status_icons !== false;
+  // phone: a phone has Pip's microphone and speaker, so the room isn't heard (D-149)
+  const st = { ...(live.status || {}), phone: data.route === "phone" }, on = (live.look || {}).status_icons !== false;
   $("icons").innerHTML = on ? Object.keys(ICONS).filter((k) => st[k]).map((k) => `<span>${ICONS[k]}</span>`).join("") : "";
 }
 async function refreshVitals() {
@@ -942,6 +970,10 @@ function handle(kind, d) {
   } else if (kind === "reaction") {   // a module asks for one (the six-seven freak-out); only known faces
     if (d.name === "sixseven") sixSeven();
     else if (FACES[d.name]) react(d.name, 3);
+  } else if (kind === "route") {    // a phone took over Pip's microphone and speaker, or let go (D-149)
+    data.route = d.route;
+    showIcons();
+    refresh();
   } else if (kind === "refresh") {
     refresh();
   } else if (kind === "options") {
@@ -963,7 +995,7 @@ function connect() {
     setConnected(true);
     refresh();
   };
-  for (const kind of ["state", "level", "caption", "line", "refresh", "options", "reaction", "ping"])
+  for (const kind of ["state", "level", "caption", "line", "refresh", "options", "reaction", "route", "ping"])
     live.stream.addEventListener(kind, (m) => handle(kind, JSON.parse(m.data)));
   live.stream.onerror = () => lost();
 }
@@ -978,7 +1010,7 @@ function lost() {
 async function backAgain() {
   live.stream.close();
   try {
-    if ((await fetch("/tv", { cache: "no-store" })).ok) return location.reload();
+    if ((await fetch(location.pathname, { cache: "no-store" })).ok) return location.reload();
   } catch { /* gone again */ }
   live.retry = setTimeout(connect, RECONNECT_S * 1000);
 }
@@ -1002,6 +1034,11 @@ setInterval(() => {  // a stream can hang without reporting an error; keep-alive
 }, 2000);
 connect();
 requestAnimationFrame(step);
+if (location.pathname === "/phone") {   // the phone's button and sound (D-149)
+  const tag = document.createElement("script");
+  tag.src = "/phone.js";
+  document.head.appendChild(tag);
+}
 </script>
 </body>
 </html>

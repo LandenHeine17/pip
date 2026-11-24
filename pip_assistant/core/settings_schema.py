@@ -96,6 +96,11 @@ SCHEMA = {
     "conversation.follow_up_seconds": _s(T, "Follow-up window", "After Pip speaks, anyone can talk again within "
                                          "this many seconds without saying his name; Claude stays quiet if it "
                                          "wasn't for him (D-136).", "float", ["core"], min=0, max=30),
+    "phone.enabled": _s(L, "Talk on a phone", "A phone can take over Pip's microphone and speaker (the /phone page, "
+                        "D-149). While it has him, the room isn't listened to and he speaks only on the phone.",
+                        "bool", ["ears"]),
+    "phone.idle_minutes": _s(L, "Give back to the room after", "Minutes with nobody talking through the phone before "
+                             "Pip is back in the room.", "int", ["ears"], min=1, max=120),
     "listen.wait_for_speech_seconds": _s(T, "Wait for you to start", "In the follow-up window, how many seconds to "
                                          "wait for you to start talking.", "float", ["ears"], min=1, max=15),
     "conversation.own_commands": _s(T, "Pip's own commands", "\"sure\": clearly worded commands (stop, snooze, "
@@ -236,11 +241,20 @@ SCHEMA = {
                                 "int", ["builder"], min=5, max=120),
     "builder.keep_days": _s(A, "Keep change requests", "The words of a change request are deleted after this "
                             "many days (the record of the change stays).", "int", ["builder"], min=1, max=3650),
+    "phone.no_audio_seconds": _s(A, "Phone gone after", "The phone stopped sending sound this many seconds (locked, "
+                                 "page closed): Pip is back in the room.", "float", ["ears"], min=1, max=60),
+    "phone.speech_dbfs": _s(A, "Speech loudness on a phone", "Like Speech loudness, for a phone's microphone (dBFS).",
+                            "float", ["ears"], min=-90, max=-10),
+    "phone.barge_in_dbfs": _s(A, "Talked-over loudness on a phone", "Like Talked-over loudness, for a phone's "
+                              "microphone (dBFS).", "float", ["ears"], min=-90, max=-5),
     "web.host": _s(A, "Dashboard address", "Address the dashboard listens on. On the Pi this is the Tailscale "
                    "address.", "str", ["web"], nonempty=True),
     "web.port": _s(A, "Dashboard port", "Port for the dashboard.", "int", ["web"], min=1024, max=65535),
     "web.tv_host": _s(A, "Monitor address", "Also listen here (same port), so the monitor's browser on the Pi works "
                       "without Tailscale.", "str", ["web"]),
+    "web.https_port": _s(A, "Dashboard https port", "The port Tailscale's https uses for the dashboard (set up by "
+                         "deploy/install-https.sh; a phone needs https to use its microphone, D-149).", "int", ["web"],
+                         min=1, max=65535),
     "web.allowed_hosts": _s(A, "Other dashboard names", "Other names the dashboard may be opened by, like a name of "
                             "your own for the Pi. Its own address and Tailscale name always work.", "list", ["web"]),
 }

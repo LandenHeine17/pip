@@ -28,6 +28,15 @@ end_silence_seconds = 0.7          # A pause this long means you've finished spe
 max_utterance_seconds = 12.0       # Longest single request.
 wait_for_speech_seconds = 4.0      # In the follow-up window, how long to wait for you to start talking.
 
+[phone]
+# Talking to Pip on a phone (D-149): the /phone page (https://<pi>.<tailnet>.ts.net:8791/phone) can take over
+# Pip's microphone and speaker. While it has him, the room isn't listened to and he speaks only on the phone.
+enabled = true                     # Allow a phone (or any browser) to take over Pip's microphone and speaker.
+idle_minutes = 10                  # Give Pip back to the room after this long with nobody talking through the phone.
+no_audio_seconds = 4.0             # …or as soon as the phone stops sending sound this long (locked, page closed).
+speech_dbfs = -50.0                # Louder than this counts as speech through the phone (like [listen] speech_dbfs).
+barge_in_dbfs = -45.0              # How loud speech over Pip must be to count, through the phone (like [ears]).
+
 [voices]
 # Recognising who's speaking (step 5, D-87). Voiceprints stay on the Pi and are never sent to Claude.
 model = "nemo_en_titanet_small"    # In ~/pip-data/models/speaker (downloaded by deploy/install.sh).
@@ -121,6 +130,7 @@ host = "127.0.0.1"                 # Address the dashboard listens on. On the Pi
 port = 8790                        # Port for the dashboard.
 tv_host = "127.0.0.1"              # Also listen here (same port), so the monitor's browser on the Pi works without Tailscale.
 allowed_hosts = []                 # Other names the dashboard may be opened by (its own address and Tailscale name always work).
+https_port = 8791                  # Tailscale's https for the dashboard (deploy/install-https.sh; 443 is left to anything else, D-149).
 
 [builder]
 # Pip changing his own code (M1b): asked by voice or on the dashboard, approved by you twice on the Changes page.

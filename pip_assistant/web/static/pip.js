@@ -129,6 +129,7 @@ const pip = {
       const h = await getJSON("/api/health");
       if (h.state) setState(h.state, h.state_detail || {});
       if (h.online !== undefined) $("pip-netoff").hidden = h.online;
+      $("pip-onphone").hidden = h.route !== "phone";
       $("pip-conn").textContent = h.connected ? "" : "pip-core not reachable";
       renderRelease(((h.programs || {}).core || {}).release);
     } catch (e) { $("pip-conn").textContent = "Dashboard unreachable"; }
@@ -200,6 +201,7 @@ const pip = {
           <a class="pip-phonebrand" href="/" title="Overview"><span class="logo">P</span></a>
           <span class="face" id="pip-state" title="Pip's state: grey idle · green listening · purple thinking · blue speaking · orange interrupted · red ringing · dark mic off"><span class="orb"></span><span id="pip-statetext">…</span></span>
           <span class="netoff" id="pip-netoff" hidden title="Pip can't reach the internet: only timers, alarms and other basics work until it's back">offline</span>
+          <span class="netoff" id="pip-onphone" hidden title="A phone has Pip's microphone and speaker (D-149): the room isn't listened to until it gives him back">📱 on a phone</span>
           <span class="pip-grow"></span><span class="sub" id="pip-conn"></span>
           <button id="pip-mic" class="micbtn">Listening…</button>
         </div>
@@ -218,6 +220,7 @@ const pip = {
     pip.on("state", d => setState(d.state, d));
     pip.on("mic", renderMic);
     pip.on("net", d => { $("pip-netoff").hidden = d.online; });
+    pip.on("route", d => { $("pip-onphone").hidden = d.route !== "phone"; });
     pip.on("health", p => { $("pip-conn").textContent = ""; renderRelease((p.core || {}).release); });
     pip.on("alerts", loadRing);
     pip.on("people", loadEnrol);

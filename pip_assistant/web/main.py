@@ -5,6 +5,8 @@
                below (Talk, People and each person's profile, Memory, System, Settings, Changes, Claude,
                Guide). Every page but the Guide shares one menu and status bar, drawn by static/pip.js.
     /tv        the face on the monitor and its boxes (static/tv.html, D-110), with its own data and stream
+    /phone     the same screen on a phone, which can take over Pip's microphone and speaker (D-149): its sound
+               goes through the websocket /api/phone, passed straight on to pip-ears (ears/remote.py)
     /m/<name>/ each module's own page (a module without one gets static/module.html, made from its module.toml)
 
 pip-web keeps nothing itself: `/api/...` requests are passed to pip-core over the bus, and `listen`
@@ -21,6 +23,7 @@ itself can reach it, and the same-site check (web/security.py) stops other websi
 """
 import asyncio
 import collections
+import contextlib
 import json
 import logging
 import mimetypes
@@ -30,16 +33,18 @@ from importlib import resources
 import uvicorn
 from starlette.applications import Starlette
 from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
-from starlette.routing import Route
+from starlette.routing import Route, WebSocketRoute
+from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from .. import __version__
 from ..common.messages import Message
 from ..common.modules import enabled as enabled_modules
 from ..common.program import make_bus, start
-from ..common import vitals
+from ..common import paths, vitals
 from ..common.weather import Weather
 from . import source
-from .security import SameSite, module_get_allowed
+from ..common.wire import SOUND, pack, read_message
+from .security import SameSite, is_monitor, module_get_allowed
 
 log = logging.getLogger("pip-web")
 
@@ -60,6 +65,7 @@ class State:
         self.tv_boxes: list[str] = []   # the kinds of box on the monitor now (D-111)
         self.module_boxes: dict[str, list[str]] = {}   # module → the kinds of box it adds to the monitor
         self.tv_room = False            # a conversation box showing room talk is up: room lines go to the TV too
+        self.route = "room"             # where Pip hears and speaks: the room, or a phone (D-149)
 
     def push(self, kind: str, data: dict) -> None:
         for q in list(self.listeners):
@@ -84,6 +90,23 @@ PAGES = {"/": "index.html", "/talk": "talk.html", "/people": "people.html", "/pe
          "/prompts": "prompts.html", "/guide": "guide.html"}
 
 
+_https: dict = {}
+
+
+async def https_address(port: int) -> str:
+    """https://<this Pi's Tailscale name>[:port], from `tailscale status` (asked once), or "" without Tailscale.
+    Only worked out on the Pi, never written down: the repo is public."""
+    if "name" not in _https:
+        try:
+            proc = await asyncio.create_subprocess_exec("tailscale", "status", "--json", stdout=asyncio.subprocess.PIPE,
+                                                        stderr=asyncio.subprocess.DEVNULL)
+            out, _ = await asyncio.wait_for(proc.communicate(), 5)
+            _https["name"] = str(json.loads(out)["Self"]["DNSName"]).rstrip(".")
+        except Exception:
+            return ""   # (tried again next time)
+    return f"https://{_https['name']}" + ("" if port == 443 else f":{port}")
+
+
 def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
     tv_page = resources.files("pip_assistant.web").joinpath("static/tv.html").read_text()
     weather = Weather((cfg or {}).get("thinker", {}).get("location", "Lincoln, Nebraska"))
@@ -99,6 +122,15 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
 
     async def script(request):
         return Response(js, media_type="text/javascript", headers={"Cache-Control": "no-store"})
+
+    async def phone_script(request):
+        """/phone's button and sound (phone.js), and the microphone's converter (phone-audio.js), D-149."""
+        name = request.url.path.lstrip("/")
+        return Response(static_text(name), media_type="text/javascript", headers={"Cache-Control": "no-store"})
+
+    async def phone_address(request):
+        """Pip's https address, for a page opened on plain http: phones only allow the microphone on https (D-149)."""
+        return JSONResponse({"url": await https_address((cfg or {}).get("web", {}).get("https_port", 8791))})
 
     async def talk_script(request):
         """The conversation feed and the chat box, shared by the Overview and the Talk page."""
@@ -175,7 +207,7 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
     async def health(request):
         return JSONResponse({"version": __version__, "connected": bus.connected.is_set(), "programs": state.health,
                              "state": state.pip_state, "state_detail": {**state.pip_detail, "quiet": state.pip_quiet},
-                             "online": state.online})
+                             "online": state.online, "route": state.route})
 
     async def trace(request):
         if not state.trace and bus.connected.is_set():
@@ -327,7 +359,10 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
         (timers, the screen's layout and what each module's boxes show: core/dashapi.py tv_snapshot), the
         scripts that draw modules' boxes, the weather, and the Pi's health numbers if that box is showing."""
         out = {"state": state.pip_state, "state_detail": state.pip_detail, "online": state.online, "weather": {},
-               "box_scripts": box_scripts, "face": face_look}
+               "box_scripts": box_scripts, "face": face_look, "route": state.route,
+               # Does this page play Pip's sounds (a video, a song clip)? The monitor does while Pip is in the room;
+               # a phone that has him plays them itself (static/phone.js); any other viewer stays quiet (D-149)
+               "sound_here": state.route == "room" and is_monitor(request)}
         try:
             r = await bus.request("core", "core.tv", timeout=3)
             out.update(r.private or {})
@@ -356,9 +391,49 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
     async def tv_stream(request):
         return sse(state.tv_listeners)
 
+    async def phone_relay(ws: WebSocket):
+        """A phone taking over Pip's microphone and speaker (D-149): its messages are passed to pip-ears and back,
+        unchanged and unread (ears/remote.py has what they are). Closing either end closes the other."""
+        await ws.accept()
+        try:
+            reader, writer = await asyncio.open_unix_connection(str(paths.remote_socket()))
+        except OSError:
+            await ws.send_text(json.dumps({"bye": "unavailable"}))
+            return await ws.close()
+
+        async def to_ears():
+            while True:
+                m = await ws.receive()
+                if m["type"] == "websocket.disconnect":
+                    return
+                if m.get("bytes") is not None:
+                    writer.write(pack(SOUND, m["bytes"]))
+                    await writer.drain()
+
+        async def to_phone():
+            while (m := await read_message(reader)) is not None:
+                kind, payload = m
+                await (ws.send_bytes(payload) if kind == SOUND else ws.send_text(payload.decode()))
+
+        tasks = [asyncio.create_task(to_ears()), asyncio.create_task(to_phone())]
+        try:
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        except (WebSocketDisconnect, ConnectionError):
+            pass
+        finally:
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            writer.close()
+            with contextlib.suppress(Exception):
+                await ws.close()
+
     return Starlette(routes=[*(Route(path, page(name)) for path, name in PAGES.items()), Route("/pip.css", stylesheet), Route("/pip.js", script), Route("/talk.js", talk_script),
                              Route("/api/modules", module_list),
-                             Route("/tv", tv), Route("/api/tv", tv_data), Route("/api/tv/stream", tv_stream), Route("/api/tv/vitals", tv_vitals),
+                             Route("/tv", tv), Route("/phone", tv), WebSocketRoute("/api/phone", phone_relay),
+                             Route("/phone.js", phone_script), Route("/phone-audio.js", phone_script),
+                             Route("/api/phone/address", phone_address),
+                             Route("/api/tv", tv_data), Route("/api/tv/stream", tv_stream), Route("/api/tv/vitals", tv_vitals),
                              Route("/m/{name}/", module_file), Route("/m/{name}/{path:path}", module_file),
                              Route("/api/m/{name}", module_api, methods=["GET", "POST"]),
                              Route("/api/health", health), Route("/api/trace", trace), Route("/api/conversation", conversation),
@@ -427,6 +502,11 @@ def listen(bus, state: State) -> None:
         state.push("state", {"state": state.pip_state, **state.pip_detail})
         state.push_tv("state", {"state": state.pip_state, **state.pip_detail})
 
+    async def on_route(msg: Message):   # a phone took over Pip's mic and speaker, or let go (D-149)
+        state.route = "phone" if msg.data.get("to") == "phone" else "room"
+        state.push("route", {"route": state.route})
+        state.push_tv("route", {"route": state.route})
+
     async def on_level(msg: Message):
         state.push_tv("level", {"level": msg.data.get("level", 0)})
 
@@ -461,6 +541,7 @@ def listen(bus, state: State) -> None:
     bus.subscribe("alert.*", on_alert)
     bus.subscribe("pip.state", on_state)
     bus.subscribe("speech.level", on_level)
+    bus.subscribe("ears.route", on_route)
     bus.subscribe("voice.*", on_voice)
     bus.subscribe("mic.changed", on_mic)
     bus.subscribe("net.changed", on_net)

@@ -27,10 +27,10 @@ flowchart LR
 
 | Program | Folder | What it does |
 |---|---|---|
-| pip-ears | `pip_assistant/ears/` | Listens to the microphone, hears two claps, cuts speech into pieces and sends them all on (pip-core listens for Pip's name in the words, D-134). Plays the chimes and speaks Pip's answers with the Piper voice. Doesn't know what any of it means. |
+| pip-ears | `pip_assistant/ears/` | Listens to the microphone, hears two claps, cuts speech into pieces and sends them all on (pip-core listens for Pip's name in the words, D-134). Plays the chimes and speaks Pip's answers with the Piper voice. A phone can take over as its microphone and speaker (`ears/remote.py`, D-149). Doesn't know what any of it means. |
 | pip-core | `pip_assistant/core/` | The hub every message goes through, and the brain. It turns speech into text, decides whether something was said to Pip, waits for you to finish, asks pip-thinker for an answer, and does the actions. It also runs timers and alarms, memory, people and voices, the modules, and **Pip's state**. |
 | pip-thinker | `pip_assistant/thinker/` | Builds the prompt and asks Claude. It streams the answer back one sentence at a time, or an `ACTION` line when Claude wants Pip to do something. |
-| pip-web | `pip_assistant/web/` | Serves the dashboard's pages (the list is `PAGES` in `web/main.py`): the Overview (`static/index.html`: what needs you, timers, the chat box, each module's card), Talk, People and each person's profile, Memory, Health & trace, Settings, Changes, Claude and the Guide; each module's own page (`/m/<name>/`, such as the Home page; a module without one gets `static/module.html`); and the monitor's face page (`static/tv.html`). Every page but the Guide and the monitor gets the same menu and status bar from `static/pip.js` (D-148). It stores nothing itself and asks pip-core (or, for the Changes page, pip-builder) for everything. |
+| pip-web | `pip_assistant/web/` | Serves the dashboard's pages (the list is `PAGES` in `web/main.py`): the Overview (`static/index.html`: what needs you, timers, the chat box, each module's card), Talk, People and each person's profile, Memory, Health & trace, Settings, Changes, Claude and the Guide; each module's own page (`/m/<name>/`, such as the Home page; a module without one gets `static/module.html`); and the monitor's face page (`static/tv.html`, which is also `/phone`, with `static/phone.js`'s button, D-149). Every page but the Guide and the monitor gets the same menu and status bar from `static/pip.js` (D-148). It stores nothing itself and asks pip-core (or, for the Changes page, pip-builder) for everything. |
 | pip-builder | `pip_assistant/builder/` | Pip changing his own code (§6): keeps the record of each change, starts the sandboxed Claude Code and test jobs, and puts an approved change live. Does nothing until someone asks. |
 
 `Conversation` (in `core/conversation.py`) is big, so its parts live in their own files and it takes them all in: `hearing.py` (speech-to-text, whose voice), `micctl.py` (the Listening switches, claps, prefs), `turns.py` (waiting for you to finish), `enrolment.py` (learning a voice), `context.py` (what Claude is told), `acting.py` (doing actions and Pip's own commands), `feed.py` (the dashboard's conversation feed). `conversation.py` keeps the state, `say()` and the main path from hearing to answering; its docstring has the full list.
@@ -52,6 +52,15 @@ There are three kinds of message:
 - A **request** gets a reply ("think of an answer").
 
 `common/messages.py` defines the message; `common/client.py` (`BusClient`) is how ears, thinker, web and builder connect. Inside pip-core, parts react to events with `bus.core_listen(...)`. pip-core answers each request sent to it in its own task, so one slow answer (a typed message waiting for Claude) doesn't hold up the rest; if a program goes away, requests to or from it are answered or forgotten (`_drop_waiting` in `core/bus.py`).
+
+**A phone's sound is the one exception** (D-149). On `/phone`, a tap on **Talk to Pip here** makes the phone Pip's microphone and speaker. Sound is a steady stream, not messages, so it doesn't go through pip-core:
+
+```
+phone.js (microphone → 16 kHz frames, phone-audio.js)  ⇄  websocket /api/phone  ⇄  pip-web (phone_relay: passes it on unread)
+      ⇄  ~/pip-data/run/ears-remote.sock (common/wire.py)  ⇄  pip-ears (ears/remote.py: RemoteLink, RemoteSpeaker)
+```
+
+Inside pip-ears, `Ears.frames()` gives `listen()` the room's microphone or the phone's, and `self.speaker` is the speakerphone or the phone's `RemoteSpeaker` (`on_route` switches them, with the phone's own loudness levels). Everything after that is unchanged: the same segmenter, talk-over check and `heard.utterance`, so pip-core can't tell where it came from. Only the event `ears.route` (room or phone, and why) goes on the bus; pip-web passes it to the monitor (a "☎ On a phone" icon) and the dashboard's status bar. While a phone has Pip the room's recorder is closed; alarms play on both speakers, with the room's microphone mixed in while they ring.
 
 **Staying alive.** Each program starts through `serve()` in `common/program.py`. If one of its main loops (listening, speaking, …) ends, the program exits so systemd restarts it, rather than sending heartbeats while deaf. While pip-core is away (restarting), `BusClient.emit` and `command` drop the message instead of failing. pip-core's watchdog (`core/health.py`) restarts a program whose heartbeats stop, without waiting for systemd (`--no-block`); if pip-core itself was held up, it skips that check, since every heartbeat looks old then.
 

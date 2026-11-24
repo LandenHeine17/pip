@@ -117,3 +117,10 @@ class SameSite:
             return await send({"type": "websocket.close", "code": 1008})
         for message in _refuse(*problem):
             await send(message)
+
+
+def is_monitor(request) -> bool:
+    """Is this page the monitor's own browser on the Pi (http://127.0.0.1)? Pages through Tailscale's https come
+    from 127.0.0.1 too, but with Pip's Tailscale name as the Host, so it's the Host that tells (D-149)."""
+    name, _ = _split(request.headers.get("host", ""))
+    return name in ("127.0.0.1", "localhost", "::1")

@@ -38,6 +38,7 @@ button:hover{filter:brightness(.96)} button:active{transform:scale(.97)}
 button.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
 button.danger{background:var(--bad);color:#fff;font-size:1rem;padding:11px 22px}
 button.ghost{background:transparent;color:var(--muted);padding:6px 10px}
+a.btn{display:inline-block;font-size:.88rem;font-weight:600;padding:8px 14px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;text-decoration:none}
 .split{display:inline-flex;border-radius:12px;overflow:hidden}
 .split button{border-radius:0;font-size:1rem;padding:11px 18px;background:var(--card)}
 .split button + button{padding:11px 12px;border-left:1px solid var(--line)}

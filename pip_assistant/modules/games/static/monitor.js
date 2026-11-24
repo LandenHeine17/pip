@@ -4,6 +4,7 @@
 // Guess the song: the clip (Deezer's 30-second preview) plays here, from one Audio element that outlives the box's
 // redraws; it starts again whenever `plays` goes up (a new round, "play it again"), and plays at `duck` while Pip
 // is listening, thinking or talking (h.state()), else at `volume`. The title is never shown until it's guessed.
+// Only the page that has Pip's sound plays it (h.soundHere(): the monitor, or a phone that has him, D-149).
 (() => {
   const QUIET_WHEN = new Set(["listening", "thinking", "speaking", "interrupted", "ringing"]);
   const LETTERS = "ABCD";
@@ -74,6 +75,7 @@
   }
 
   function volume() {
+    if (help && help.soundHere && !help.soundHere()) return 0;   // a phone has Pip's sound, or just a viewer (D-149)
     const quiet = help && QUIET_WHEN.has(help.state());
     return Math.max(0, Math.min(100, quiet ? Math.min(data.volume ?? 80, data.duck ?? 15) : (data.volume ?? 80))) / 100;
   }

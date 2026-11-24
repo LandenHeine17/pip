@@ -4,6 +4,7 @@
 // the monitor changes, so the player is made only when a new video comes; after that, only the controls numbered
 // higher than the last one done are carried out, in order: "pause", "play", "seek_by" (seconds forwards or back),
 // "seek_to". The volume follows Pip: `duck` while he's listening, thinking or talking (h.state()), else `volume`.
+// Only the page that has Pip's sound plays it (h.soundHere(): the monitor, or a phone that has him, D-149).
 // While it plays, the box is marked keep-awake, so the screen doesn't doze (dim) during a long video.
 (() => {
   const QUIET_WHEN = new Set(["listening", "thinking", "speaking", "interrupted", "ringing"]);
@@ -41,6 +42,7 @@
   }
 
   function volume() {
+    if (help && help.soundHere && !help.soundHere()) return 0;   // a phone has Pip's sound, or just a viewer (D-149)
     const quiet = help && QUIET_WHEN.has(help.state());
     return quiet ? Math.min(data.volume ?? 70, data.duck ?? 15) : (data.volume ?? 70);
   }

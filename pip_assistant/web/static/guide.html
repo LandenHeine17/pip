@@ -478,7 +478,10 @@ tour: [
 shows, and live changes arrive as a stream of events (server-sent events). The monitor has its own, narrower stream: only what the face
 and its boxes show (D-110).</p>
 <p>No logins (D-116): the dashboard is reachable only on your Tailscale devices. The <b>same-site check</b> stops any other website open
-on your phone from changing Pip: changes must be JSON from Pip's own pages.</p>`,
+on your phone from changing Pip: changes must be JSON from Pip's own pages.</p>
+<p><b>Talking on a phone</b> (D-149): <code>/phone</code> is the monitor's page, stacked for a phone held upright, with one button that
+makes the phone Pip's microphone and speaker. Its sound goes over a websocket that pip-web passes, unread, straight to pip-ears
+([[ears/remote.py#RemoteLink|RemoteLink]]), which hears and speaks there instead of in the room ([[ears/main.py#Ears.on_route|on_route]]).</p>`,
 tour: [
   {title: "Every page", text: "The dashboard's pages are one table: the Overview (/), Talk, People and each person's profile, Memory, Health &amp; trace, Settings, Changes, Claude and the Guide (D-148).", ref: "web/main.py#PAGES"},
   {title: "Every route", text: "build_app lists them all at the bottom: the pages, /tv, /m/name/ (module pages; one without its own gets static/module.html) and the /api/… routes (/api/chat is the chat box, passed to pip-core as core.chat; /api/modules lists every module that's on, with its place in the menu).", ref: "web/main.py#build_app"},
@@ -489,6 +492,7 @@ tour: [
   {title: "The Overview draws the timers", text: "", ref: "web/static/index.html#renderSched"},
   {title: "The menu and the status bar", text: "Every page that loads pip.js and has a &lt;main&gt; gets the same frame (D-148): the menu (a sidebar, or tabs on a phone; each module's place comes from its module.toml, so pip-web never names one), Pip's state, the Listening switch, a ringing alarm and voice learning. A page does nothing for it.", ref: "web/static/pip.js#frame"},
   {title: "One live stream per page", text: "pip.on(kind, fn): every part of a page listens to the same /api/stream connection.", ref: "web/static/pip.js#on"},
+  {title: "A phone takes over", text: "The phone's microphone frames go to the same segmenter as the speakerphone's, and Pip's voice is played on the phone, paced so stopping is instant. Back to the room on a tap, closing the page, locking the phone or 10 minutes with nobody talking (D-149).", ref: "ears/remote.py#RemoteLink"},
   {title: "The monitor's kiosk", text: "The face runs in a Chromium kiosk on the monitor, a system service (pip-tv). It can only start while the Pi's first console (tty1) is on the screen, so it first waits for that (<code>ExecStartPre</code>) instead of failing every 10 s while someone uses another console. The screen program's harmless lines when someone switches console are kept out of the log (<code>LogFilterPatterns</code>, D-138), and a timer (pip-tv-restart) gives it a fresh browser every day at 4 am (D-135).", ref: "deploy/tv/pip-tv.service"},
   {title: "Pages talking to their module", text: "pip.get / pip.post: a module's page reaching its module's dashboard().", ref: "web/static/pip.js#pip"},
 ]},

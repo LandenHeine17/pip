@@ -15,6 +15,7 @@ dependencies = [
   "sherpa-onnx>=1.12",
   "sherpa-onnx-core>=1.12",
   "tinytuya>=1.16",
+  "websockets>=13",
 ]
 
 [dependency-groups]

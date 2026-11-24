@@ -26,3 +26,8 @@ def database() -> Path:
 
 def user_settings() -> Path:
     return data_dir() / "settings.toml"
+
+
+def remote_socket() -> Path:
+    """Where pip-ears listens for pip-web passing on a phone's sound (D-149, ears/remote.py)."""
+    return run_dir() / "ears-remote.sock"

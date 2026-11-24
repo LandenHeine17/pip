@@ -6,6 +6,7 @@ Events it sends:   heard.started {reason} · heard.utterance {reason, seconds, h
                    {interrupted, spoken} · speech.overlap_ignored {level_dbfs} (loud over him, but no voice: he carries on)
                    speech.level {level 0–1} (~10 a second while he talks, for the face's mouth; not traced)
                    ears.status {state}  (listening / speaking / muted_or_quiet / mic_off)
+                   ears.route {to: room / phone, why}  (a phone took over Pip's mic and speaker, or let go: D-149)
                    mic.clapped   (two claps: pip-core decides what that switches, D-91) · mic.clapped_trial (heard, but
                    the clap switch isn't ticked yet: only shown on the dashboard)
 Commands it takes: ears.say (private.text) · ears.chime · ears.tone {name: "thinking" / "mic_on" / "mic_off"} · ears.stop
@@ -23,6 +24,11 @@ says which mode to use as soon as it's connected, so a restart never listens whe
 While an alarm rings, talking over it cuts the ringtone for a moment and captures what you said, so
 "stop" or "snooze" works; if it wasn't for the alarm, ringing carries on. The ringing stops by
 itself after `max_seconds`, even if pip-core is stuck, so it can never ring forever.
+
+A phone can take over (D-149, ears/remote.py): the /phone page becomes Pip's microphone and speaker. Then the
+speakerphone isn't listened to at all and he speaks only on the phone; alarms ring in both places, and while
+one rings the room's microphone is mixed in, so "stop" works from either. The rest is the same: the same
+segmenter, talk-over check and events, so pip-core can't tell the difference. Not while listening is off.
 """
 import asyncio
 import base64
@@ -32,11 +38,13 @@ from collections import deque
 
 import numpy as np
 
+from ..common import paths
 from ..common.messages import Message
 from ..common.program import make_bus, serve, start
 from ..common.voicecheck import voice_seconds_sync
 from .audio import Microphone, Speaker, chime, level_dbfs, mic_tone, microphones, ringtone, thinking_tone
 from .clap import ClapDetector, off_refused
+from .remote import RemoteLink
 from .segmenter import Segmenter
 from .voice import make_voice
 
@@ -49,12 +57,24 @@ UNDUCK_AFTER_S = 0.4
 
 
 class Ears:
+    route = "room"            # where Pip hears and speaks: "room" (the speakerphone) or "phone" (D-149)
+    remote = None             # the phone's link (ears/remote.py), if phones may take over
+    room_speaker = None       # the speakerphone (self.speaker is whichever he speaks through now)
+
     def __init__(self, bus, cfg: dict):
-        e, li = cfg["ears"], cfg["listen"]
+        e, li, ph = cfg["ears"], cfg["listen"], cfg.get("phone", {})
         self.bus = bus
         self.cfg = e
-        self.mic = Microphone()
-        self.speaker = Speaker()
+        self.mic = Microphone()      # the room's (the speakerphone)
+        self.speaker = self.room_speaker = Speaker()
+        # How loud counts as speech, and as talking over him, in each place: a phone's microphone may differ (D-149)
+        self.levels = {"room": (li["speech_dbfs"], e["barge_in_dbfs"]),
+                       "phone": (ph.get("speech_dbfs", li["speech_dbfs"]), ph.get("barge_in_dbfs", e["barge_in_dbfs"]))}
+        if ph.get("enabled", True):
+            self.remote = RemoteLink(paths.remote_socket(), self.on_route, self.refuse_phone,
+                                     no_audio_s=ph.get("no_audio_seconds", 4), idle_s=ph.get("idle_minutes", 10) * 60)
+        self.room_frames: deque = deque(maxlen=4)   # the room's microphone while an alarm rings on a phone
+        self.room_task: asyncio.Task | None = None
         self.voice = make_voice(e["voice_engine"], e["voice"], e["speech_rate"])
         self.chime = chime(self.voice.rate)
         self.tones = {"thinking": thinking_tone(self.voice.rate), "mic_on": mic_tone(True, self.voice.rate),
@@ -88,7 +108,7 @@ class Ears:
     async def listen_for_claps(self, device: str) -> None:
         self.claps.reset()
         async for frame in Microphone(target=device).frames():
-            busy = self.speaking or self.ring_task is not None
+            busy = self.speaking or self.ring_task is not None or self.route == "phone"
             if busy:
                 self.quiet_after = time.monotonic() + 0.5
             if self.mic_mode == "off" or busy or time.monotonic() < self.quiet_after:
@@ -133,8 +153,29 @@ class Ears:
         return {"mics": mics, "speakerphone": next((m["name"] for m in mics if "Speaker_Phone" in m["name"]), "")}
 
     # ---------------------------------------------------------------- listening
+    async def frames(self):
+        """What Pip hears: the room's microphone, or the phone's while it has Pip (D-149). The room's recorder is
+        closed while the phone has him, so the room really isn't heard; it opens again when the phone lets go."""
+        while True:
+            if self.route == "phone" and self.remote is not None:
+                async for frame in self.remote.frames():
+                    if self.room_frames:   # an alarm is ringing: the room can say "stop" too
+                        frame = np.clip(frame.astype(np.int32) + self.room_frames.popleft(), -32768, 32767).astype(np.int16)
+                    yield frame
+                if self.route == "phone":
+                    await asyncio.sleep(0.05)   # the phone's gone; the switch back to the room is on its way
+                continue
+            room = self.mic.frames()
+            try:
+                async for frame in room:
+                    yield frame
+                    if self.route != "room":
+                        break
+            finally:
+                await room.aclose()
+
     async def listen(self) -> None:
-        async for frame in self.mic.frames():
+        async for frame in self.frames():
             if self.mic_mode == "off":
                 await self._update_state(frame)
                 continue  # switched off on the dashboard: nothing listens
@@ -145,6 +186,8 @@ class Ears:
                 continue  # switched off by claps: only the clap microphone is listened to
             if self.seg.is_speech(db):
                 self.talk_at.append(time.monotonic())   # for the clap switch-off rule (ears/clap.py)
+                if self.route == "phone":
+                    self.remote.heard_speech()          # someone's talking through it: it isn't idle
             if self.speaking and self.cfg["barge_in"]:
                 await self.heard_over(frame, db)
             elif not self.seg.capturing and self.seg.is_speech(db) and not self.speaking:
@@ -262,8 +305,13 @@ class Ears:
             if kind == "speech" and not self.voiced:   # his voice starts (even right after a chime or tone)
                 self.voiced, self.overlap_noted, self.said_n = True, False, 0
                 await self.bus.emit("speech.started", {})
-            finished = await self.speaker.play(audio, self.voice.rate,
-                                               on_level=self._mouth if kind == "speech" else None)
+            if kind == "ring" and self.speaker is not self.room_speaker and self.room_speaker is not None:
+                # a phone has Pip: alarms ring in the room too (owner, D-149)
+                finished = all(await asyncio.gather(self.speaker.play(audio, self.voice.rate),
+                                                    self.room_speaker.play(audio, self.voice.rate)))
+            else:
+                finished = await self.speaker.play(audio, self.voice.rate,
+                                                   on_level=self._mouth if kind == "speech" else None)
             if finished and kind == "speech":
                 self.said_n += 1
             if not finished or self.queue.empty():
@@ -297,6 +345,8 @@ class Ears:
         self.stops += 1
         self._clear_queue()
         await self.speaker.stop()
+        if self.room_speaker is not None and self.room_speaker is not self.speaker:
+            await self.room_speaker.stop()   # (a ring plays in the room too while a phone has Pip)
 
     async def on_say(self, msg: Message):
         text = msg.private.get("text", "").strip()
@@ -324,6 +374,7 @@ class Ears:
         tone = ringtone(msg.data.get("tone", "classic"), self.voice.rate)
         self.ring_task = asyncio.create_task(self._ring(tone, float(msg.data.get("max_seconds", 330))))
         self.bus.status["ringing"] = True
+        self._hear_room_while_ringing()
         return {"ok": True}
 
     async def _ring(self, tone, max_seconds: float) -> None:
@@ -333,7 +384,7 @@ class Ears:
         try:
             while time.monotonic() < end:
                 if self.queue.empty() and not self.speaking:
-                    await self.queue.put(("sound", tone))
+                    await self.queue.put(("ring", tone))
                 await asyncio.sleep(secs + 0.6)
         finally:
             self.bus.status["ringing"] = False
@@ -344,6 +395,49 @@ class Ears:
             await self.stop_speaking()
         self.ring_task = None
         self.bus.status["ringing"] = False
+        self._stop_hearing_room()
+
+    # ---------------------------------------------------------------- a phone has Pip (D-149)
+    def refuse_phone(self) -> str:
+        """Why a phone may not take over now ("" = it may): not while listening is switched off (owner, D-149)."""
+        return "" if self.mic_mode == "on" else "listening_off"
+
+    async def on_route(self, route: str, why: str) -> None:
+        """A phone took over ("phone") or let go ("room"): stop what he was saying, drop anything half-heard,
+        and hear and speak in the new place, with its own loudness levels."""
+        self.route = route
+        await self.stop_speaking()
+        self.seg.cancel()
+        self.follow_until = 0.0
+        self.unduck()
+        self.speaker = self.remote.speaker if route == "phone" else self.room_speaker
+        self.seg.speech_dbfs, self.cfg["barge_in_dbfs"] = self.levels[route]
+        self.bus.status["route"] = route
+        log.info("hearing and speaking %s (%s)", "on a phone" if route == "phone" else "in the room", why)
+        await self.bus.emit("ears.route", {"to": route, "why": why})
+        if route == "phone":
+            self._hear_room_while_ringing()
+        else:
+            self._stop_hearing_room()
+
+    def _hear_room_while_ringing(self) -> None:
+        """While an alarm rings and a phone has Pip, the room's microphone is mixed in (frames())."""
+        if self.route == "phone" and self.ring_task is not None and self.room_task is None:
+            self.room_task = asyncio.create_task(self._room_while_ringing())
+
+    async def _room_while_ringing(self) -> None:
+        room = Microphone().frames()
+        try:
+            async for frame in room:
+                self.room_frames.append(frame)
+        finally:
+            await room.aclose()
+
+    def _stop_hearing_room(self) -> None:
+        if self.room_task is not None:
+            self.room_task.cancel()
+            self.room_task = None
+        self.room_frames.clear()
 
     async def on_ring_stop(self, msg: Message):
         await self.stop_ring()
@@ -356,6 +450,8 @@ class Ears:
         if mode != "on":
             self.seg.cancel()          # anything half-heard is dropped, never sent
             self.follow_until = 0.0
+            if self.route == "phone":  # listening switched off: the phone lets go too (owner, D-149)
+                await self.remote.end("listening_off")
         if mode != self.mic_mode:
             self.claps.reset()
         self.mic_mode = mode
@@ -387,11 +483,11 @@ async def main() -> None:
     bus.on("ears.mics", ears.on_mics)
     bus.on("ears.ring", ears.on_ring)
     bus.on("ears.ring_stop", ears.on_ring_stop)
-    bus.status.update(activity="listening")
+    bus.status.update(activity="listening", route="room")
     if cfg["ears"].get("barge_in_voice_check", True):
         voice_seconds_sync(b"\0\0" * 1600)   # load the voice detector now, not the first time he's talked over
     log.info("listening (for Pip's name in what's said, D-134)")
-    await serve(bus, ears.listen, ears.speak_loop)
+    await serve(bus, ears.listen, ears.speak_loop, *([ears.remote.serve] if ears.remote else []))
 
 
 def run() -> None:
