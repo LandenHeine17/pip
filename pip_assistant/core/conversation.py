@@ -316,6 +316,10 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
                 if reply is not None:   # "snooze", "okay": the alarm's answered (else Claude's told it's ringing)
                     if reply:
                         await self.speak_reply(reply, "alarm answered")
+                elif answer := (self.modules.room_heard(text, Call(speaker=who, kind="direct")) if self.modules else None):
+                    # a module answers it, as if it were said to him ("67": the chant and the freak-out, D-142;
+                    # "pause the video"): the reply in the chat box, spoken only if asked for out loud
+                    await self.speak_reply(answer, "module")
                 else:
                     await self.respond(text, "typed")
             finally:

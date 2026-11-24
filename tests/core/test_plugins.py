@@ -207,3 +207,17 @@ async def test_a_join_in_he_is_only_thinking_about_gives_way(tmp_path):
         conv.answer_id, conv.answer_kind, conv.join_spoke = "a join-in", "join", False
     out, echo, asks, conv = await _room_while(tmp_path, "did you hear the echo", joining)
     assert out == ["echo"] and conv.answer_id is None
+
+
+async def test_a_typed_message_is_offered_to_modules_too(tmp_path):
+    """D-142: "67" typed in the dashboard's chat box goes off like said to him: the module answers, no Claude."""
+    from helpers import finish, says
+    from helpers import room_setup as setup
+    reg = Registry()
+    reg.modules["echo"] = echo = Echo()
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, modules=reg)
+    assert await conv.typed("say echo") == "echo" and not asks and says(got) == []   # quiet unless asked aloud
+    assert echo.seen == [("say echo", "direct")]
+    await conv.typed("what time is it")                                                # nobody answers: Claude
+    assert asks
+    await finish(bus, tasks)
