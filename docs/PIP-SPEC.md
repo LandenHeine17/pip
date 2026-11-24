@@ -205,7 +205,7 @@ flowchart LR
 ```
 
 ### Pip's state (what the face shows)
-Pip is always in **one of 8 states**, each with its own colour, shown by the face on the monitor and the circle on the dashboard (D-86, D-91, D-108). When a question goes to Claude, a **soft thinking tone** plays straight away (instead of "One sec."); it can be set to always, only-if-slow, or off.
+Pip is always in **one of 8 states**, each with its own colour, shown by the face on the monitor and the circle on the dashboard (D-86, D-91, D-108). When a question goes to Claude, a **soft thinking tone** plays straight away (instead of "One sec."); it can be set to always, only-if-slow, or off. It doesn't play for a reply said without his name right after he spoke, which Claude may pass on; if people go on talking while he thinks about such a reply, it was room talk: he drops it and the follow-up window closes (D-145).
 
 ```mermaid
 stateDiagram-v2

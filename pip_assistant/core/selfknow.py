@@ -34,7 +34,10 @@ DECIDED = {
     "fast_command": "did it at once without Claude (a clearly worded command)",
     "held_more_speech": "waited: they kept talking, so he took it as one turn",
     "reopened": "dropped the answer he was working on: they kept talking, so he took it all as one turn (D-137)",
-    "waited_unfinished": "waited longer: it sounded unfinished",
+    "dropped_reply": "dropped a reply said without his name: they kept talking among themselves, so it wasn't "
+                     "for him (D-145)",
+    "taken_as_room_talk": "took it as room talk: it began after his follow-up window had closed (D-145)",
+    "waited_unfinished":"waited longer: it sounded unfinished",
     "held_on": "waited, because someone said \"hold on\"",
     "discarded": "dropped an answer that was no longer wanted",
     "join_suppressed": "stayed out of the conversation for a while (told \"not now\" or talked over)",

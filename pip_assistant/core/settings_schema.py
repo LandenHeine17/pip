@@ -118,7 +118,7 @@ SCHEMA = {
     "social.welcome_back_minutes": _s(C, "Welcome back after", "\"Hey Landen, welcome back\" after the room was "
                                       "quiet this many minutes (0 = never).", "int", ["core"], min=0, max=600),
     "thinker.thinking_tone": _s(C, "Thinking tone", "A soft tone when Pip starts thinking (D-86): always, slow "
-                                "(only if the answer is slow) or off.", "str", ["core"],
+                                "(only if the answer is slow) or off. Never for a reply without his name (D-145).", "str", ["core"],
                                 choices=["always", "slow", "off"]),
     "thinker.thinking_tone_after_seconds": _s(C, "Slow means", "For \"slow\": play the tone if the answer hasn't "
                                               "started after this many seconds.", "float", ["core"], min=0.3, max=10),

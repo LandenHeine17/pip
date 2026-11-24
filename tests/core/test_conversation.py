@@ -357,6 +357,68 @@ async def test_anyones_reply_right_after_he_spoke_is_taken_as_for_him(tmp_path, 
     await finish(bus, tasks)
 
 
+THINKING = ("ears.tone", None, {"name": "thinking"})
+
+
+async def test_a_reply_is_dropped_when_they_keep_talking_among_themselves(tmp_path, monkeypatch):
+    """D-145 (owner, 2026-11-24): a reply without his name, and people go on talking while Claude thinks about it:
+    it was room talk. Dropped, not reopened (it had been, again and again, with the thinking tone each time), the
+    follow-up window closes, and what they say next is room talk. No thinking tone for a reply either."""
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, "Pip, when does the bus come?", social={"join_in": False},
+                                                    conversation={"follow_up_seconds": 5.0})
+    await ears.emit("heard.utterance", {**room()[0], "reason": "barge_in"}, private=room()[1])
+    await asyncio.sleep(0.2)
+    assert got.count(THINKING) == 1                                   # called by name: the tone, as ever (D-86)
+    await ears.emit("speech.started", {})
+    await ears.emit("speech.finished", {"interrupted": False, "spoken": True})
+    await asyncio.sleep(0.1)
+    assert conv.in_follow_up()
+    seen, real = [], conv.bus_request
+
+    async def slow_claude(target, msg_type, data, private, timeout):
+        if msg_type != "thinker.ask" or data["kind"] != "follow_up":
+            return await real(target, msg_type, data, private, timeout)
+        seen.append(private["text"])
+        await asyncio.sleep(0.6)
+        return Message("reply", "thinker.ask", data={}, private={"text": "Sure thing."})
+    conv.bus_request = slow_claude
+    conv.stt.text = "and then we went to the shop"
+    await ears.emit("heard.utterance", {**room()[0], "reason": "follow_up"}, private=room()[1])
+    await asyncio.sleep(0.2)
+    assert seen == ["and then we went to the shop"] and conv.answer_id   # asked as a reply, still thinking
+    await ears.emit("heard.started", {"reason": "follow_up"})            # they go on
+    await asyncio.sleep(0.1)
+    decisions = [r["data"]["decision"] for r in bus.trace.recent() if r["type"] == "turn.decision"]
+    assert conv.answer_id is None and not conv.pending and not conv.in_follow_up()
+    assert "dropped_reply" in decisions and "reopened" not in decisions
+    assert ("ears.listen", None, {"seconds": 0}) in got
+    conv.stt.text = "and it was closed"
+    await ears.emit("heard.utterance", {**room()[0], "reason": "follow_up"}, private=room()[1])
+    await asyncio.sleep(0.8)
+    assert len(seen) == 1 and len(asks) == 1 and "Sure thing." not in says(got)   # nobody asked again, nothing said
+    assert not conv.transcript.last()["ours"] and conv.transcript.last()["text"] == "and it was closed"
+    assert "taken_as_room_talk" in [r["data"]["decision"] for r in bus.trace.recent() if r["type"] == "turn.decision"]
+    assert got.count(THINKING) == 1                                   # never for the reply
+    await finish(bus, tasks)
+
+
+async def test_the_follow_up_window_counts_from_when_they_started_talking(tmp_path):
+    """D-145: a long reply that began in the window is still a reply, though speech-to-text finishes after the
+    window has closed (before, it was asked as said to him outright, with the tone). One that began after it is
+    room talk."""
+    bus, conv, ears, got, asks, tasks = await setup(tmp_path, "so the bus was late again", social={"join_in": False})
+    conv.follow_until = conv.expect_until = time.monotonic() - 2.5    # closed 2.5 s ago
+    await ears.emit("heard.utterance", {**room()[0], "reason": "follow_up", "seconds": 6.0}, private=room()[1])
+    await asyncio.sleep(0.3)
+    assert [k for k, _ in asks] == ["follow_up"] and THINKING not in got
+    conv.follow_until = conv.expect_until = time.monotonic() - 2.5
+    conv.stt.text = "anyway"
+    await ears.emit("heard.utterance", {**room()[0], "reason": "follow_up", "seconds": 0.5}, private=room()[1])
+    await asyncio.sleep(0.3)
+    assert len(asks) == 1                                             # began after the window: room talk
+    await finish(bus, tasks)
+
+
 async def test_chattiness_is_set_by_voice_and_kept(tmp_path):
     """D-136: "Pip, set chattiness to high" → the chatty mood, kept across restarts (prefs)."""
     from pip_assistant.core.prefs import Prefs

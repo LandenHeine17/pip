@@ -15,7 +15,9 @@ paid the pause twice (the owner's spec, 2026-11-12: 1.55 s typical hold, 5.4 s t
     (plus turn_wait_after_interrupt_seconds for the next turn after someone talked over him)
 
 If they start talking again before he's said anything, the answer is dropped and the turn held again
-(`reopen_turn`, D-137), so what they add is joined to it and asked once.
+(`reopen_turn`, D-137), so what they add is joined to it and asked once. That's only when he was called by
+name: a reply said without his name right after he spoke is dropped instead, and the follow-up window closes,
+since they're talking among themselves (D-145).
 
 The face shows "Waiting to see if you're done" with a countdown while a turn is held (`turn_until`). Each
 answered turn is traced as `turn.decision` (decision "answered", why, how long since they stopped talking):
@@ -160,11 +162,23 @@ class TurnTaking:
     async def reopen_turn(self) -> bool:
         """They started talking again while Claude was still working on the answer and nothing of it has been said
         (D-137, like Ziggletron): drop that answer and hold the turn again, so what they say next is joined to it
-        and asked once. If it turns out to be only noise, `_finish_pending` asks again. True if it reopened."""
+        and asked once. If it turns out to be only noise, `_finish_pending` asks again. True if it reopened.
+        Only for a turn where he was called: a reply without his name is dropped instead (D-145)."""
         if not (self.asked and self.answer_id and self.answer_kind == "direct" and not self.spoken
                 and not self.speaking and not self.pending):
             return False
         text, how, ended, why = self.asked
+        if how[2].get("ask") == "follow_up":
+            # A reply said without his name right after he spoke, and they're still talking: it was room talk
+            # (D-145). Before, it reopened every time, so a room talking among themselves had him asking Claude
+            # (and playing the thinking tone) again and again. Drop it and close the follow-up window.
+            self.asked = None
+            self.cancel_answer("room talk")
+            self.expect_until = self.follow_until = self.listen_until = 0.0
+            await self.command("ears", "ears.listen", {"seconds": 0})
+            await self.decided("dropped_reply", "kept talking")
+            self.refresh_state()
+            return False
         self.asked = None
         self.cancel_answer("kept talking")
         await self.decided("reopened", why)

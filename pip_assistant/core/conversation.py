@@ -520,7 +520,9 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             self.refresh_state()
 
     async def _thinking_tone(self, aid: str) -> None:
-        """Replaces "One sec." (D-86): a soft tone the moment Pip starts thinking (or only if slow; see settings)."""
+        """Replaces "One sec." (D-86): a soft tone the moment Pip starts thinking (or only if slow; see settings).
+        Not for a reply said without his name right after he spoke (D-145): Claude may pass on those, and in a
+        room talking among themselves the tone went off again and again."""
         if self.tone_mode == "off" or self.silent:
             return
         if self.tone_mode == "slow":
@@ -628,7 +630,11 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             return
         text = self.fix_names(text)
         await self.told_off(text)
-        ask = self.follow_up_ask(text) if reason == "follow_up" else ""
+        started = self.speech_started(msg)
+        if reason == "follow_up" and self.after_the_window(text, started):
+            await self.decided("taken_as_room_talk", "after the window")
+            return await self.room_talk(text, self.speaker, offline, time.time() - self.last_voice_at, pcm=pcm)
+        ask = self.follow_up_ask(text, started) if reason == "follow_up" else ""
         self.hear(text, pcm=pcm)
         await self.feed(text, "direct", self.speaker, stt_s=stt_s, offline=offline, reason=reason)
         # A reply or something said over him can be for a module too ("Pip, louder" right after "Here's the video"),
@@ -657,14 +663,23 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
             return ""
         return text
 
-    def in_follow_up(self) -> bool:
-        """The follow-up window after one of his answers is open (a little slack: speech that started in it)."""
-        return time.monotonic() <= self.follow_until + 2.0
+    def in_follow_up(self, started: float | None = None) -> bool:
+        """The follow-up window after one of his answers was open when they started talking (`started`, from
+        `speech_started`; now if not given), with a little slack. Counted from the start (D-145): a long reply
+        that began in the window is still a reply, though speech-to-text finishes after the window has closed."""
+        return (time.monotonic() if started is None else started) <= self.follow_until + 2.0
 
-    def follow_up_ask(self, text: str) -> str:
+    def follow_up_ask(self, text: str, started: float | None = None) -> str:
         """"follow_up" for a new line without his name right after he spoke: taken as said to him, whoever said it,
         and Claude may PASS (D-136). "" otherwise (more of a held turn, or he was called by name)."""
-        return "follow_up" if not self.pending and not calls_pip(text) and self.in_follow_up() else ""
+        return "follow_up" if not self.pending and not calls_pip(text) and self.in_follow_up(started) else ""
+
+    def after_the_window(self, text: str, started: float) -> bool:
+        """Speech pip-ears was still listening for (reason "follow_up") that's really room talk (D-145): it has
+        no name in it, isn't more of a held turn, and began after the reply window and any wait after his name
+        had closed. That's what's left once a reply is dropped because they went on talking among themselves."""
+        return not (self.pending or calls_pip(text) or started <= self.expect_until + 1.0
+                    or self.in_follow_up(started))
 
     async def only_listening(self, text: str) -> bool:
         """Pip was talked over and his answer paused: was it only "yeah", a laugh, or nothing speech-to-text
@@ -697,6 +712,13 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         except (TypeError, ValueError):
             ago = self.end_silence
         return time.monotonic() - min(ago, 30.0)
+
+    def speech_started(self, msg: Message) -> float:
+        """When they started talking, as time.monotonic(): when they stopped, less how long the speech was."""
+        try:
+            return self.speech_ended(msg) - float(msg.data.get("seconds") or 0)
+        except (TypeError, ValueError):
+            return self.speech_ended(msg)
 
     async def respond(self, text: str, reason: str, offline: bool = False, **data) -> None:
         """Their turn is over: answer it."""
@@ -779,7 +801,7 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         await self.told_off(text)
         quiet_for = time.time() - self.last_voice_at
         expected = time.monotonic() < self.expect_until or bool(self.pending)   # more of a held turn
-        ask = self.follow_up_ask(text) if expected else ""
+        ask = self.follow_up_ask(text, self.speech_started(msg)) if expected else ""
         how = "direct" if expected or calls_pip(text) else "mentioned" if names_pip(text) else "room"
         await self.bus.publish(Message("event", "room.heard", data={"seconds": msg.data.get("seconds"),
                                                                      "addressed": how != "room", "how": how,
@@ -883,7 +905,9 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
         self.filler_said = None
         self.looking_up = bool(looked_up)
         self.refresh_state()  # thinking (direct answers only)
-        filler = asyncio.create_task(self._thinking_tone(aid)) if kind == "direct" and not looked_up else None
+        # The tone says "I heard you, I'm on it": only when he was spoken to, not for a reply he may pass on (D-145)
+        filler = asyncio.create_task(self._thinking_tone(aid)) \
+            if kind == "direct" and ask != "follow_up" and not looked_up else None
         t0 = time.perf_counter()
         try:
             told = self.for_claude(asker[0] if kind != "join" else None, kind)   # core/context.py
