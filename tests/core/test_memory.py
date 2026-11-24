@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 
 from pip_assistant.core import actions
-from pip_assistant.core.memory import Refused
+from pip_assistant.core.memory import Memory, Refused
 from pip_assistant.core.people import Match
 
 NOW = datetime(2026, 11, 5, 9, 0)
@@ -181,3 +181,38 @@ def test_memories_about_someone_are_sent_only_when_they_are_in_the_conversation(
     t = mem.for_claude(present={"s": "Sam", "a": "Alex"}, household=everyone)
     assert "marathon" in t and "not shown" not in t
     assert "marathon" in mem.for_claude()                             # without `present`: everything, as before
+
+
+def test_memories_that_always_go_are_given_apart_from_those_about_the_people_talking(mem):
+    """D-146: rules and household facts go to Claude whoever is talking, so they travel in the fixed part of what
+    he's told (which Claude caches); what's left for each message is only what depends on who's there. Together
+    they are exactly what one text used to hold: nothing is lost."""
+    mem.add("The recycling goes out on Tuesdays by the fridge door", "household")
+    mem.add("Pip says good night at eleven", "rule")
+    mem.add("Sam likes his coffee black", "personal", about=["s"])
+    mem.add("Alex is training for a marathon", "personal", about=["a"])
+    mem.add("The spare key is under the blue pot", "household", owner="s", private=True)
+    fixed = mem.fixed_for_claude()
+    assert fixed.startswith("What you always remember: ") and fixed.index("good night") < fixed.index("recycling")   # rules first
+    assert "coffee" not in fixed and "marathon" not in fixed and "spare key" not in fixed    # nothing personal or private
+    here = dict(present={"s": "Sam"}, household=["Sam", "Alex"], split=True)
+    now = mem.for_claude("s", "sure", **here)
+    assert "coffee" in now and "spare key" in now and "(private)" in now
+    assert "recycling" not in now and "good night" not in now and "marathon" not in now
+    assert "(1 more memories about people not in this conversation, not shown.)" in now
+    assert "spare key" not in mem.for_claude("a", "sure", **here)                # still only for its owner
+    everything = mem.for_claude("s", "sure", present={"s": "Sam"}, household=["Sam", "Alex"])
+    for r in mem.items("active"):                                               # each memory is in exactly one of the two
+        ref = mem.short(r["id"])
+        assert (ref in fixed) + (ref in now) == (ref in everything), r["text"]
+    before = fixed
+    mem.update(mem.items("active")[0]["id"], text="The recycling goes out on Wednesdays by the fridge door")
+    assert [x.split(" ")[0] for x in mem.fixed_for_claude().split("; ")] == [x.split(" ")[0] for x in before.split("; ")]   # same order
+
+
+def test_with_nothing_about_the_people_talking_the_message_carries_no_memories(mem):
+    mem.add("Pip says good night at eleven", "rule")
+    assert mem.for_claude(split=True) == "" and "good night" in mem.fixed_for_claude()
+    assert Memory.always_sent({"visibility": "household", "category": "household"})
+    assert not Memory.always_sent({"visibility": "private", "category": "household"})
+    assert not Memory.always_sent({"visibility": "household", "category": "personal"})

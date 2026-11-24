@@ -131,6 +131,7 @@ def make_thinker(tmp_path, claude):
     th = object.__new__(Thinker)
     th.bus, th.usage, th.claude, th.paused_until = FakeClientBus(), Usage(tmp_path / "pip.db"), claude, 0.0
     th.cancelled, th.recent = set(), deque(maxlen=20)
+    th.weather = type("W", (), {"text": lambda self: asyncio.sleep(0, "Sunny")})()
 
     async def system_prompt(persona=None):
         return "rules"

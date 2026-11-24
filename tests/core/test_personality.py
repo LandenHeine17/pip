@@ -58,10 +58,9 @@ The summary is a short paraphrase in your own words, with no names or personal d
 
 About yourself: to say why you did or didn't do something (didn't answer, stopped, joined in), reply with ONLY: ACTION {{"do": "look", "kind": "why"}}. The same for "settings" (how you're set up), "health" (is something broken), "memory_why" with "id", "docs" with "query" (how a part of you works) and "code" with "query" (where in your code something is). Never guess these.
 
-Use the weather below for weather questions. Only look things up on the web for current facts you genuinely don't know (news, scores, opening hours).
+Use the weather given with each message for weather questions. Only look things up on the web for current facts you genuinely don't know (news, scores, opening hours).
 
-Each message gives what you remember and what's set, then the conversation, then the time and who's speaking.
-Weather: {weather}"""
+Each message gives what you remember about the people talking, what's set and the weather, then the conversation, then the time and who's speaking. What you always remember is at the end of these instructions."""
 
 
 @pytest.fixture(autouse=True)
@@ -112,7 +111,7 @@ def test_file_change_is_picked_up_without_restart(data):
     (data / "personality.md").write_text("You're {name}, a grumpy pirate in {location}.")
     p = prompt(th)
     assert p.startswith("You're Pip, a grumpy pirate in Lincoln, Nebraska.")
-    assert RULES.format(weather="Sunny, 50F") in p
+    assert RULES in p
     time.sleep(0.01)
     (data / "personality.md").write_text("You're {name}, a polite butler.")
     os.utime(data / "personality.md", ns=(time.time_ns(), time.time_ns() + 10**9))
@@ -125,8 +124,8 @@ def test_file_change_is_picked_up_without_restart(data):
 def test_rules_always_present_even_if_personality_is_weird(data, weird):
     (data / "personality.md").write_text(weird)
     p = prompt(make_thinker())
-    assert RULES.format(weather="Sunny, 50F") in p
-    assert p.endswith(RULES.format(weather="Sunny, 50F"))
+    assert RULES in p
+    assert p.endswith(RULES)
 
 
 # ---------------------------------------------------------------- the store
@@ -237,7 +236,7 @@ def test_preview_uses_that_personality_and_nothing_from_the_room(data):
     target, msg_type, d, private = api.conv.sent[0]
     assert (target, msg_type, d["kind"], d["reason"]) == ("thinker", "thinker.ask", "preview", "preview")
     system, user = th.preview_claude.calls[0]
-    assert system.startswith("You're Pip, a pirate.") and RULES.format(weather="Sunny, 50F") in system
+    assert system.startswith("You're Pip, a pirate.") and RULES in system
     assert "Someone: How many legs does a spider have?" in user
     assert "remember" not in user.split("]")[0]           # no memories, schedule or people
     assert th.claude.calls == []                           # Pip's own (warm) process isn't used

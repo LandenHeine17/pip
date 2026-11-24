@@ -97,7 +97,7 @@ async def test_joining_in_never_asks_for_a_change(tmp_path):
 
 
 def test_rules_explain_request_change():
-    rules = RULES.format(weather="Sunny")
+    rules = RULES
     assert '"do": "request_change"' in rules
     for words in ("clearly asks", "Questions about how you", "complaints", "what-ifs", "no names or personal details",
                   "Undo on the Changes page", "never by voice"):

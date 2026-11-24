@@ -22,7 +22,9 @@ CREATE TABLE IF NOT EXISTS trace (
 );
 CREATE INDEX IF NOT EXISTS trace_ts ON trace (ts);
 """
-NOT_TRACED = {"heartbeat", "speech.level"}  # health is recorded separately; the mouth level is ~10 a second
+# Health is recorded separately; the mouth level is ~10 a second; pip-thinker asks for the memories that always go
+# every 20 seconds (D-146), which says nothing about what Pip did
+NOT_TRACED = {"heartbeat", "speech.level", "core.memory_fixed"}
 
 
 class Trace:

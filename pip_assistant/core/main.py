@@ -73,6 +73,9 @@ def build(cfg: dict) -> Core:
     bus.core_handlers["core.people_action"] = lambda m: people_action(people, memory, conv, m)
     bus.core_handlers["core.memory"] = lambda m: (memory.counts(), memory_snapshot(memory, people))
     bus.core_handlers["core.memory_action"] = lambda m: memory_action(memory, people, m)
+    # pip-thinker asks for the memories that go with every request, so the Claude process it starts in advance
+    # already has them in its fixed part (D-146). In `private`: memories are never written to the trace.
+    bus.core_handlers["core.memory_fixed"] = lambda m: ({}, {"text": memory.fixed_for_claude()})
     bus.core_handlers["core.mic"] = lambda m: mic_action(conv, m)
     bus.core_handlers["core.prefs"] = lambda m: conv.set_pref(m.data.get("key"), m.data["value"]) if "key" in m.data \
         else conv.prefs_snapshot()

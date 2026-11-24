@@ -5,7 +5,7 @@ and whether it failed. Each one is counted here, by day and kind, in the `usage`
 Nothing about what was asked or said is stored: only counts, errors and cost.
 
     kinds: answer (said to Pip), mention (his name came up), join (joining in), preview (Settings' "Try it"),
-           builder (self-changes), other
+           summary (a module's conversation notes, the recall module), builder (self-changes), other
 
 The Pro plan doesn't say how much allowance is left, so there is no "80 % used" warning: Pip only knows
 he's hit the limit when Claude says so ("usage limit reached … resets 3pm"). Then joining in and
@@ -20,7 +20,7 @@ from pathlib import Path
 from . import paths
 from .db import connect
 
-KINDS = ("answer", "join", "mention", "preview", "builder", "other")
+KINDS = ("answer", "join", "mention", "preview", "summary", "builder", "other")
 SCHEMA = """CREATE TABLE IF NOT EXISTS usage (
     day TEXT NOT NULL, kind TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 0, errors INTEGER NOT NULL DEFAULT 0,
     cost_usd REAL NOT NULL DEFAULT 0, PRIMARY KEY (day, kind))"""

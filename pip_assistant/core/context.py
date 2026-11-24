@@ -7,6 +7,9 @@ may hear, and memories are only those this person may be told (D-34, core/memory
     for_claude    the schedule and each module's part (calendar, to-dos, …), who lives here and who's
                   talking, their memories, and for a join-in his mood. Sent with `thinker.ask`
                   (Conversation.answer); the room transcript and the question itself are added there.
+                  Memories come in two parts (D-146): `memories_fixed`, the ones that go whoever is talking
+                  (pip-thinker puts them in the fixed part of what Claude is told, which Claude caches), and
+                  `memories`, the ones about the people in this conversation.
     _action_ctx   what core/actions.py and core/commands.py need to check and do actions, as who asked
 """
 import re
@@ -24,12 +27,15 @@ class Context:
             schedule = " ".join(x for x in (schedule, self.modules.summary(Call(speaker=sp, kind=kind))) if x)
         people = self.people.summary(sp) if self.people is not None else ""
         memories = self.memory.for_claude(sp.person_id if sp else None, sp.level if sp else "unknown",
-                                          speaker_name=sp.name if sp else "", **self.who_is_present(sp)) \
+                                          speaker_name=sp.name if sp else "", split=True, **self.who_is_present(sp)) \
             if self.memory is not None else ""
+        # The memories that go whoever is talking (rules, household facts): pip-thinker keeps them in the fixed,
+        # cached part of what Claude is told (D-146). Sent with every request so it always has the current ones.
+        fixed = self.memory.fixed_for_claude() if self.memory is not None else ""
         if kind == "join":   # nobody spoke to him: just who lives here, and how chatty he is
             return {"schedule": schedule, "people": people.split(". ", 1)[-1], "memories": memories,
-                    "mood": MOODS[self.joining.mood]}
-        return {"schedule": schedule, "people": people, "memories": memories}
+                    "memories_fixed": fixed, "mood": MOODS[self.joining.mood]}
+        return {"schedule": schedule, "people": people, "memories": memories, "memories_fixed": fixed}
 
     def who_is_present(self, sp) -> dict:
         """Who's part of the conversation (D-137): the speaker, and anyone whose name is in the room transcript

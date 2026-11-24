@@ -6,7 +6,7 @@
 <title>Pip · What Pip sends to Claude</title>
 <link rel="stylesheet" href="/pip.css">
 <style>
-/* What Pip sends to Claude, and what it costs (owner's feedback, 2026-11-10). The fixed part is shown in full;
+/* What Pip sends to Claude, and what it costs (owner's feedback, 2026-11-10; D-146). The fixed part is shown in full;
    each request is shown only as sizes and Claude's own token counts: what people said is never shown or kept
    (CLAUDE.md rule 1). pip-thinker keeps the last 20 requests in memory only (thinker/main.py on_prompt). */
 table{width:100%;border-collapse:collapse;font-size:.88rem}
@@ -29,7 +29,7 @@ details{margin:8px 0} summary{cursor:pointer;font-weight:600}
 <section>
   <div class="head"><h2>Recent requests</h2><span class="sub" id="sum"></span></div>
   <div class="sub" style="margin-bottom:8px"><b>Sent</b>: tokens Claude read fresh. <b>Cached</b>: tokens it re-read from its cache (the fixed part,
-    mostly; much cheaper). <b>Written</b>: tokens added to the cache. <b>Reply</b>: tokens in Claude's answer. A token is about 4 letters.
+    mostly; about a tenth of the price). <b>Written</b>: tokens added to the cache (each new message; the dearest kind, so what changes every time is kept small). <b>Reply</b>: tokens in Claude's answer. A token is about 4 letters.
     Kept in memory only, the last 20; they start again when pip-thinker restarts.</div>
   <table><thead><tr><th>When</th><th>Kind</th><th class="n">Sent</th><th class="n">Cached</th><th class="n">Written</th><th class="n">Reply</th><th class="n">Cost</th><th>What made it up (letters)</th></tr></thead>
     <tbody id="recent"><tr><td colspan="8" class="sub">Loading…</td></tr></tbody></table>
@@ -38,7 +38,9 @@ details{margin:8px 0} summary{cursor:pointer;font-weight:600}
 <section>
   <div class="head"><h2>The fixed part (sent with every request)</h2><span class="sub" id="fixedsum"></span></div>
   <div class="sub">This is the same every time, so Claude caches it. Change the personality on the <a href="/settings">Settings</a> page;
-    the rules are in <code>thinker/main.py</code> (RULES); each module's part is its <code>module.toml</code> [claude].</div>
+    the rules are in <code>thinker/main.py</code> (RULES); each module's part is its <code>module.toml</code> [claude]. The memories here
+    are the ones that go whoever is talking (rules and household facts, D-146); memories about one person travel with each
+    request, only while that person is in the conversation. The time, the weather and what's set also travel with each request.</div>
   <div id="fixed"></div>
 </section>
 </main>
@@ -64,8 +66,9 @@ async function load(){
       <td class="parts">fixed part ${num(x.system_chars)} · this request ${num(x.user_chars)}${parts ? ": " + parts : ""}</td></tr>`;
   }).join("") || `<tr><td colspan="8" class="sub">No requests since pip-thinker started. Ask Pip something.</td></tr>`;
   const f = r.fixed || {};
-  const pieces = [["Personality", f.personality || ""], ["Rules (with today's weather)", f.rules || ""],
-                  ...Object.entries(f.modules || {}).map(([name, text]) => [`Module: ${name}`, text])];
+  const pieces = [["Personality", f.personality || ""], ["Rules", f.rules || ""], ["What he can do", f.capabilities || ""],
+                  ...Object.entries(f.modules || {}).map(([name, text]) => [`Module: ${name}`, text]),
+                  ["Memories that always go", f.memories || ""]].filter(([, text]) => text);
   const all = pieces.reduce((a, [, t]) => a + t.length, 0);
   $("fixedsum").textContent = `${num(all)} letters · about ${tokensAbout(all)} tokens`;
   $("fixed").innerHTML = pieces.map(([title, text]) => `<details><summary>${esc(title)} <span class="sub">· ${num(text.length)} letters, about ${tokensAbout(text.length)} tokens</span></summary>

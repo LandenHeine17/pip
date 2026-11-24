@@ -100,7 +100,9 @@ async def test_claude_hears_who_is_talking_and_what_pip_remembers(tmp_path):
     conv.stt.text = "Pip, how do I take my coffee?"
     await ears.emit("heard.utterance", *utt("barge_in", voice("alex")))
     await asyncio.sleep(0.4)
-    assert "Alex likes his coffee black" in [x for x in got if x[0] == "thinker.ask"][-1][2]["memories"]
+    told = [x for x in got if x[0] == "thinker.ask"][-1][2]
+    # a preference the whole household may hear: with the memories that always go, in the fixed part (D-146)
+    assert "Alex likes his coffee black" in told["memories_fixed"] and "coffee" not in told["memories"]
     trace = json.dumps(bus.trace.recent())
     assert "coffee" not in trace and "Alex" not in trace                 # never logged (D-34)
     await finish(bus, tasks)

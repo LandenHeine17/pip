@@ -2,7 +2,8 @@
 
 Takes:  thinker.ask (request; data.answer_id, data.kind = direct / follow_up / name_after
         (+ data.before: how many lines came before his name, D-134) / mentioned / join; private: text, transcript
-        (the room conversation), schedule, people, memories, mood, looked_up: all filled in by pip-core)
+        (the room conversation), schedule, people, memories (about the people talking), memories_fixed (the
+        ones that always go, D-146), mood, looked_up: all filled in by pip-core)
         → streams answer.sentence events, then replies with the whole answer (and any ACTION line, privately)
         thinker.ask with data.kind = preview (private: personality, question): the Settings page's "Try it".
         Answers with that personality, nothing from the room, nothing spoken or done; replies private.text.
@@ -12,8 +13,11 @@ Sends:  answer.sentence {answer_id} (+ private.text) · answer.searching {answer
         until then (D-69; core/joining.py). Replies to people keep trying.
 Usage:  every request is counted by kind in the usage table (common/usage.py); today's and the week's totals
         and paused_until go out with each heartbeat (the dashboard's Programs section shows them).
-System prompt = the personality (common/personality.py: ~/pip-data/personality.md, re-read when it changes)
-+ RULES (fixed here) + each module's [claude] instructions (module.toml).
+System prompt (the fixed part: the same for every request, so Claude re-reads it from its cache at about a
+tenth of the price) = the personality (common/personality.py: ~/pip-data/personality.md, re-read when it changes)
++ RULES (fixed here) + what he can do + each module's [claude] instructions (module.toml) + the memories that go
+whoever is talking (D-146; from pip-core). Anything that changes often (the time, the weather, what's set) goes
+in the message instead: a changed fixed part is paid for in full again and needs a newly started Claude process.
 Offline, Pip's own commands (timers, alarms, reminders, calendar) still work in pip-core; the
 offline Qwen fallback for chat (D-75, PIP-NEW-081) isn't built (not now, D-128).
 """
@@ -98,11 +102,12 @@ ONLY: ACTION {{"do": "look", "kind": "why"}}. The same for "settings" (how you'r
 something broken), "memory_why" with "id", "docs" with "query" (how a part of you works) and "code" with \
 "query" (where in your code something is). Never guess these.
 
-Use the weather below for weather questions. Only look things up on the web for current facts you genuinely \
-don't know (news, scores, opening hours).
+Use the weather given with each message for weather questions. Only look things up on the web for current \
+facts you genuinely don't know (news, scores, opening hours).
 
-Each message gives what you remember and what's set, then the conversation, then the time and who's speaking.
-Weather: {weather}"""
+Each message gives what you remember about the people talking, what's set and the weather, then the \
+conversation, then the time and who's speaking. What you always remember is at the end of these instructions.\
+""".format()   # (no blanks to fill in: .format() only turns the doubled braces of the ACTION examples into single ones)
 
 
 async def _nothing(*_):
@@ -144,7 +149,13 @@ class Thinker:
         self.show_usage()
 
     name = "Pip"   # fills {name} in the personality; settings ([pip] name) override it in __init__
-    KIND = {"direct": "answer", "follow_up": "answer", "name_after": "answer", "mentioned": "mention", "join": "join", "preview": "preview"}
+    capabilities = ""
+    # The memories that go whoever is talking (rules, household facts: core/memory.py fixed_for_claude), kept in the
+    # fixed part of what Claude is told (D-146). pip-core sends them with every request, and keep_warm asks for
+    # them, so the Claude process started in advance already has the current ones.
+    memories_fixed = ""
+    KIND = {"direct": "answer", "follow_up": "answer", "name_after": "answer", "mentioned": "mention", "join": "join",
+            "preview": "preview", "summary": "summary"}
 
     # ---------------------------------------------------------------- the usage meter (D-69, PIP-NEW-089)
     def show_usage(self) -> None:
@@ -205,12 +216,14 @@ class Thinker:
 
     async def prompt_parts(self, persona: str | None = None) -> dict:
         """The fixed part of what Claude is told, piece by piece (the "What Pip sends" page): the personality (the
-        saved one, or `persona` for a preview), the rules (with today's weather) and each module's instructions.
-        None of it is anything people said."""
+        saved one, or `persona` for a preview), the rules, what he can do, each module's instructions and the
+        memories that always go (D-146; not for a preview, which uses nothing from the household). None of it is
+        anything people said: memories are facts someone asked him to keep, shown on the dashboard already."""
+        preview = persona is not None
         persona = personality.read()[0] if persona is None else persona
-        return {"personality": personality.render(persona, self.name, self.location),
-                "rules": RULES.format(weather=await self.weather.text() or "not available"),
-                "modules": dict(self.module_texts)}
+        return {"personality": personality.render(persona, self.name, self.location), "rules": RULES,
+                "capabilities": self.capabilities, "modules": dict(self.module_texts),
+                "memories": "" if preview else self.memories_fixed}
 
     def remember_request(self, kind: str, system: str, msg: Message, user: str, info: dict) -> None:
         """One request's sizes and Claude's token counts, for the "What Pip sends" page. Only lengths and numbers:
@@ -221,7 +234,8 @@ class Thinker:
             "at": round(time.time()), "kind": kind, "system_chars": len(system), "user_chars": len(user),
             "parts": {"room conversation": sum(len(x) + 1 for x in lines), "lines heard": len(lines),
                       "who's here": len(p.get("people", "")), "what's set (timers, calendar, to-dos…)": len(p.get("schedule", "")),
-                      "memories": len(p.get("memories", "")), "looked up": len(p.get("looked_up", ""))},
+                      "memories": len(p.get("memories", "")), "looked up": len(p.get("looked_up", "")),
+                      "memories in the fixed part": len(self.memories_fixed)},
             "tokens": info.get("usage") or {}, "cost_usd": info.get("cost_usd"), "searched": bool(info.get("searched"))})
 
     SUMMARY_SYSTEM = (
@@ -257,10 +271,12 @@ class Thinker:
 
     async def system_prompt(self, persona: str | None = None) -> str:
         """The personality (the saved one, or `persona` for a preview), then the fixed rules, what he can do
-        (D-128) and the modules'. Kept stable (no clock in it), so the pre-started Claude process stays usable
-        until the weather or the personality changes."""
+        (D-128), the modules' and, last, the memories that always go (D-146). Kept stable (no clock and no
+        weather in it), so Claude keeps re-reading it from its cache and the pre-started Claude process stays
+        usable until the personality or a memory changes."""
         p = await self.prompt_parts(persona)
-        return "\n\n".join(x for x in (p["personality"], p["rules"], self.capabilities, *p["modules"].values()) if x)
+        return "\n\n".join(x for x in (p["personality"], p["rules"], p["capabilities"], *p["modules"].values(),
+                                       p["memories"]) if x)
 
     ASK = {   # how each kind of request is asked (D-137: Ziggletron's wording where it had one)
         "direct": ("The last line was said to you. Reply with exactly what you'll say. (Just PASS if they told you "
@@ -300,9 +316,11 @@ class Thinker:
     @classmethod
     def user_text(cls, text: str, transcript: list[str] | None = None, now: str | None = None, schedule: str = "",
                   people: str = "", memories: str = "", kind: str = "direct", mood: str = "", looked_up: str = "",
-                  before: int = 0) -> str:
+                  before: int = 0, weather: str = "") -> str:
         """What Claude reads, in Ziggletron's order (D-137): what's remembered and set, then the room conversation,
-        then the time, who's speaking and what's asked, so the last thing it reads is the moment it answers."""
+        then the time, who's speaking and what's asked, so the last thing it reads is the moment it answers.
+        `memories` are only those about the people talking; the rest are in the fixed part (D-146). The weather
+        is here, not in the fixed part: it changes every half hour, and the fixed part must stay the same."""
         now = now or cls.time_now()
         lines = list(transcript or [])
         if not lines and text:
@@ -310,7 +328,7 @@ class Thinker:
         ask = cls.ASK.get(kind, cls.ASK["direct"]).format(mood=mood, before=int(before or 1))
         convo = "\n".join(lines) if lines else "(nothing yet)"
         look = f"\n\nYou asked to look this up first (now answer with it; don't look again): {looked_up}" if looked_up else ""
-        context = "\n\n".join(x for x in (memories, schedule) if x)
+        context = "\n\n".join(x for x in (memories, schedule, f"Weather: {weather}" if weather else "") if x)
         moment = " ".join(x for x in (f"It's {now}.", people) if x)
         return (f"{context}\n\n" if context else "") + \
             f"The conversation so far, oldest first:\n{convo}{look}\n\n{moment} {ask}"
@@ -350,11 +368,14 @@ class Thinker:
         kind = msg.data.get("kind", "direct")
         if kind == "join" and self.paused():   # usage limit reached: no joining in until it resets (D-69)
             return msg.reply({"passed": True, "paused": True}, private={"text": ""}, source="thinker")
+        if "memories_fixed" in msg.private:   # the current ones, straight from pip-core (D-146)
+            self.memories_fixed = msg.private["memories_fixed"] or ""
         system = await self.system_prompt()
         user = self.user_text(msg.private.get("text", ""), msg.private.get("transcript"),
                               schedule=msg.private.get("schedule", ""), people=msg.private.get("people", ""),
                               memories=msg.private.get("memories", ""), kind=kind, mood=msg.private.get("mood", ""),
-                              looked_up=msg.private.get("looked_up", ""), before=msg.data.get("before") or 0)
+                              looked_up=msg.private.get("looked_up", ""), before=msg.data.get("before") or 0,
+                              weather=await self.weather.text() or "not available")
         try:
             text, info = await self._ask(self.claude, kind, aid, system, user, sentence, searching, held=kind == "join")
             if info.get("only_notes") and not info.get("cancelled"):
@@ -370,7 +391,12 @@ class Thinker:
             # The CLI answered with an error (a usage limit, …) rather than words: say so, don't go quiet
             return msg.reply({"error": "Claude reported an error"}, source="thinker")
         self.remember_request(kind, system, msg, user, info)
-        info.pop("usage", None)            # the token counts stay here, for the page (not in the reply or the trace)
+        # How much was sent and what Claude counted, into the reply and so the decision trace (numbers only, never
+        # the words), so a change to what Pip sends can be compared before and after (D-146)
+        tokens = info.pop("usage", None) or {}
+        info.update(system_chars=len(system), user_chars=len(user), tokens_sent=tokens.get("input_tokens"),
+                    tokens_cached=tokens.get("cache_read_input_tokens"),
+                    tokens_written=tokens.get("cache_creation_input_tokens"), tokens_reply=tokens.get("output_tokens"))
         action = info.pop("action", None)  # what was asked for: private, like everything people say (D-34)
         info["action"] = bool(action)
         if info.get("passed"):
@@ -389,10 +415,24 @@ class Thinker:
         self.claude.cancel(aid)
         return {"ok": True}
 
+    async def fetch_memories_fixed(self) -> None:
+        """Ask pip-core for the memories that go with every request (D-146), so the process started in advance
+        has them: after a restart, and within 20 seconds of a memory being saved, changed or forgotten. If
+        pip-core doesn't answer, the last ones stay; the next request brings the current ones anyway."""
+        try:
+            reply = await self.bus.request("core", "core.memory_fixed", timeout=5)
+            if "text" in reply.private:
+                self.memories_fixed = reply.private["text"] or ""
+        except Exception as e:
+            log.debug("couldn't ask pip-core for the memories: %s", type(e).__name__)
+
     async def keep_warm(self) -> None:
-        """Keep a Claude process started and waiting, so the next answer starts faster."""
+        """Keep a Claude process started and waiting, so the next answer starts faster. The weather is fetched
+        here too (it's cached for half an hour), so an answer never waits for the forecast."""
         while True:
+            await self.fetch_memories_fixed()
             try:
+                await self.weather.text()
                 await self.claude.prepare(await self.system_prompt())
             except Exception as e:
                 log.warning("couldn't pre-start Claude: %s", e)

@@ -188,6 +188,7 @@ async def test_what_pip_sends_keeps_sizes_and_tokens_never_the_words(monkeypatch
             return "sunny"
     th = Thinker.__new__(Thinker)
     th.recent, th.module_texts, th.location, th.weather = deque(maxlen=20), {"calendar": "Calendar: …"}, "Lincoln", Weather()
+    th.memories_fixed = "What you always remember: #m1a2b3 The bins go out on Tuesdays."
     secret = "my bank PIN is in the drawer"
     msg = Message("request", "thinker.ask", data={"kind": "direct"},
                   private={"text": secret, "transcript": [f"Sam: {secret}"], "memories": "Sam likes jazz", "schedule": "a timer"})
@@ -199,7 +200,55 @@ async def test_what_pip_sends_keeps_sizes_and_tokens_never_the_words(monkeypatch
     assert r["parts"]["memories"] == len("Sam likes jazz") and r["parts"]["lines heard"] == 1
     assert secret not in repr(reply.private["recent"]) and "jazz" not in repr(reply.private["recent"])   # never the words
     fixed = reply.private["fixed"]
-    assert "sunny" in fixed["rules"] and fixed["modules"] == {"calendar": "Calendar: …"} and fixed["personality"]
+    assert fixed["rules"].startswith("# How this works") and fixed["modules"] == {"calendar": "Calendar: …"} and fixed["personality"]
+    assert "sunny" not in repr(fixed)                       # the weather travels with each request instead (D-146)
+    assert "Tuesdays" in fixed["memories"] and r["parts"]["memories in the fixed part"] == len(th.memories_fixed)
+
+
+async def test_the_fixed_part_holds_the_memories_that_always_go_and_never_the_weather():
+    """D-146: Claude re-reads the fixed part from its cache at about a tenth of the price, so the memories that go
+    whoever is talking live there, and nothing that changes often does: the weather (new every half hour) used to
+    sit in it, which threw the cache away and restarted the waiting Claude process each time."""
+    from pip_assistant.common.messages import Message
+
+    class Weather:
+        now = "Sunny, 50F"
+
+        async def text(self):
+            return self.now
+
+    class Claude:
+        asked = []
+
+        async def ask(self, aid, system, user, *a, **kw):
+            self.asked.append((system, user))
+            return "Sure.", {}
+
+    th = Thinker.__new__(Thinker)
+    th.module_texts, th.location, th.weather, th.claude, th.cancelled = {}, "Lincoln", Weather(), Claude(), set()
+    th.paused, th.remember_request = (lambda: False), (lambda *a: None)
+    th.bus = type("B", (), {"emit": lambda self, *a, **k: asyncio.sleep(0)})()
+
+    async def _ask(cli, kind, aid, *args, **kw):
+        return await cli.ask(aid, *args, **kw)
+    th._ask = _ask
+    before = await th.system_prompt()
+
+    def ask(fixed):
+        return th.on_ask(Message("request", "thinker.ask", source="core", id="r", data={"answer_id": "a", "kind": "direct"},
+                                 private={"text": "hi", "memories": "What you remember about the people talking: #m2 Sam likes jazz.",
+                                          "memories_fixed": fixed}))
+    reply = await ask("What you always remember: #m1 The bins go out on Tuesdays.")
+    system, user = Claude.asked[-1]
+    assert system == before + "\n\nWhat you always remember: #m1 The bins go out on Tuesdays."   # last, after everything else
+    assert "Tuesdays" not in user and "jazz" in user and "jazz" not in system and "Weather: Sunny, 50F" in user
+    assert reply.data["system_chars"] == len(system) and reply.data["user_chars"] == len(user)   # sizes, for the trace
+    th.weather.now = "Rain, 41F"                             # the weather changes: the fixed part doesn't
+    await ask("What you always remember: #m1 The bins go out on Tuesdays.")
+    assert Claude.asked[-1][0] == system and "Weather: Rain, 41F" in Claude.asked[-1][1]
+    await ask("")                                            # the last one forgotten: gone from the fixed part at once
+    assert Claude.asked[-1][0] == before
+    assert "Tuesdays" not in await th.system_prompt("You're a pirate.")   # a Settings preview uses nothing of the household
 
 
 def test_narrating_the_request_is_not_said():
@@ -259,6 +308,7 @@ async def test_a_reply_of_only_notes_is_asked_again(monkeypatch):
 
     th = object.__new__(Thinker)
     th.claude, th.cancelled = Notes(), set()
+    th.weather = type("W", (), {"text": lambda self: asyncio.sleep(0, "Sunny")})()
     th.paused = lambda: False
     th.remember_request = lambda *a: None
 

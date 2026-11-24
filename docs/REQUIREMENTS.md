@@ -28,7 +28,7 @@ Where the archive says one thing and a decision says another, **the decision win
 
 Requirement rows below already include their own overrides (struck-through or marked with the decision).
 
-## 1. New requirements (100)
+## 1. New requirements (101)
 
 | ID | Name | What it does | Milestone | Priority | Detail |
 |---|---|---|---|---|---|
@@ -132,6 +132,7 @@ Requirement rows below already include their own overrides (struck-through or ma
 | PIP-NEW-097 | Swappable voice | Every text-to-speech engine (Piper, Kokoro, or a future local or cloud voice) sits behind one voice interface. Engine, voice and speed are chosen in Settings and can be changed at any time; adding an engine is one module from the template (PIP-NEW-092) with no changes elsewhere. On a change, Pip re-learns its own voice for echo rejection and re-makes its cached phrases. The same pattern applies to speech-to-text (PIP-NEW-008) and the AI model (D-05) | M1a (**voice and speed chosen in Settings, 2026-11-09; only the Piper engine so far**) | P1 | [04 Part B](archive/pip-v2-proposals-2026-11/04-SPEECH-RECOGNITION-RESEARCH.md) |
 | PIP-NEW-099 | YouTube videos on the monitor | "Pip, pull up a YouTube video explaining …": Claude makes a search, the `youtube` module finds a video that may play outside YouTube (YouTube Data API, the owner's key) and covers the monitor with it, the face small beside it. Said to Pip by name, pause / play ("stop the video" pauses) / fast forward / go back (10 s, or as said) / go to a time / start over / louder / quieter / mute / a volume / a different one / take down the video are done at once without Claude (also as a reply right after he speaks); other wordings through Claude. The video plays quieter while Pip listens, thinks or talks, and Pip doesn't hear it (tested). Taking it down puts the screen back as it was; it's taken down by itself a minute after it ends or after 30 minutes paused; nothing is kept | **Built 2026-11-23 (D-141)** | P3 | — |
 | PIP-NEW-100 | Games | Trivia (Open Trivia DB, or questions Claude writes for any other topic; A to D on the monitor; the first answer counts, by letter or by the answer, said to Pip or out loud), 20 questions (Pip thinks of something, Claude answers the yes-or-no questions), would you rather (Claude roasts the answers) and guess the song (Deezer's 30-second clips on the monitor, sound only; the song or the singer scores); skip, repeat, play it again, the score and stop by voice without Claude; points to whoever Pip recognises, else "Guest"; an all-time board on a Games page. Only when asked, any hour. A module that plugs in and out on its own: nothing else names it | M3: **Built 2026-11-24 (D-144)** | P3 | — |
+| PIP-NEW-101 | Cheap requests | What Claude is told with every request is kept cheap: what rarely changes (personality, rules, modules' instructions, the memories that go whoever is talking) is in the fixed part Claude caches; only what depends on the moment is in each message; nothing that changes often is in the fixed part. No memory is left out to save money. Each answer's sizes and token counts (never the words) are in the trace and on the Claude page | M3: **Built 2026-11-24 (D-146)** | P2 | — |
 
 ## 2. Ziggletron features and what happens to them (89)
 
