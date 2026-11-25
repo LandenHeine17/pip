@@ -343,7 +343,7 @@ flowchart TD
 - "What's in the hall of fame?" or "tell me the one about the goose": Pip looks it up (a moment longer to answer) and tells it. With each request he gets only a few titles (starred ones first), so he can bring one up himself; switch that off in Settings (`bring_up`).
 - "Pip, show the hall of fame" puts one on the monitor for a minute ("take it down" removes it); a Hall of Fame box can also be added to a screen, showing a different moment each day.
 - The **Hall of Fame page** lists them: star, edit, add one yourself, show on the monitor, delete.
-- **Memories that are really funny moments** can be moved over: every memory on the dashboard's Memory card has a "→ Hall of Fame" button, and `tools/propose_moments.py` has Claude pick the likely ones, which then wait under "to review" for Move or Keep. A moved memory is a retelling, not exact words.
+- **Memories that are really funny moments** can be moved over: every memory on the dashboard's Memory card has a "→ Hall of Fame" button, and `tools/propose_moments.py` has Claude pick the likely ones, which then wait under "to review" for Move or Keep. A moved memory is a retelling, not exact words; a label in front of it ("Pip's quote list (lines that got big laughs): …") is taken off, leaving the quote with who said it.
 
 ### The owner's conversation rules (CB-001–050), where they stand (2026-11-12)
 From the owner's spec `~/Pip_Conversational_Behavior_Specification_v2.md` (background; decisions win).

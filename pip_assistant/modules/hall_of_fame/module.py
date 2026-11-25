@@ -70,6 +70,43 @@ def clean_lines(value, most: int) -> list[str]:
     return out
 
 
+# A memory that was really a moment often began with a label saying so ("Pip's quote list (lines that got big
+# laughs): …", "Hall of Fame quote from Pip, said when …: …"). In the Hall of Fame the label says nothing: it's taken
+# off, and what's left is the quote with who said it (`untagged`).
+TAG = re.compile(r"^(?:(?P<who>\w+)'s quote list\s*(?:\([^)]*\))?"
+                 r"|hall of fame(?: quotes?)?(?: from (?P<from>\w+))?(?:,\s*(?P<note>[^:]*))?)\s*:\s*", re.I)
+QUOTED = re.compile(r"^(?:then\s+)?(?:(?P<who>\w+):\s*)?(?P<q>['\"])")
+
+
+def untagged(text: str) -> tuple[str, list[str]]:
+    """A memory's text as a moment: (title, lines). A label in front is taken off; a quote that follows becomes
+    "Pip: the words" (several, if it goes "…' then '…'" or back and forth), and anything said around it (when it
+    was, who asked) a line in brackets. Text with no label and no quote is kept as it is."""
+    text = re.sub(r"\s+", " ", str(text or "")).strip()
+    m = TAG.match(text)
+    if not m:
+        return text[:TITLE_CHARS], [text[:LINE_CHARS]]
+    who = (m.group("who") or m.group("from") or "").strip()
+    note = re.sub(r"^said\s+", "", (m.group("note") or "").strip())
+    rest, lines = text[m.end():].strip(), []
+    while (q := QUOTED.match(rest)) and (who or q.group("who")):
+        mark, start = q.group("q"), q.end()
+        # the closing mark: the first one not inside a word (an apostrophe in "I'll" or "Landen's" is)
+        end = next((i for i in range(start, len(rest)) if rest[i] == mark and (i + 1 == len(rest) or not rest[i + 1].isalnum())), -1)
+        if end < 0:
+            break
+        who = q.group("who") or who
+        lines.append(f"{who}: {rest[start:end].strip()}"[:LINE_CHARS])
+        rest = rest[end + 1:].strip()
+    if not lines:
+        return rest[:TITLE_CHARS], [rest[:LINE_CHARS]]
+    around = [x for x in (note, re.sub(r"^\((.*)\)$", r"\1", rest).strip()) if x]
+    if around:
+        lines.append(f"({'; '.join(around)})"[:LINE_CHARS])
+    first = lines[0].split(": ", 1)[1]
+    return (first if len(first) <= TITLE_CHARS else first[:TITLE_CHARS - 1].rstrip() + "…"), lines
+
+
 def people_in(lines: list[str]) -> str:
     """Who said the lines ("Sam: …"), without Pip, unknown voices, or the "?" of someone he's only fairly sure of."""
     names = []
@@ -298,11 +335,11 @@ class HallOfFame(Module):
         """A memory that's really a funny moment, moved here from the Memory page (the owner's click). There are
         no exact words for it: the memory's text is the moment, marked as from a memory, with its own date and
         the people it was about (`about_names`), so removing one of them removes it too."""
-        text = re.sub(r"\s+", " ", str(memory.get("text") or "")).strip()
-        if not text:
+        title, lines = untagged(memory.get("text"))
+        if not lines[0]:
             return False
-        if not self.same_as([text]):
-            self.keep(text[:TITLE_CHARS], [text[:LINE_CHARS]], "from a memory", at=memory.get("created"),
+        if not self.same_as(lines):
+            self.keep(title, lines, "from a memory", at=memory.get("created"),
                       people=", ".join(n for n in memory.get("about_names") or [] if n and n != "?"))
         return True
 

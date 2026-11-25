@@ -206,3 +206,21 @@ def test_nothing_said_reaches_the_trace(env, monkeypatch):
         await asyncio.sleep(0)
     asyncio.run(go())
     assert sent and "goose" not in json.dumps(sent) and ("saved", {"lines": 3}, None) in sent
+
+
+def test_a_moved_memorys_label_is_taken_off_and_its_quote_kept_with_who_said_it():
+    """Owner, 2026-11-25: memories moved over still began "…quote list (lines that got big laughs): …". The label
+    goes; the quote stays, with who said it, and what was said around it in brackets."""
+    from pip_assistant.modules.hall_of_fame.module import untagged
+    assert untagged("Pip's quote list (lines that got big laughs): 'I'd never. That's the fan's doing.' after Sam blamed him") == \
+        ("I'd never. That's the fan's doing.", ["Pip: I'd never. That's the fan's doing.", "(after Sam blamed him)"])
+    assert untagged('Hall of Fame quote from Pip, said when Alex asked for a hug: "No arms, Alex."') == \
+        ("No arms, Alex.", ["Pip: No arms, Alex.", "(when Alex asked for a hug)"])
+    assert untagged("Hall of Fame quote from Pip: 'Go to bed.' Sam: 'No.' Pip: 'Fine.'")[1] == ["Pip: Go to bed.", "Sam: No.", "Pip: Fine."]
+    assert untagged("Pip's quote list (lines that got big laughs): 'One.' then 'Two.' (for the count)")[1] == \
+        ["Pip: One.", "Pip: Two.", "(for the count)"]
+    assert untagged("Hall of Fame: Sam said the goose 'had it coming'") == ("Sam said the goose 'had it coming'", ["Sam said the goose 'had it coming'"])
+    plain = "Sam once argued with the toaster for ten minutes"
+    assert untagged(plain) == (plain, [plain])                                    # no label: as it is
+    long = untagged("Pip's quote list: '" + "ha " * 60 + "'")
+    assert len(long[0]) <= 80 and long[0].endswith("…") and long[1][0].startswith("Pip: ha ha")
