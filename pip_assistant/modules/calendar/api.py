@@ -16,10 +16,12 @@ class CalendarAPI:
         self._cal = calendar   # module.py's Calendar
 
     def events_on(self, day: date, call) -> list[dict]:
-        """That day's events the person asking may hear about."""
+        """That day's events the person asking may hear about, without the ones Pip doesn't bring up (muted by
+        name, or on an "only when asked" calendar, D-151): this is for things he says unasked, like a briefing."""
+        skip = self._cal.store.not_brought_up()
         return [{"id": ev["id"], "title": ev["title"], "at": at.timestamp(), "all_day": bool(ev["all_day"]),
                  "location": ev.get("location", "")}
-                for at, ev in self._cal.store.events_on(day) if self._cal.may_hear(ev, call)]
+                for at, ev in self._cal.store.events_on(day) if self._cal.may_hear(ev, call) and not skip(ev)]
 
     def add_event(self, title: str, at: datetime, call, all_day: bool = False) -> dict:
         """Add an event (to the speaker's main calendar if Pip is sure who it is, else the household's)."""

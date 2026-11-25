@@ -45,6 +45,11 @@ def look(reg, call=None, first="2026-11-07", last="2026-12-06"):
     return say(reg, "look:calendar", {"from": first, "to": last}, call)
 
 
+def names(reg, call=None):
+    """The calendars' names, which Claude looks up now (D-151: they used to go with every request)."""
+    return say(reg, "look:calendar", {"calendars": True}, call)
+
+
 def say(reg, verb, a, call=None):
     act = reg.action(verb)
     call = call or Call(now=NOW)
@@ -56,7 +61,7 @@ async def test_pips_own_calendar_works_without_google(env):
     assert say(reg, "add:event", {"title": "dentist", "at": "2026-11-13T15:00", "heads_up_minutes": 30}) == \
         "Added dentist, Friday at 3 PM."
     assert "dentist Fri 2026-11-13 15:00–16:00" in look(reg)
-    assert "Fri 1" in reg.summary(Call(now=NOW))      # the short summary only counts it (D-102)
+    assert "dentist" not in reg.summary(Call(now=NOW))   # only today goes with each request (D-151)
     [h] = sched.active(("event",))
     assert datetime.fromtimestamp(h["due"]) == datetime(2026, 11, 13, 14, 30)
     with pytest.raises(Invalid):
@@ -83,7 +88,7 @@ async def test_two_way_sync_with_google(env):
     # Private events: never told to Claude, no heads-up (D-99); others get Google's default 10-minute reminder
     summary = look(reg, me(landen))
     assert "Chem lab" in summary and "Hamilton Hall" in summary and "Doctor" not in summary
-    assert "Landen's main (household)" in reg.summary(me(landen))
+    assert "Landen's main (household)" in names(reg, me(landen))
     heads = {h["label"] for h in sched.active(("event",))}
     assert "Chem lab" not in heads and "Doctor" not in heads     # only the calendar's automatic reminder: no heads-up (D-109)
     main = next(c for c in cal.store.calendars() if c["is_primary"])
@@ -198,10 +203,12 @@ async def test_claude_gets_a_short_calendar_and_looks_further_ahead(env):
         say(reg, "add:event", {"title": f"class {d}", "at": f"2026-11-{d}T09:00"})
     say(reg, "add:event", {"title": "far away", "at": "2026-11-28T09:00"})
     full = reg.summary(Call(now=NOW))
-    assert "lunch" in full and "brunch" in full and "Tue 2" in full and "Thu 1" in full
-    assert "class" not in full and "far away" not in full and "breakfast" not in full
+    assert full == "Calendar, rest of today: " + full.split(": ", 1)[1] and "lunch" in full and "look it up" in full
+    assert "brunch" not in full and "class" not in full and "far away" not in full and "breakfast" not in full   # D-151
+    assert "Calendars" not in full
     join = reg.summary(Call(now=NOW, kind="join"))
     assert "lunch" in join and "brunch" not in join and "Calendars" not in join and len(join) < len(full)
+    assert "brunch Sun 2026-11-08" in say(reg, "look:calendar", {"date": "2026-11-08"})   # tomorrow is a look-up now
     assert "far away Sat 2026-11-28" in say(reg, "look:calendar", {"date": "2026-11-28"})
     assert "nothing" in say(reg, "look:calendar", {"from": "2026-11-29", "to": "2026-11-30"})
     with pytest.raises(Invalid):
@@ -215,7 +222,7 @@ async def test_the_real_summary_stays_small(env):
         for h in range(9, 16):
             say(reg, "add:event", {"title": f"meeting with the project group {h}", "at": f"2026-11-{d:02d}T{h:02d}:00",
                                    "location": "Hamilton Hall"})
-    assert len(reg.summary(Call(now=NOW))) < 1800                     # was ~9,000 characters
+    assert len(reg.summary(Call(now=NOW))) < 900                      # was ~9,000 characters, then ~1,800 (D-151)
     assert len(reg.summary(Call(now=NOW, kind="join"))) < 900
 
 
@@ -240,9 +247,11 @@ async def google_with_two_calendars(env, narrow=False):
 async def test_pip_knows_which_calendar_and_moves_events(env):
     reg, cal, fake, people, sched, clock = env
     landen = await google_with_two_calendars(env)
-    s = reg.summary(me(landen))
+    s = names(reg, me(landen))
     assert "Landen's main (household)" in s and "Landen: Work" in s and "Landen: Holidays (read-only)" in s
-    assert "Abby & Landen (shared with them)" in s and "standup" in s and "[Landen: Work]" in s
+    assert "Abby & Landen (shared with them)" in s
+    s = reg.summary(me(landen)) + look(reg, me(landen))
+    assert "standup" in s and "[Landen: Work]" in s
     # Adding to a named calendar
     assert say(reg, "add:event", {"title": "gym", "at": "2026-11-07T17:00", "calendar": "work"}, me(landen)) == \
         "Added gym, today at 5 PM, on Landen's Work calendar."
@@ -277,14 +286,14 @@ async def test_making_renaming_colouring_and_deleting_calendars(env):
     await say(reg, "change:calendar", {"calendar": "Fitness", "color": "purple"}, me(landen))
     assert fake.calendars[gid]["backgroundColor"] == "#8e24aa"
     assert await say(reg, "change:calendar", {"calendar": "Fitness", "shown": False}, me(landen)) == "Hiding Landen: Fitness."
-    assert "Fitness (hidden)" in reg.summary(me(landen))
+    assert "Fitness (hidden)" in names(reg, me(landen))
     # Deleting: only after a spoken yes; main calendars never; a shared one only leaves their list
     with pytest.raises(Invalid):
         say(reg, "cancel:calendar", {"calendar": "Fitness"}, me(landen))
     with pytest.raises(Invalid):
         say(reg, "cancel:calendar", {"calendar": "Landen's main", "confirmed": True}, me(landen))
     assert await say(reg, "cancel:calendar", {"calendar": "Fitness", "confirmed": True}, me(landen)) == "Deleted Landen: Fitness."
-    assert gid not in fake.calendars and "Fitness" not in reg.summary(me(landen))
+    assert gid not in fake.calendars and "Fitness" not in names(reg, me(landen))
     assert await say(reg, "cancel:calendar", {"calendar": "Abby & Landen", "confirmed": True}, me(landen)) == \
         "Took Landen: Abby & Landen off the list."
     # The same from the dashboard
@@ -316,7 +325,7 @@ async def test_an_ignored_calendar_is_gone_everywhere_until_brought_back(env):
     await cal.dashboard("ignore", {"id": hol["id"], "value": True})
     await cal.sync.run_once()
     assert not any(c["name"] == "Holidays" for c in cal.calendars_view())             # no tick box on the calendar page
-    assert "Holidays" not in reg.summary(me(landen))
+    assert "Holidays" not in names(reg, me(landen))
     assert "Veterans Day" not in say(reg, "look:calendar", {"from": "2026-11-11"})
     assert not cal.store.db.execute("SELECT 1 FROM calendar_events WHERE calendar_id = ?", (hol["id"],)).fetchone()
     assert [c["ignored"] for c in (await cal.dashboard("all_calendars", {}))["calendars"] if c["name"] == "Holidays"] == [True]
@@ -537,9 +546,9 @@ async def test_offline_an_only_me_calendar_is_heard_and_changed_only_by_its_owne
     ev = next(iter(cal.store.all_events()))
     with pytest.raises(Invalid):                                   # Claude can't act on it for Landen either
         say(reg, "cancel:event", {"id": ev["id"]}, me(landen))
-    told_landen = reg.summary(me(landen))
+    told_landen = reg.summary(me(landen)) + names(reg, me(landen))
     assert "interview" not in told_landen and "Sam" not in told_landen.split("Calendars:")[-1]   # not even its name
-    assert "Sam" in reg.summary(me(sam)).split("Calendars:")[-1]
+    assert "Sam" in names(reg, me(sam)).split("Calendars:")[-1]
     assert "interview" in await cmds.handle("what's on the calendar today", me(sam))
     assert "interview" in await cmds.handle("what's on the calendar today")                   # the dashboard
     await cmds.handle("delete interview from the calendar", me(sam))
@@ -553,3 +562,55 @@ async def test_a_time_with_a_time_zone_is_the_same_moment_here(env):
     [ev] = cal.store.all_events()
     assert ev["start"] == datetime.fromisoformat("2026-11-07T21:00:00+00:00").timestamp()
 
+
+
+# ---------------------------------------------------------------- D-151: events Pip doesn't bring up
+async def test_a_muted_event_is_not_brought_up_but_is_found_when_asked(env):
+    """Owner, 2026-11-25: Pip kept telling him to be at office hours he doesn't go to. "Pip, I don't go to that"
+    mutes every event with that name: out of what Claude is told with each request, no heads-up, not in a
+    briefing; still on the calendar, and found when he asks about it."""
+    reg, cal, fake, people, sched, clock = env
+    for day in (7, 14):
+        say(reg, "add:event", {"title": "Office Hours", "at": f"2026-11-{day:02d}T19:00", "heads_up_minutes": 30})
+    say(reg, "add:event", {"title": "lunch", "at": "2026-11-07T12:00", "heads_up_minutes": 30})
+    today = reg.summary(Call(now=NOW))
+    ref = "#" + next(e for e in cal.store.all_events() if e["title"] == "Office Hours")["id"][:6]
+    assert "Office Hours" in today and {h["label"] for h in sched.active(("event",))} == {"Office Hours", "lunch"}
+    said = await say(reg, "mute_event", {"id": ref})
+    assert said == "Okay, I won't bring up Office Hours anymore. It's still on the calendar if you ask."
+    told = reg.summary(Call(now=NOW))
+    assert "Office Hours" not in told and "lunch" in told and "Office Hours" not in reg.summary(Call(now=NOW, kind="join"))
+    assert {h["label"] for h in sched.active(("event",))} == {"lunch"}                # no heads-up for either week's
+    assert [e["title"] for e in cal.api.events_on(NOW.date(), Call(now=NOW))] == ["lunch"]   # nor in a briefing
+    found = look(reg)
+    assert found.count("Office Hours") == 2 and found.count("(muted: don't bring it up unless asked about it)") == 2
+    assert "Muted events (not brought up): Office Hours." in names(reg)
+    page = await cal.dashboard("range", {"from": "2026-11-07", "to": "2026-11-14"})
+    assert page["muted"] == ["Office Hours"] and [e["muted"] for e in page["events"] if e["title"] == "Office Hours"] == [True, True]
+    say(reg, "add:event", {"title": "office  hours", "at": "2026-11-21T19:00", "heads_up_minutes": 30})   # a later one, same name
+    assert {h["label"] for h in sched.active(("event",))} == {"lunch"}
+    assert await say(reg, "mute_event", {"title": "office hours", "off": True}) == "Okay, office hours is back in what I keep in mind."
+    assert "Office Hours" in reg.summary(Call(now=NOW)) and "Office Hours" in {h["label"] for h in sched.active(("event",))}
+    assert (await cal.dashboard("mute", {"title": "Lunch"}))["muted"] == ["Lunch"]    # from the page
+    assert "lunch" not in reg.summary(Call(now=NOW)) and (await cal.dashboard("mute", {"title": "lunch", "on": False}))["muted"] == []
+    with pytest.raises(Invalid):
+        say(reg, "mute_event", {})
+    with pytest.raises(Invalid):
+        say(reg, "mute_event", {"id": "#zzzzzz"})
+
+
+async def test_a_calendar_can_be_only_when_asked(env):
+    """D-151: a whole calendar whose events Pip isn't told about (and gives no heads-ups for) unless he looks."""
+    reg, cal, fake, people, sched, clock = env
+    await cal.dashboard("new_calendar", {"name": "Classes", "color": "#0b8043"})
+    classes = next(c for c in cal.calendars_view() if c["name"] == "Classes")
+    say(reg, "add:event", {"title": "calculus", "at": "2026-11-07T14:00", "heads_up_minutes": 30, "calendar": "Classes"})
+    say(reg, "add:event", {"title": "lunch", "at": "2026-11-07T12:00"})
+    assert "calculus" in reg.summary(Call(now=NOW))
+    r = await cal.dashboard("set_calendar", {"id": classes["id"], "field": "quiet", "value": True})
+    assert [c["quiet"] for c in r["calendars"] if c["name"] == "Classes"] == [True]
+    told = reg.summary(Call(now=NOW))
+    assert "calculus" not in told and "lunch" in told and not sched.active(("event",))
+    assert "calculus" in look(reg) and "Classes (only when asked)" in names(reg)
+    assert (await say(reg, "change:calendar", {"calendar": "Classes", "quiet": False})).startswith("Okay, ")
+    assert "calculus" in reg.summary(Call(now=NOW)) and len(sched.active(("event",))) == 1

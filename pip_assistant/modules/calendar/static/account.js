@@ -22,18 +22,21 @@
       <label class="row"><span class="what">No heads-ups at night</span>
         <input type="checkbox" data-pref="night" ${cal.night?"checked":""}> <span class="sub">Nothing between 11 PM and 7 AM (alarms still ring).</span></label>
       <div class="sub">${acc.can_manage ? "" : "To let Pip make, rename or delete calendars: on the Google page press Connect Google again for this person and tick Select all."}</div>
-      <table style="margin-top:10px"><thead><tr><th>Calendar</th><th>Use</th><th class="c">On the calendar page</th><th class="c hide">In the two-week list</th><th>Heads-ups</th></tr></thead><tbody>
+      <table style="margin-top:10px"><thead><tr><th>Calendar</th><th>Use</th><th class="c">On the calendar page</th><th class="c hide">In the two-week list</th><th class="c">Only when asked</th><th>Heads-ups</th></tr></thead><tbody>
       ${cal.calendars.map(c => `<tr class="${c.ignored?"off":""}">
         <td><span class="sw" style="background:${esc(c.color)}"></span><span class="cname">${esc(c.primary?"Main calendar":c.name)}</span>${c.writable?"":` <span class="sub">(read-only)</span>`}</td>
         <td><select data-cal="${esc(c.id)}" data-field="ignored"><option value="use">Use</option><option value="ignore" ${c.ignored?"selected":""}>Ignore</option></select></td>
         <td class="c"><input type="checkbox" data-cal="${esc(c.id)}" data-field="ticked" ${c.ticked?"checked":""} ${c.ignored?"disabled":""}></td>
         <td class="c hide"><input type="checkbox" data-cal="${esc(c.id)}" data-field="in_list" ${c.in_list?"checked":""} ${c.ignored?"disabled":""}></td>
+        <td class="c"><input type="checkbox" data-cal="${esc(c.id)}" data-field="quiet" ${c.quiet?"checked":""} ${c.ignored?"disabled":""}></td>
         <td><select data-cal="${esc(c.id)}" data-field="heads_up" ${c.ignored?"disabled":""}>${HEADS.map(([v,l]) => `<option value="${v}" ${v===c.heads_up?"selected":""}>${l}</option>`).join("")}</select></td></tr>`).join("")
-        || `<tr><td colspan="5" class="sub">No calendars yet (they arrive with the next sync).</td></tr>`}
+        || `<tr><td colspan="6" class="sub">No calendars yet (they arrive with the next sync).</td></tr>`}
       </tbody></table>
       <div class="sub" style="margin-top:10px"><b>Ignore</b>: Pip doesn't fetch it, it's not on the calendar page, and he never hears about it.
         <b>Heads-ups</b>: "Only ones you set" means events where you added a reminder yourself in Google, not the calendar's
-        automatic one, so classes and the like stay quiet. <b>Two-week list</b>: the list on the dashboard's Overview.</div></section>`;
+        automatic one, so classes and the like stay quiet. <b>Two-week list</b>: the list on the dashboard's Overview.
+        <b>Only when asked</b>: its events stay on the calendar page, but Pip isn't told about them and gives no heads-ups for
+        them; he looks them up when you ask (D-151). One event you don't go to? Mute it on the Calendar page instead.</div></section>`;
     el.querySelectorAll("[data-pref]").forEach(x => x.onchange = () =>
       save(pip.post("set_pref", {account: acc.id, key: x.dataset.pref, value: x.type === "checkbox" ? x.checked : x.value}, "calendar")));
     el.querySelectorAll("[data-cal]").forEach(x => x.onchange = () => {

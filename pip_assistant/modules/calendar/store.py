@@ -32,7 +32,13 @@ CREATE TABLE IF NOT EXISTS calendar_calendars (
     owner       INTEGER NOT NULL DEFAULT 1,  -- theirs (can be renamed / deleted), not just shared with them
     ignored     INTEGER NOT NULL DEFAULT 0,  -- set on the Google page: not synced, not shown, never told to Pip (D-104)
     in_list     INTEGER NOT NULL DEFAULT 1,  -- shown in the dashboard's "next two weeks" list (D-109)
-    heads_up    TEXT NOT NULL DEFAULT 'own'  -- off / own (only events with their own reminder) / all / minutes (D-109)
+    heads_up    TEXT NOT NULL DEFAULT 'own', -- off / own (only events with their own reminder) / all / minutes (D-109)
+    quiet       INTEGER NOT NULL DEFAULT 0   -- "only when asked" (D-151): Pip isn't told about its events unless he looks them up
+);
+CREATE TABLE IF NOT EXISTS calendar_muted (   -- events Pip doesn't bring up, by name (D-151): "I don't go to that"
+    title       TEXT PRIMARY KEY,           -- the event's name, lower case, spaces tidied (mute_key)
+    shown       TEXT NOT NULL,              -- the name as it was said or written, for the page
+    at          REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS calendar_prefs (   -- per account ('' = Pip's own calendar): night, household (D-109)
     account_id  TEXT NOT NULL,
@@ -71,7 +77,7 @@ class CalendarStore:
         have = {r[1] for r in self.db.execute("PRAGMA table_info(calendar_calendars)")}
         for col in ("owner INTEGER NOT NULL DEFAULT 1", "ignored INTEGER NOT NULL DEFAULT 0",
                     "in_list INTEGER NOT NULL DEFAULT 1", "heads_up TEXT NOT NULL DEFAULT 'own'",
-                    "full_at REAL NOT NULL DEFAULT 0"):
+                    "full_at REAL NOT NULL DEFAULT 0", "quiet INTEGER NOT NULL DEFAULT 0"):
             if col.split()[0] not in have:
                 self.db.execute(f"ALTER TABLE calendar_calendars ADD COLUMN {col}")
                 if col.startswith("owner"):   # until the next sync says: read-only ones aren't theirs
@@ -127,6 +133,39 @@ class CalendarStore:
         if ignored:
             self.drop_events(cid)
         self.version += 1
+
+    # ---------------------------------------------------------------- events Pip doesn't bring up (D-151)
+    @staticmethod
+    def mute_key(title: str) -> str:
+        return " ".join(str(title or "").lower().split())
+
+    def muted(self) -> dict[str, str]:
+        """{name as compared: name as shown} of the events someone muted."""
+        return {r["title"]: r["shown"] for r in self.db.execute("SELECT title, shown FROM calendar_muted ORDER BY shown")}
+
+    def mute(self, title: str, on: bool = True) -> bool:
+        """Mute (or unmute) every event with this name: Pip isn't told about it and gives no heads-up for it,
+        but it stays on the calendar and he finds it when asked. Returns whether anything changed."""
+        key = self.mute_key(title)
+        if not key or (key in self.muted()) == on:
+            return False
+        if on:
+            self.db.execute("INSERT INTO calendar_muted (title, shown, at) VALUES (?, ?, ?)", (key, " ".join(str(title).split()), self.clock()))
+        else:
+            self.db.execute("DELETE FROM calendar_muted WHERE title = ?", (key,))
+        self.db.commit()
+        for ev in self.db.execute("SELECT * FROM calendar_events WHERE end > ?", (self.clock(),)).fetchall():
+            if self.mute_key(ev["title"]) == key:
+                self.sync_alerts(dict(ev))
+        self.version += 1
+        return True
+
+    def not_brought_up(self) -> "callable":
+        """A check for many events at once: is this one left out of what Pip is told unasked? Yes if its name is
+        muted, or its calendar is "only when asked" (`quiet`). He still finds it when he looks the day up."""
+        muted = self.muted()
+        quiet = {c["id"] for c in self.calendars() if c.get("quiet")}
+        return lambda ev: ev["calendar_id"] in quiet or self.mute_key(ev["title"]) in muted
 
     # ---------------------------------------------------------------- per-account preferences (D-109)
     PREFS = {"night": "1", "household": ""}   # no heads-ups 23:00–07:00 · their calendar for "don't know whose"
@@ -302,13 +341,16 @@ class CalendarStore:
 
     def sync_alerts(self, ev: dict) -> None:
         """Re-make an event's heads-up: none if private, past, more than a week away (re-checked later), not
-        wanted for that calendar, or at night when that's switched off (D-109)."""
+        wanted for that calendar, at night when that's switched off (D-109), or an event Pip doesn't bring up
+        (muted by name, or its calendar is "only when asked", D-151)."""
         if self.alerts is None:
             return
         self.alerts.cancel_for(ev["id"])
         cal = self.calendar(ev["calendar_id"])
         mins = self.heads_up_minutes(ev, cal)
         if ev["private"] or mins is None or ev["pending"] == "delete" or ev["calendar_id"] not in self.ticked():
+            return
+        if (cal or {}).get("quiet") or self.mute_key(ev["title"]) in self.muted():
             return
         start = datetime.fromtimestamp(ev["start"])
         base = start.replace(hour=8, minute=0) if ev["all_day"] else start   # all-day: count back from 8 AM (FEAT-036)

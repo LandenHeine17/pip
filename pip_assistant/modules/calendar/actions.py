@@ -1,8 +1,10 @@
 """What Claude reads about the calendar, and Claude's calendar actions (part of the calendar module; module.py
 puts it together).
 
-    summary         today's and tomorrow's events, how many later this week, the calendars' names
-    look:calendar   any other days, on request ({"do": "look", "kind": "calendar", ...}): Claude is asked again
+    summary         what's left of today, without events Pip doesn't bring up (D-151: muted, or "only when asked")
+    look:calendar   any other days, the calendars' names or the muted events, on request ({"do": "look", "kind":
+                    "calendar", ...}): Claude is asked again
+    mute_event      "I don't go to that": every event with that name is no longer brought up (D-151)
     add / change / cancel: event         one event (by its short id, "#e1a2b3")
     add / change / cancel: calendar      a whole calendar (D-103)
 
@@ -57,39 +59,40 @@ class ClaudeActions:
         return f"{short(ev['id'])} {ev['title']} {t}{rep}{where}{cal}"
 
     def summary(self, call: Call) -> str:
-        """Kept short, because it goes with every request (D-102): today and tomorrow in full, a count for the
-        rest of the week, and the calendars' names. Claude looks anything else up first (ACTION look).
-        A join-in check (every ~40 s) gets only what's left of today."""
+        """Kept short, because it goes with every request (D-102, D-151): only what's left of today. Tomorrow,
+        any other day and the calendars' names Claude looks up first (ACTION look). Left out: events Pip doesn't
+        bring up (muted by name, "I don't go to that", or on an "only when asked" calendar); a look-up shows them."""
         cals = {c["id"]: c for c in self.store.calendars()}
         accounts, names = self._accounts(), self._people()
         now = datetime.fromtimestamp(self.ctx.clock())
-        today = now.date()
-        evs = [e for e in self.store.all_events() if self.visible(e, call, cals, accounts)]
-        on = {d: self.store.events_on(d, evs) for d in (today + timedelta(days=i) for i in range(7))}
-        later_today = [(at, e) for at, e in on[today] if e["all_day"] or e["end"] > now.timestamp()]
+        skip = self.store.not_brought_up()
+        evs = [e for e in self.store.all_events() if self.visible(e, call, cals, accounts) and not skip(e)]
+        later_today = [(at, e) for at, e in self.store.events_on(now.date(), evs) if e["all_day"] or e["end"] > now.timestamp()]
+        today = "; ".join(self.line(e, at, cals, accounts, names) for at, e in later_today)
+        if call.kind == "join":   # a join-in check (every ~40 s): nothing at all when the day is clear
+            return f"Calendar, rest of today: {today}." if today else ""
+        return f"Calendar, rest of today: {today or 'nothing'}. (Any other day: look it up first.)"
 
-        def day(items):
-            return "; ".join(self.line(e, at, cals, accounts, names) for at, e in items) or "nothing"
-        if call.kind == "join":
-            return f"Calendar, rest of today: {day(later_today)}." if later_today else ""
-        tomorrow = today + timedelta(days=1)
-        out = f"Calendar today: {day(later_today)}. Tomorrow ({tomorrow:%a %Y-%m-%d}): {day(on[tomorrow])}."
-        rest = [f"{d:%a} {len(on[d])}" for d in sorted(on)[2:] if on[d]]
-        out += (" Later this week (events per day): " + ", ".join(rest) + "." if rest else " Nothing else this week.")
-        out += " For any other day, or the details of those, look it up first (ACTION look)."
+    def calendar_names(self, call: Call) -> str:
+        """The calendars' names, for a look-up (they used to go with every request, about 400 letters)."""
+        cals = {c["id"]: c for c in self.store.calendars()}
+        accounts, names = self._accounts(), self._people()
         labels = []
         for c in cals.values():
             acc = accounts.get(c["account_id"] or "")
             if acc and acc["sharing"] != "everyone" and acc["person_id"] != call.person_id:
                 continue   # an account shared "only me": not even its calendars' names, unless it's theirs
             tags = [t for t, on_ in (("household", c["id"] == self.sync.household()), ("read-only", not c["writable"]),
-                                     ("hidden", not c["ticked"]), ("shared with them", c["account_id"] and c["writable"] and not c["owner"])) if on_]
+                                     ("hidden", not c["ticked"]), ("only when asked", bool(c.get("quiet"))),
+                                     ("shared with them", c["account_id"] and c["writable"] and not c["owner"])) if on_]
             labels.append(self.label(c, accounts, names) + (f" ({', '.join(tags)})" if tags else ""))
-        out += " Calendars: " + "; ".join(labels) + "."
-        return out
+        muted = sorted(self.store.muted().values())
+        return "Calendars: " + "; ".join(labels) + "." + (f" Muted events (not brought up): {'; '.join(muted)}." if muted else "")
 
     # ---------------------------------------------------------------- looking further ahead (ACTION look)
     def check_look(self, a: dict, call: Call) -> dict:
+        if a.get("calendars") and not (a.get("from") or a.get("date")):
+            return {"names": True}
         try:
             first = date.fromisoformat(str(a.get("from") or a.get("date"))[:10])
             last = date.fromisoformat(str(a.get("to") or a.get("from") or a.get("date"))[:10])
@@ -103,11 +106,15 @@ class ClaudeActions:
         return {"first": first, "last": last, "cal": cal}
 
     def do_look(self, p: dict, call: Call) -> str:
+        if p.get("names"):
+            return self.calendar_names(call)
         cals = {c["id"]: c for c in self.store.calendars()}
         accounts, names = self._accounts(), self._people()
         evs = [e for e in self.store.all_events() if self.visible(e, call, cals, accounts)
                and (p["cal"] is None or e["calendar_id"] == p["cal"]["id"])]
-        items = [self.line(e, at, cals, accounts, names, day=True) for _, at, e in self.store.between(p["first"], p["last"], evs)]
+        skip = self.store.not_brought_up()   # shown when looked up, marked: mention them only if that's what was asked
+        items = [self.line(e, at, cals, accounts, names, day=True) + (" (muted: don't bring it up unless asked about it)" if skip(e) else "")
+                 for _, at, e in self.store.between(p["first"], p["last"], evs)]
         span = f"{p['first']:%a %Y-%m-%d}" + (f" to {p['last']:%a %Y-%m-%d}" if p["last"] != p["first"] else "")
         which = f" ({self.label(p['cal'], accounts, names)})" if p["cal"] else ""
         return f"Calendar{which}, {span}: " + ("; ".join(items) if items else "nothing") + "."
@@ -298,7 +305,7 @@ class ClaudeActions:
             p["name"] = self._name(a["name"])
         if a.get("color"):
             p["color"] = self._color(a["color"])
-        for k in ("shown", "ignored"):
+        for k in ("shown", "ignored", "quiet"):
             if k in a:
                 p[k] = bool(a[k])
         if len(p) == 1:
@@ -325,7 +332,12 @@ class ClaudeActions:
             self.store.refresh_alerts()
         if p.get("ignored"):
             self.store.set_ignored(cal["id"], True)
+        if "quiet" in p:
+            self.store.upsert_calendar(cal["id"], quiet=int(p["quiet"]))
+            self.store.remake_alerts({cal["id"]})
         await self.ctx.publish("changed")
+        if "quiet" in p and len(p) == 2:
+            return f"Okay, I'll only bring up {before} when you ask." if p["quiet"] else f"Okay, {before} is back in what I keep in mind."
         if p.get("ignored"):
             return f"I'll ignore {before} from now on. You can bring it back on the Google page."
         if "name" in p:
@@ -356,6 +368,21 @@ class ClaudeActions:
 
     def check_cancel(self, a: dict, call: Call) -> dict:
         return self._by_ref(a.get("id"), call)
+
+    # ---------------------------------------------------------------- "I don't go to that" (D-151)
+    def check_mute(self, a: dict, call: Call) -> dict:
+        title = self._by_ref(a["id"], call)["title"] if a.get("id") else " ".join(str(a.get("title") or "").split())[:200]
+        if not title:
+            raise Invalid("which event")
+        return {"title": title, "on": not a.get("off")}
+
+    async def do_mute(self, p: dict, call: Call) -> str:
+        changed = self.store.mute(p["title"], p["on"])
+        if changed:
+            await self.ctx.publish("changed")
+        if p["on"]:
+            return f"Okay, I won't bring up {p['title']} anymore. It's still on the calendar if you ask."
+        return f"Okay, {p['title']} is back in what I keep in mind." if changed else f"{p['title']} wasn't muted."
 
     def do_cancel(self, ev: dict, call: Call) -> str:
         self.store.remove_event(ev["id"])

@@ -50,6 +50,16 @@ textarea{font:inherit;font-size:.9rem;padding:8px 12px;border-radius:12px;border
   <div class="head"><h2 id="dayTitle"></h2><button class="ghost" onclick="openForm(sel)">+ Add on this day</button></div>
   <div class="items" id="dayList"></div>
 </section>
+<section>
+  <div class="head"><h2>Things Pip doesn't bring up</h2></div>
+  <div class="sub">Something on your calendar you don't go to? <b>Mute</b> it (the button on an event, or "Pip, I don't go to that"):
+    every event with that name stays on the calendar, but Pip isn't told about it and gives no heads-up for it. He still
+    finds it when you ask ("when are office hours?"). A whole calendar can be set to "only when asked" in its account's
+    Settings on the <a href="/m/google/">Google page</a>.</div>
+  <div class="legend" id="muted"></div>
+  <form id="muteAdd" style="display:flex;gap:8px;margin-top:8px"><input name="title" placeholder="An event's name, e.g. Office hours" maxlength="200" required style="flex:1;min-width:0">
+    <button>Mute</button></form>
+</section>
 </main>
 
 <dialog id="dlg"><form id="form" method="dialog">
@@ -126,12 +136,20 @@ function render(){
   $("dayTitle").textContent = sd.toLocaleDateString([], {weekday:"long", month:"long", day:"numeric"});
   const evs = evsOn(sel);
   $("dayList").innerHTML = evs.map(e => `<div class="ev" style="--c:${e.color}"><span class="t">${e.all_day?"All day":clock(e.at)+"–"+clock(e.end)}</span>
-     <div style="flex:1;min-width:0"><b>${esc(e.title)}</b>${e.private?` <span class="pill" style="background:var(--soft2,var(--line))">private</span>`:""}${e.repeat?` <span class="sub">· repeats</span>`:""}
+     <div style="flex:1;min-width:0"><b>${esc(e.title)}</b>${e.private?` <span class="pill" style="background:var(--soft2,var(--line))">private</span>`:""}${e.muted?` <span class="pill" style="background:var(--soft2,var(--line))" title="Pip doesn't bring it up (muted, or its calendar is only when asked)">not brought up</span>`:""}${e.repeat?` <span class="sub">· repeats</span>`:""}
      <div class="sub">${[e.location, e.whose?e.whose+"'s calendar":e.calendar, e.pending?"sending to Google…":""].filter(Boolean).map(esc).join(" · ")}</div>
      ${e.notes?`<div class="sub">${esc(e.notes)}</div>`:""}</div>
+     ${e.private ? "" : (data.muted || []).some(m => same(m, e.title)) ? `<button class="ghost" onclick="mute(${js(e.title)}, false)">Unmute</button>`
+        : e.muted ? "" : `<button class="ghost" title="Pip stops bringing up every event with this name" onclick="mute(${js(e.title)}, true)">Mute</button>`}
      ${e.writable?`<button class="ghost" onclick="openForm(null,${js(e.id)})">Edit</button>`:""}</div>`).join("")
     || `<div class="empty">Nothing on this day.</div>`;
+  $("muted").innerHTML = (data.muted || []).map(m => `<label>${esc(m)} <button class="ghost" onclick="mute(${js(m)}, false)">Unmute</button></label>`).join("")
+    || `<span class="sub">Nothing muted.</span>`;
 }
+// Muting goes by the event's name (D-151), so every week's "Office hours" is muted at once
+const same = (a, b) => a.toLowerCase().split(/\s+/).join(" ").trim() === b.toLowerCase().split(/\s+/).join(" ").trim();
+async function mute(title, on){ if (await pip.act(pip.post("mute", {title, on}))) load(); }
+$("muteAdd").onsubmit = async ev => { ev.preventDefault(); await mute(ev.target.title.value, true); ev.target.reset(); };
 function pick(day){ sel = day; render(); }
 function move(n){ month.setMonth(month.getMonth()+n); load(); }
 function goToday(){ month = new Date(); month.setDate(1); sel = iso(new Date()); load(); }

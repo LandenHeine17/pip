@@ -43,6 +43,7 @@ class Calendar(Visibility, ClaudeActions, DashboardPage, Module):
                         "change:event": Action(self.check_change, self.do_change),
                         "cancel:event": Action(self.check_cancel, self.do_cancel),
                         "look:calendar": Action(self.check_look, self.do_look),
+                        "mute_event": Action(self.check_mute, self.do_mute),
                         "add:calendar": Action(self.check_new_calendar, self.do_new_calendar),
                         "change:calendar": Action(self.check_edit_calendar, self.do_edit_calendar),
                         "cancel:calendar": Action(self.check_delete_calendar, self.do_delete_calendar)}

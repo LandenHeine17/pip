@@ -14,6 +14,7 @@ class DashboardPage:
         """Every event happening between those days (private ones too: the dashboard shows them, marked)."""
         cals = {c["id"]: c for c in self.store.calendars()}
         accounts, names = self._accounts(), self._people()
+        skip = self.store.not_brought_up()   # marked on the page: muted by name, or an "only when asked" calendar (D-151)
         out = []
         for d, at, ev in self.store.between(first, last):
             c = cals.get(ev["calendar_id"], {})
@@ -22,7 +23,7 @@ class DashboardPage:
                         "repeat": ev["repeat"], "private": bool(ev["private"]), "calendar_id": ev["calendar_id"],
                         "calendar": c.get("name", ""), "color": c.get("color", "#6c5ce7"), "whose": self.whose(c, accounts, names),
                         "writable": bool(c.get("writable", 1)), "pending": ev["pending"],
-                        "reminder": ev["reminder"]})
+                        "reminder": ev["reminder"], "muted": skip(ev)})
         return out
 
     def upcoming(self, days: int = 14) -> list[dict]:
@@ -66,7 +67,7 @@ class DashboardPage:
         return [{"id": c["id"], "name": c["name"], "color": c["color"], "ticked": bool(c["ticked"]), "writable": bool(c["writable"]),
                  "whose": self.whose(c, accounts, names), "household": c["id"] == self.sync.household(),
                  "label": self.label(c, accounts, names), "owner": bool(c["owner"]), "primary": bool(c["is_primary"]) or c["id"] == "pip",
-                 "account_id": c["account_id"], "ignored": bool(c["ignored"])}
+                 "account_id": c["account_id"], "ignored": bool(c["ignored"]), "quiet": bool(c.get("quiet"))}
                 for c in self.store.calendars(ignored=ignored)]
 
     def _form(self, a: dict) -> dict:
@@ -115,7 +116,7 @@ class DashboardPage:
             if (last - first).days > 62:
                 raise ValueError("At most two months at a time")
             return {"events": self.occurrences(first, last), "calendars": self.calendars_view(),
-                    "household": self.sync.household(), "now": self.ctx.clock()}
+                    "household": self.sync.household(), "now": self.ctx.clock(), "muted": sorted(s.muted().values())}
         if action == "add":
             f = self._form(args)
             cid = str(args.get("calendar_id") or self.sync.household())
@@ -142,6 +143,13 @@ class DashboardPage:
                 s.sync_alerts(dict(ev))
             self._wake.set()
             return {"ok": True}
+        if action == "mute":   # "don't bring this up" (D-151): every event with that name, or back again
+            title = " ".join(str(args.get("title") or "").split())[:200]
+            if not title:
+                raise ValueError("Which event? Type its name.")
+            s.mute(title, bool(args.get("on", True)))
+            await self.ctx.publish("changed")
+            return {"ok": True, "muted": sorted(s.muted().values())}
         if action in ("new_calendar", "edit_calendar", "delete_calendar", "ignore"):
             return await self._calendar_settings(action, args)
         if action == "all_calendars":   # every calendar, ignored ones too
@@ -166,7 +174,7 @@ class DashboardPage:
             if field == "ignored":
                 s.set_ignored(cal["id"], bool(value))
                 self._wake.set()
-            elif field in ("ticked", "in_list"):
+            elif field in ("ticked", "in_list", "quiet"):
                 s.upsert_calendar(cal["id"], **{field: int(bool(value))})
             elif field == "heads_up":
                 if str(value) not in self.HEADS_UP:
@@ -174,7 +182,7 @@ class DashboardPage:
                 s.upsert_calendar(cal["id"], heads_up=str(value))
             else:
                 raise ValueError("Unknown setting")
-            if field in ("ticked", "heads_up"):
+            if field in ("ticked", "heads_up", "quiet"):
                 s.remake_alerts({cal["id"]})
             account = cal["account_id"]
         else:

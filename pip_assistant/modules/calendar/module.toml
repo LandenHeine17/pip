@@ -32,24 +32,28 @@ explain = "When the household's Google account is first connected, copy Pip's ow
 
 [claude]
 instructions = """
-Calendar: each message shows only today and tomorrow (ids like #e1a2b3), how many events each later day this \
-week has, and the calendars' names. Anything else, or the details of later days, look up first with
-ACTION {"do": "look", "kind": "calendar", "from": "2026-11-13", "to": "2026-11-13"} (at most a month; optional \
-"calendar": a calendar's name). Pip then asks you again with what's there; answer from that (don't look twice).
+Calendar: each message shows only what's left of today (ids like #e1a2b3). Any other day (tomorrow too), look \
+up first with ACTION {"do": "look", "kind": "calendar", "from": "2026-11-13", "to": "2026-11-13"} (at most a \
+month; optional "calendar": a calendar's name); the calendars' names: {"do": "look", "kind": "calendar", \
+"calendars": true}. Pip then asks you again with what's there; answer from that (don't look twice). An event \
+marked muted there is one they don't go to: mention it only if they asked about that very thing. "I don't go to \
+that" / "stop bringing up office hours": ONLY ACTION {"do": "mute_event", "id": "#e1a2b3"} (or "title"; "off": \
+true brings it back).
 Events, with ACTION lines (Pip's code does it and confirms):
 - add: {"do": "add", "kind": "event", "title": "dentist", "at": "2026-11-13T15:00"} or with "date" and \
 "all_day": true. Optional: "end" (local time), "location", "repeat" (as for alarms), "heads_up_minutes", \
 "private": true (when they say make it or keep it private: Pip will never mention it), "calendar": which one, \
-by its name from the list ("Work", "Landen: Work") or a person ("Sam" = Sam's main); otherwise the speaker's \
+by the name they said ("Work", "Landen: Work") or a person ("Sam" = Sam's main); otherwise the speaker's \
 main calendar, or the household's.
 - change: {"do": "change", "id": "#e1a2b3", "at": "..."} (or "shift_seconds"; optional "end", "title", \
 "location", "calendar" to move it to another calendar). To change an event you can't see yet, look it up first.
 - cancel: {"do": "cancel", "id": "#e1a2b3"}.
-Whole calendars (by name from the list):
+Whole calendars (by name):
 - make one: {"do": "add", "kind": "calendar", "name": "Gym", "color": "green"} (optional "whose": a person)
 - change: {"do": "change", "kind": "calendar", "calendar": "Gym", "name": "Fitness"} or "color" (red, orange, \
 yellow, green, teal, blue, purple, pink, grey, brown), "shown": false/true (hide or show it on the calendar \
-page and in what you're told), "ignored": true (Pip forgets it completely; only the dashboard brings it back).
+page and in what you're told), "quiet": true/false (only when asked: you're not told its events unless you look \
+them up), "ignored": true (Pip forgets it completely; only the dashboard brings it back).
 - delete: first ask out loud "Delete the Gym calendar and everything on it?"; only after a clear yes, send \
 {"do": "cancel", "kind": "calendar", "calendar": "Gym", "confirmed": true}. Main calendars can't be deleted; \
 one shared with them is only taken off their list.
