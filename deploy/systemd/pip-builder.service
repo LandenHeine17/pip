@@ -1,5 +1,5 @@
 [Unit]
-Description=Pip: pip-builder (self-changes: plans, builds and checks them in sandboxes; approved on the dashboard)
+Description=Pip: pip-builder (self-changes: hands them to Claude Hub, follows them, undoes them)
 After=pip-core.service
 Wants=pip-core.service
 
@@ -8,7 +8,7 @@ ExecStart=%h/pip-app/current/.venv/bin/pip-builder
 WorkingDirectory=%h/pip-app/current
 Restart=on-failure
 RestartSec=3
-# Small: the heavy work (Claude Code, the tests, making environments) runs in its own capped systemd jobs.
+# Small: Claude works on the changes in Claude Hub; an undo's install runs as its own capped systemd job.
 MemoryMax=300M
 MemorySwapMax=0
 Nice=5

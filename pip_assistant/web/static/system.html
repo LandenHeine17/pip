@@ -35,7 +35,7 @@
 <script>
 const WHAT = {core: "The conductor: routes messages, keeps the trace, watches health",
   ears: "Microphone, “stop”, Pip’s voice", thinker: "Claude and the offline fallback",
-  web: "This dashboard and the TV page", builder: "Self-changes: writes plans, builds and checks the changes you approve"};
+  web: "This dashboard and the TV page", builder: "Self-changes: hands them to Claude Hub and follows them there"};
 const ORDER = ["core", "ears", "thinker", "web", "builder"];
 const STATE = {ok: ["ok", "Running"], stuck: ["stuck", "Stuck"], missing: ["missing", "Not running"]};
 function dur(s){ if (s == null) return "–"; s = Math.round(s); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m` : `${Math.floor(s / 3600)}h ${Math.floor(s % 3600 / 60)}m`; }
@@ -61,7 +61,7 @@ function renderUsage(t){
     + (w ? ` · last 7 days: ${w.requests}${w.cost_usd ? ` (≈$${w.cost_usd.toFixed(2)})` : ""}` : "") : "";
   const until = t.paused_until, paused = !!(until && until * 1000 > Date.now());
   $("usagepause").hidden = !paused;
-  if (paused) $("usagepause").textContent = `Claude's usage limit reached: joining in and self-changes paused until ${hhmm(until)}. Replies to people keep trying.`;
+  if (paused) $("usagepause").textContent = `Claude's usage limit reached: joining in paused until ${hhmm(until)}. Replies to people keep trying.`;
 }
 // The running release (versioned installs, PIP-NEW-080): a short commit id, or an object with one
 function renderRelease(r){

@@ -3,7 +3,7 @@
 Each test gets its own throwaway data folder ($PIP_DATA, read by common/paths.py), so a test that forgets to
 pass a database path writes there, not into Pip's live pip.db. Only the downloaded models and the owner's M0
 recordings are linked in (some tests use them, read-only); tests that need them skip themselves where they
-aren't there, like in pip-builder's sandbox."""
+aren't there."""
 import os
 from pathlib import Path
 

@@ -547,7 +547,7 @@ def listen(bus, state: State) -> None:
     bus.subscribe("net.changed", on_net)
     bus.subscribe("module.*", on_module)
 
-    async def on_builder(msg: Message):   # a self-change moved on (M1b): the Changes page and the badge reload
+    async def on_builder(msg: Message):   # a self-change moved on (D-152): the Changes page and the badge reload
         state.push("builder", {"id": msg.data.get("id"), "status": msg.data.get("status")})
     bus.subscribe("builder.changed", on_builder)
 

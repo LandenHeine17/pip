@@ -27,10 +27,11 @@ Ringing alarms and voices (handled in core/acting.py, part of the Conversation, 
     learn_voice    name: start learning that household member's voice (or remember a visitor for the visit)
     correct_speaker name: Pip got who said the last line wrong ("that was Sam, not me", D-128)
 
-Changing Pip himself (M1b, PIP-NEW-069, AC-SM-01; handled in core/acting.py):
-    request_change summary: a short paraphrase of what to change. Only for someone Pip recognises for sure
-                   (not a guest); it goes to pip-builder, which writes a plan for the dashboard's Changes page.
-                   Voice can only ask: approving and undoing happen on the dashboard.
+Changing Pip himself (D-152, PIP-NEW-069, AC-SM-01; handled in core/acting.py):
+    request_change summary: a short paraphrase of what to change; details: Pip's write-up for Claude (what
+                   they want, why, their words). Only after Pip offered to write it up and they said yes;
+                   anyone may ask, guests too. pip-builder opens a Claude Hub chat for it, in plan mode, where
+                   the owner approves everything; voice can only ask.
 
 Memory:
     remember       text (third person, with names), category, about [names], sensitive, private
@@ -62,6 +63,7 @@ class Invalid(ValueError):
 
 HERE = ("stop_alarm", "snooze", "learn_voice", "request_change", "correct_speaker", "set_chattiness")   # done by Conversation, not apply()
 SUMMARY_MAX = 300
+DETAILS_MAX = 4000      # a change's write-up for Claude (D-152)
 CHATTINESS = {"low": "quiet", "quiet": "quiet", "normal": "normal", "medium": "normal", "high": "chatty", "chatty": "chatty"}
 
 
@@ -95,11 +97,14 @@ def check_here(items: list[dict]) -> list[tuple]:
             plan.append(("set_chattiness", level))
         elif do == "request_change":
             summary = re.sub(r"\s+", " ", str(a.get("summary") or "")).strip()
+            details = str(a.get("details") or "").strip()
             if len(summary) < 5 or len(summary) > SUMMARY_MAX:
                 raise Invalid("no change summary")
-            if CREDENTIAL.search(summary):
+            if len(details) > DETAILS_MAX:
+                raise Invalid("change write-up too long")
+            if CREDENTIAL.search(summary) or CREDENTIAL.search(details):
                 raise Invalid("credential")
-            plan.append(("request_change", summary))
+            plan.append(("request_change", summary, details or summary))
     return plan
 
 

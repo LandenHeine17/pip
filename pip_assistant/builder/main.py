@@ -1,35 +1,31 @@
-"""pip-builder: the self-change pipeline as a small bus program (M1b). The heavy work runs in sandboxed systemd
-jobs with their own memory caps (sandbox.py); this program only keeps the record and starts the jobs.
+"""pip-builder: Pip's self-changes (D-152). A small bus program: it hands each change to Claude Hub, follows it
+there and in git, undoes live ones, and asks pip-core to tell the room when one goes live (changes.py).
 
-Takes:  builder.ask (request) data {source: voice|dashboard, asked_by}, private {text}
-            → data {id, queued} or {error}
-        builder.page (request) private {action, id?, text?, answers?, read_diff?} → private reply:
-            list → {changes: [...], paused, busy}; get {id} → {change: {...}}; ask {text} → {id};
-            approve_plan / answer / approve / reject / stop / undo {id, …} → {ok: true} or {error}
-        usage.limited (event) {until}: don't start a Claude run before then
+Takes:  builder.ask (request) data {source: voice|chat, asked_by}, private {summary, request}
+            → data {id} or {error}
+        builder.page (request) private {action: list | undo, id?} → private reply:
+            list → {changes: [...], hub: {url, folder}, undoing}; undo {id} → {ok: true} or {error}
 Sends:  builder.changed {id, status} on every status change (never the words of a request)
-        usage.limited {until} when Claude says the plan's usage limit was reached
-Heartbeat: stage = the status of the change in progress, "paused" or "idle".
+        core.announce (request to pip-core) private {text}: say this once he's free → {said}
+Heartbeat: stage = "idle", "<n> open" or "undoing".
 """
-import asyncio
-import logging
 import os
 from pathlib import Path
 
 from ..common import paths, settings
 from ..common.messages import Message
 from ..common.program import make_bus, serve, start
-from .agent import ClaudeAgent
-from .pipeline import Builder
+from .changes import Builder
 from .store import Store
 
+import logging
 log = logging.getLogger("pip-builder")
-DEFAULTS = {"enabled": True, "model": "sonnet", "effort": "medium", "plan_minutes": 10, "build_minutes": 30,
+DEFAULTS = {"enabled": True, "hub_inbox": "~/.local/state/claude-hub/inbox", "hub_url": "", "model": "",
             "keep_days": 90}
 
 
 def builder_settings() -> dict:
-    """The [builder] settings, read fresh for each job (so a change on the Settings page applies straight away)."""
+    """The [builder] settings, read fresh each time (so a change on the Settings page applies straight away)."""
     try:
         return {**DEFAULTS, **settings.load().get("builder", {})}
     except Exception:
@@ -39,46 +35,35 @@ def builder_settings() -> dict:
 
 def wire(bus, builder: Builder) -> None:
     async def ask(msg: Message) -> dict:
-        return await builder.ask(msg.private.get("text", ""), msg.data.get("asked_by", ""),
-                                 msg.data.get("source", "dashboard"))
+        p = msg.private or {}
+        return await builder.ask(str(p.get("summary", "")), str(p.get("request", "")),
+                                 str(msg.data.get("asked_by", "")), str(msg.data.get("source", "voice")))
 
     async def page(msg: Message) -> Message:
         p = msg.private or {}
-        result = await builder.page(str(p.get("action", "")), p, asked_by=str(msg.data.get("asked_by", "")))
+        result = await builder.page(str(p.get("action", "")), p)
         return msg.reply({"ok": "error" not in result}, private=result)
-
-    async def limited(msg: Message) -> None:
-        try:
-            builder.pause(float(msg.data.get("until")), str(msg.data.get("why") or "Claude's usage limit was reached"))
-        except (TypeError, ValueError):
-            return
-        builder._update_stage()
 
     bus.on("builder.ask", ask)
     bus.on("builder.page", page)
-    bus.subscribe("usage.limited", limited)
 
 
 async def main() -> None:
     bus, cfg = make_bus("builder")
-    try:
-        from ..common.usage import Usage
-        meter = Usage()
-        usage_fn = lambda cost, err: meter.record("builder", cost, err)   # noqa: E731
-    except Exception:
-        usage_fn = None
-    repo = Path(os.environ.get("PIP_REPO", Path.home() / "pip"))   # the git repo changes are committed to
+    repo = Path(os.environ.get("PIP_REPO", Path.home() / "pip"))   # where Claude Hub's chat works and commits
 
     async def publish(t: str, data: dict) -> None:
         if bus.connected.is_set():
             await bus.emit(t, data)
 
-    builder = Builder(Store(paths.database()), ClaudeAgent(), repo=repo, data=paths.data_dir() / "builder",
-                      settings_fn=builder_settings, publish=publish, usage_fn=usage_fn)
-    def on_limit(until: float) -> None:
-        if bus.connected.is_set():
-            asyncio.ensure_future(bus.emit("usage.limited", {"until": until, "from": "builder"}))
-    builder.on_limit = on_limit
+    async def announce(text: str) -> bool:
+        if not bus.connected.is_set():
+            return False
+        r = await bus.request("core", "core.announce", {"why": "change"}, {"text": text}, timeout=10)
+        return bool(r.data.get("said"))
+
+    builder = Builder(Store(paths.database()), repo=repo, data=paths.data_dir() / "builder",
+                      settings_fn=builder_settings, publish=publish, announce=announce)
 
     def on_stage(stage: str) -> None:
         bus.status["stage"] = stage

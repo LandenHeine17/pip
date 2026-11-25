@@ -196,7 +196,7 @@ ${diagram(760, 330, [
 <tr><td>pip-core</td><td>[[core/main.py#build|core/]]</td><td>Passes every message on, and decides everything: turns speech into text, works out whether it was said to Pip, waits for the end of your turn, asks pip-thinker, does actions, runs timers, memory, people, modules and Pip's state.</td></tr>
 <tr><td>pip-thinker</td><td>[[thinker/main.py#Thinker|thinker/]]</td><td>Builds what Claude is told and asks Claude (Opus, through the Claude Code program, D-137), streaming the answer back a sentence at a time.</td></tr>
 <tr><td>pip-web</td><td>[[web/main.py#build_app|web/]]</td><td>The dashboard and the monitor's page. Stores nothing: it asks pip-core for everything and passes live events to your browser.</td></tr>
-<tr><td>pip-builder</td><td>[[builder/pipeline.py#Builder|builder/]]</td><td>Self-changes: plans and builds a change in a sandbox, for you to approve ({{builder|chapter 11}}).</td></tr>
+<tr><td>pip-builder</td><td>[[builder/changes.py#Builder|builder/]]</td><td>Self-changes: hands each one to a Claude Hub chat, follows it there and in git, and undoes it ({{builder|chapter 11}}).</td></tr>
 </table>
 <p>Code shared by more than one program is in [[common/messages.py#Message|common/]]; features that plug in are in <code>modules/</code>.</p>
 <h3>What a message looks like</h3>
@@ -418,8 +418,8 @@ have. To make yours: copy the folder, rename it, keep what you need and delete t
 # edit module.toml (name = "shopping"…) and module.py, then:
 uv run pytest pip_assistant/modules/shopping      # (on the Pi: memory-capped, CONTRIBUTING §4)
 git commit …  &&  sh deploy/install.sh</pre>
-<div class="try"><b>Or ask Pip:</b> "Pip, I'd like a shopping list" (or the Changes page). He plans it, you approve, he builds it as a
-module from this template, you approve the result.</div>`,
+<div class="try"><b>Or ask Pip:</b> "Pip, I'd like a shopping list". He offers to write it up, Claude Hub plans it with you, and it's built as a
+module from this template.</div>`,
 tour: [
   {title: "module.toml: what it is", text: "The part people read: name (must match the folder), what it does, examples of what to say, whether it works offline, which internet hosts it may reach, which modules it needs, its settings (each with a plain explanation: they appear on the Settings page), what Claude is told, its monitor box, its dashboard page.", ref: "modules/_template/module.toml"},
   {title: "module.py: setup", text: "The class pip-core gets from setup(ctx). Its own table is made here (named _template_…: the only kind it may read or write). <code>self.actions</code> lists the verbs Claude may use.", ref: "modules/_template/module.py#Dice"},
@@ -519,24 +519,27 @@ tour: [
 // ---------------------------------------------------------------- 12
 {id: "builder", title: "Pip changing himself", html: `
 <h2>Self-changes and installs</h2>
-<p>Ask by voice or on the Changes page. pip-builder plans the change (Claude Code, reading only), you approve the plan, it's built in
-a <b>sandbox</b> (a copy of the project, no network, no access to your data or logins), checked again in a stricter sandbox, you approve
-the finished change, and it's installed as a new version that <b>rolls back by itself</b> if Pip isn't healthy on it (D-118). Pip never
-pushes to GitHub.</p>
+<p>When someone asks Pip for a change, or complains about something he does, he offers <i>"Want me to write that up as a
+change?"</i> If they say yes, pip-builder hands his write-up to <b>Claude Hub</b>, which opens a chat for it in Pip's code
+<b>in plan mode</b> (D-152). You do the rest in that chat: answer Claude's questions, approve its plan, and say when to install.
+Each commit ends with a <code>Pip-Change: N</code> line, so the Changes page sees it go from <i>ready</i> to <i>live</i> by
+itself, and Pip tells the room. The install <b>rolls back by itself</b> if Pip isn't healthy, and a live change has an
+<b>Undo</b> button.</p>
 ${diagram(780, 110, [
-  {id: "a", x: 10, y: 30, w: 110, h: 50, label: "plan", sub: "read only", to: "ref:builder/pipeline.py#Builder._plan"},
-  {id: "b", x: 140, y: 30, w: 110, h: 50, label: "you approve", sub: "Changes page", to: "go:builder"},
-  {id: "c", x: 270, y: 30, w: 110, h: 50, label: "build", sub: "in a sandbox", to: "ref:builder/pipeline.py#Builder._build"},
-  {id: "d", x: 400, y: 30, w: 110, h: 50, label: "check", sub: "strict sandbox", to: "ref:builder/pipeline.py#Builder._check"},
-  {id: "e", x: 530, y: 30, w: 110, h: 50, label: "you approve", sub: "the diff", to: "go:builder"},
-  {id: "f", x: 660, y: 30, w: 110, h: 50, label: "install", sub: "rolls back", to: "ref:release.py#Releases.install"},
+  {id: "a", x: 10, y: 30, w: 110, h: 50, label: "Pip offers", sub: "they say yes", to: "ref:core/acting.py#Acting.request_change"},
+  {id: "b", x: 140, y: 30, w: 110, h: 50, label: "Claude Hub", sub: "a chat, plan mode", to: "ref:builder/hub.py#HubInbox.send"},
+  {id: "c", x: 270, y: 30, w: 110, h: 50, label: "you approve", sub: "in the chat", to: "ref:builder/hub.py#prompt"},
+  {id: "d", x: 400, y: 30, w: 110, h: 50, label: "built", sub: "Pip-Change: N", to: "ref:builder/changes.py#Builder._follow_git"},
+  {id: "e", x: 530, y: 30, w: 110, h: 50, label: "install", sub: "rolls back", to: "ref:release.py#Releases.install"},
+  {id: "f", x: 660, y: 30, w: 110, h: 50, label: "live", sub: "said to the room", to: "ref:builder/changes.py#Builder._tell_the_room"},
 ], [["a", "r", "b", "l"], ["b", "r", "c", "l"], ["c", "r", "d", "l"], ["d", "r", "e", "l"], ["e", "r", "f", "l"]])}`,
 tour: [
-  {title: "The steps", text: "One change at a time: this moves the change on to its next step (plan, build, check, deploy); each step sets a status the Changes page shows. Click \"whole file\" to see the whole Builder.", ref: "builder/pipeline.py#Builder._step"},
-  {title: "Planning", text: "", ref: "builder/agent.py#ClaudeAgent.plan"},
-  {title: "The sandbox", text: "What Claude Code may and mayn't reach while building.", ref: "builder/sandbox.py#agent_command"},
-  {title: "What a change may not touch", text: "", ref: "builder/checks.py#forbidden"},
-  {title: "No secrets in a change", text: "The same scan as the commit check.", ref: "builder/checks.py#secret_problems"},
+  {title: "Asking", text: "Anyone may ask, guests too: the owner sees who asked, and approves everything in Claude Hub.", ref: "core/acting.py#Acting.request_change"},
+  {title: "Handing it to Claude Hub", text: "A request file in the hub's inbox; the hub opens the chat in plan mode and keeps a state file beside it.", ref: "builder/hub.py#HubInbox.send"},
+  {title: "What Claude is told", text: "Pip's write-up, then how to handle a self-change: plan first, question cards, the commit line, ask before installing.", ref: "builder/hub.py#prompt"},
+  {title: "Following it", text: "Every few seconds: the hub's state file, then the commits with the change's line.", ref: "builder/changes.py#Builder.sync"},
+  {title: "Telling the room", text: "", ref: "builder/changes.py#Builder._tell_the_room"},
+  {title: "Undo", text: "A new commit taking the change's commits back out, installed like any version.", ref: "builder/deploy.py#Deployer.revert"},
   {title: "Installing a version", text: "Make the version folder, wait for a quiet moment, switch, check health, go back by itself if unhealthy.", ref: "release.py#Releases.install"},
   {title: "Health", text: "", ref: "release.py#Releases.check_health"},
 ]},

@@ -1,15 +1,15 @@
 """How much Pip uses Claude (D-69, PIP-NEW-089).
 
-Every Claude answer (and every self-change job) ends with a "result" from the Claude Code CLI: what it cost
+Every Claude answer ends with a "result" from the Claude Code CLI: what it cost
 and whether it failed. Each one is counted here, by day and kind, in the `usage` table of ~/pip-data/pip.db.
 Nothing about what was asked or said is stored: only counts, errors and cost.
 
     kinds: answer (said to Pip), mention (his name came up), join (joining in), preview (Settings' "Try it"),
-           summary (a module's conversation notes, the recall module), builder (self-changes), other
+           summary (a module's conversation notes, the recall module), builder (D-118's self-changes, before D-152: kept for history), other
 
 The Pro plan doesn't say how much allowance is left, so there is no "80 % used" warning: Pip only knows
-he's hit the limit when Claude says so ("usage limit reached … resets 3pm"). Then joining in and
-self-changes pause until the reset time (or an hour, if none is given); replies to people keep trying.
+he's hit the limit when Claude says so ("usage limit reached … resets 3pm"). Then joining in pauses
+until the reset time (or an hour, if none is given); replies to people keep trying.
 """
 import re
 import sqlite3
@@ -65,13 +65,13 @@ def reset_time(text: str | None, now: float | None = None) -> float | None:
 
 
 def paused_until(text: str | None, now: float | None = None) -> float:
-    """How long to pause joining in and self-changes after a limit error: until the reset, or an hour."""
+    """How long to pause joining in after a limit error: until the reset, or an hour."""
     now = time.time() if now is None else now
     return reset_time(text, now) or now + DEFAULT_PAUSE
 
 
 class Usage:
-    """The usage table. Several programs write to it (pip-thinker, pip-builder), so each call opens its own
+    """The usage table. Several programs may write to it (pip-thinker; pip-builder did before D-152), so each call opens its own
     short connection."""
 
     def __init__(self, path: Path | None = None):

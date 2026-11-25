@@ -18,7 +18,8 @@ BUILT_IN = [
     "the monitor: your face, captions, and boxes people can ask to show",
     "the weather where you live",
     "being switched off: the dashboard's Listening switch, or two claps",
-    "changing your own code when asked (the owner approves it twice on the Changes page)",
+    "changing your own code: when someone asks for a change or complains about something you do, offering to write it "
+    "up as a change; the owner then works it through with Claude in Claude Hub and approves it there",
     "answering questions about yourself: what you can do, why you did or didn't answer, your settings, "
     "how you're running, why you remember something, and what was talked about earlier",
 ]

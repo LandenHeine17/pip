@@ -67,6 +67,8 @@ def build(cfg: dict) -> Core:
     bus.core_handlers["core.tv"] = lambda m: ({}, {**tv_snapshot(schedule, modules),   # the TV page (D-110)
                                                    "status": face_status(conv, net)})   # its corner icons (D-128)
     bus.core_handlers["core.alert_action"] = lambda m: alert_action(schedule, conv, m)
+    # pip-builder: a self-change went live or was dropped, tell the room (D-152); the words travel privately
+    bus.core_handlers["core.announce"] = lambda m: {"said": conv.announce(str((m.private or {}).get("text", ""))[:300])}
     bus.core_handlers["module.request"] = modules.request          # a module's dashboard page (/api/m/<name>)
     bus.core_handlers["core.modules"] = lambda m: {"modules": modules.pages()}
     bus.core_handlers["core.people"] = lambda m: ({"count": len(people.all())}, people_snapshot(people, modules, conv))

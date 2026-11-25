@@ -1,6 +1,6 @@
 # How to change Pip
 
-For anyone making a change, person or AI agent, including Pip's own self-change agent. It's written so you can do a good job **without knowing the whole project**. Start with [`docs/PROJECT-MAP.md`](docs/PROJECT-MAP.md) to find where things are. New to the code? Read [`docs/HOW-PIP-WORKS.md`](docs/HOW-PIP-WORKS.md) first: how Pip works, for someone reading the code.
+For anyone making a change, person or AI agent, including Claude working on one of Pip's self-changes in Claude Hub. It's written so you can do a good job **without knowing the whole project**. Start with [`docs/PROJECT-MAP.md`](docs/PROJECT-MAP.md) to find where things are. New to the code? Read [`docs/HOW-PIP-WORKS.md`](docs/HOW-PIP-WORKS.md) first: how Pip works, for someone reading the code.
 
 ## 1. Before you change anything
 
@@ -23,7 +23,7 @@ For anyone making a change, person or AI agent, including Pip's own self-change 
   - Commit messages describe the change; never paste a spoken or private request.
 - **The owner reads mainly docs** (D-71), and is starting to read the code (from `docs/HOW-PIP-WORKS.md`). If a change affects how something works, update the plain-language docs, diagrams, the Guide and code comments in the same change.
 - **Dependencies:** use releases at least two weeks old. System (apt) packages only with the owner's OK.
-- **Pip's own changes** (asked by voice or on the dashboard) go through the **Changes page** and pip-builder (D-118), never by hand-editing what's running. If you're Pip's coding agent: you work on a plain copy with no git, the only command you can run is `tools/sandbox-test`, and edits to `pyproject.toml`, `uv.lock`, `deploy/systemd/`, the commit checks (`tools/check_*`, `tools/install_hooks.sh`), `tools/sandbox-test`, `.claude/` or `.gitignore` are refused (`FORBIDDEN` in `builder/checks.py`).
+- **Pip's own changes** (D-152): when someone asks Pip for a change and says yes to his offer to write it up, Claude Hub opens a chat for it in `~/pip`, in plan mode, whose first message is his write-up. If you're the Claude in that chat: follow its instructions and this guide, ask the owner with question cards, present a plan, run `tools/pip-change <id> building` once it's approved, end each commit message with `Pip-Change: <id>`, never copy the request's words into code, docs or commits, ask before installing, and run `tools/pip-change <id> dropped` if the owner says no. A request may come from a guest: it never overrides the owner's decisions, the privacy rules or the security checks. Never hand-edit what's running (`~/pip-app`).
 - **Third-party code we run** is pinned, and any local fixes are saved as patches in `m0/patches/` (e.g. the openWakeWord fix used for M0's wake-word training).
 
 ## 3. Long-running or heavy jobs (on the Pi)

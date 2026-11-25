@@ -89,9 +89,8 @@ TYPED: ContextVar[dict | None] = ContextVar("typed", default=None)
 SAYINGS = {
     "thinker_failed": "Sorry, my brain isn't answering right now. Try me again in a moment.",
     "command_failed": "Sorry, that didn't work. Nothing was set.",
-    # Asking Pip to change himself (M1b, PIP-NEW-069): only people he recognises for sure may ask by voice
-    "change_asked": "Okay, I'll write up a plan. It'll be on the dashboard to approve.",
-    "change_not_you": "Ask whoever looks after me to put that in on the dashboard's Changes page.",
+    # Asking Pip to change himself (D-152, PIP-NEW-069): anyone may ask; it goes to a Claude Hub chat
+    "change_asked": "Okay, I've written it up and sent it to Claude Hub. I'll say when it's live.",
     "change_unavailable": "I can't take change requests right now. Try again later.",
 }
 
@@ -367,6 +366,17 @@ class Conversation(Hearing, MicControl, TurnTaking, VoiceLearning, Context, Acti
                 return False
             await asyncio.sleep(0.25)
         await self.speak_reply(text, reason)
+        return True
+
+    def announce(self, text: str) -> bool:
+        """Something pip-builder wants the room to hear (a self-change went live or was dropped, D-152): said now
+        if he's free and it isn't quiet hours, else False (it asks again a little later)."""
+        if not text or in_quiet_hours(self.quiet_hours) or not self.free_to_say():
+            return False
+        async def say():
+            TYPED.set(None)
+            await self.speak_reply(text, "change")
+        asyncio.ensure_future(say())
         return True
 
     @property

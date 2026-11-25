@@ -1,0 +1,4 @@
+#!/bin/sh
+# Tell Pip where a self-change is, from its Claude Hub chat (D-152): pip_assistant/builder/cli.py.
+#   tools/pip-change 12 building  |  tools/pip-change 12 dropped  |  tools/pip-change 12
+cd "$(dirname "$0")/.." && PYTHONPATH="$PWD" exec /usr/bin/python3 -m pip_assistant.builder.cli "$@"

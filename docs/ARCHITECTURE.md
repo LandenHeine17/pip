@@ -28,7 +28,7 @@ flowchart TB
         CORE["🧠 pip-core<br/>the conductor: conversation,<br/>timers, memory, actions, log"]
         THINK["💭 pip-thinker<br/>Claude (offline Qwen<br/>fallback: not built yet)"]
         WEB["🖥️ pip-web<br/>dashboard, TV page, API"]
-        BUILD["🔧 pip-builder<br/>self-changes, in sandboxes"]
+        BUILD["🔧 pip-builder<br/>self-changes, via Claude Hub"]
         KIOSK["📺 Screen browser<br/>(Pip's face)"]
         DATA[("~/pip-data<br/>settings, secrets,<br/>database, models")]
     end
@@ -51,7 +51,7 @@ flowchart TB
 | **pip-core** | The conductor. Decides what to do with each thing heard; runs conversations, timers, reminders and alarms; holds memory, people and settings; runs actions; keeps the log of everything that happens; watches the other programs' health; recognises voices (TitaNet, step 5) | Everything goes through one place, so it's easy to follow and log | 700 MB (voice model + offline Whisper, D-87) |
 | **pip-thinker** | Talks to Claude through the Claude Code CLI (one fresh session per request, fixing Ziggletron's collision bug P-01). Counts every Claude request in the usage meter (`common/usage.py`, PIP-NEW-089) and announces when Claude's usage limit is reached. *Not built:* the offline Qwen fallback when Claude is unavailable (D-75; not now, D-128) | Slow and memory-hungry; must never hold up the conductor | 2 GB (room for Qwen, ~1.3 GB, if it's ever built) |
 | **pip-web** | The dashboard (phone/PC over Tailscale) and the TV page for the face, which gets only what it shows (D-110). Plain http on the Tailscale address, https at the Pi's Tailscale name on port 8791 (`tailscale serve`), and 127.0.0.1 for the monitor. `/phone` is the TV page on a phone, whose sound it passes to pip-ears (D-149). No logins (D-116); a same-site check (`web/security.py`) stops other websites from changing Pip | Keeps network-facing code away from the core and from secrets | 300 MB |
-| **pip-builder** | Self-changes (D-118): keeps the record of each change, runs Claude Code in a sandbox to plan and build it, checks it, and puts it live through a versioned install once you've approved it twice on the Changes page (§9) | Untrusted code must be fenced off from your data | 300 MB for the program; each sandbox job 2 GB, only while running |
+| **pip-builder** | Self-changes (D-152): hands each one to a Claude Hub chat (in plan mode), keeps its record, follows it there and in git, tells the room when it's live, and undoes it from the Changes page (§9) | Its own pace: it waits on Claude Hub and git, never on the conversation | 300 MB |
 | *Screen browser* | Chromium in kiosk mode on the monitor (system service `pip-tv`, `deploy/tv/`), showing the TV page `/tv` from pip-web's local address | How Ziggletron's face worked; Pip's replaces it (D-110) | (existing) |
 
 Total in everyday use (est.): about 1.5–2.5 GB plus the browser, comfortably inside 8 GB, and matching the 1.5 GB measured in M0.
@@ -138,7 +138,7 @@ What else leaves the Pi:
 | Brave Search | The search words Claude chose (the websearch module, D-125; needs the owner's key) | Only when Claude looks something up on the web |
 | YouTube (Google) | The search words Claude chose for a video (the youtube module's search, D-141; needs the owner's key); and the monitor's browser plays the video from YouTube, so YouTube sees which video and the Pi's address | Only when someone asks for a video, and while one plays |
 | Google | For each person who connected their account (D-97): their calendar events and to-dos, both ways (D-98, D-100). Private events are kept on the Pi too but never told to Claude | Every ~2 min, and straight after a change |
-| Claude (self-changes) | The request, Pip's code (the workspace copy) and the plan; never `~/pip-data` | When a change is planned or built (D-118) |
+| Claude (self-changes, in Claude Hub) | Pip's write-up (what was asked, by whom, sometimes their words) and Pip's code in `~/pip` | When someone asks for a change and says yes to Pip's offer (D-152) |
 | GitHub | **Code only.** Never personal data (checked on every commit). Pip never pushes; the owner does (D-118) | When changes are pushed |
 
 ## 7. Modules: how features plug in
@@ -257,7 +257,7 @@ The voice engine is a setting: `voice_engine` under `[ears]` in `defaults.toml` 
 | `~/pip-data/pip.db` | One SQLite database: memories, people and voice profiles, timers/reminders, the Listening switches and preferences, the 48-hour decision trace, each module's own tables (`calendar_…`, `todos_…`, `google_…`, `screen_…`, `recall_notes`), self-changes (`builder_changes`) and the usage meter (`usage`) | **No** |
 | `~/pip-data/models/` | The voice recognition model (`speaker/`) and Pip's Piper voice (`voices/`). | **No** |
 | `~/pip-app/` | The live copy Pip runs from (§10): `releases/<id>/` (one folder per installed version, with its own `.venv`), `current` (a link to the running one), `release-state.json`, `release.log` | **No** |
-| `~/pip-data/builder/` | Self-change workspaces (`work/<id>/`, deleted when the change ends) and install results (`releases/`) | **No** |
+| `~/pip-data/builder/` | An undo's install results (`releases/`) and its git scratch folder (`deploy/`) | **No** |
 | `~/pip-data/m0/` | M0's results, the Qwen model and wake-word training output, and your consented test recordings (`recordings/`, kept, D-72) | **No** |
 
 - **A fresh clone** starts with default settings and generic models (keys go in `~/pip-data/secrets.toml`, the location and the rest on the Settings page; there's no setup wizard), and works without anyone's personal data (PIP-NEW-096).
@@ -275,13 +275,10 @@ The voice engine is a setting: `voice_engine` under `[ears]` in `defaults.toml` 
 - **Voice alone is never enough** for admin things (settings, approving changes): those need the dashboard (PIP-NEW-027).
 - **Secrets:** only pip-core reads them; pip-web and pip-thinker never see them. The commit check (`tools/check_secrets.py`) blocks keys and tokens (API keys, `client_secret`, `access_secret`, `refresh_token`, `local_key`, Google keys), phone numbers and Tailscale addresses.
 - **Logs:** what people said never goes in the journal; the web libraries' own request lines (which would show search words and calendar addresses) are switched off in every program (`setup_logging` in `common/program.py`).
-- **Self-changes** (built in M1b, D-118, PIP-NEW-069–076). Fixes Ziggletron's self-edit holes (tests run with full rights, the agent could write `.git`, spoken words in commits, leftover branches, no rollback):
-  - **The workspace** is a plain copy of the code with **no `.git`** (`~/pip-data/builder/work/<id>/`), and its Python environment is made *before* the agent starts, so the agent can't plant git hooks or change packages.
-  - **The agent sandbox** (Claude Code, `builder/sandbox.py`): a systemd job where the home folder is empty except the change's own folder and the Claude login file (mounted, never copied); 2 GB, 2 CPUs, 10 min to plan, 30 min to build. It needs the network to reach Claude. Planning may only read; building may edit files and run **one** command: `tools/sandbox-test`. No web search, no other tools.
-  - **`tools/sandbox-test`** runs the tests with **no network and no home folder** (`unshare`: only loopback; an empty home, so no secrets, no Claude login, no `~/.ssh`, no `~/pip-data`). Generated code never runs where it could reach the internet or the login.
-  - **The checks** (by pip-builder, outside the agent sandbox): forbidden files are refused (`pyproject.toml`, `uv.lock`, `.venv`, service files, the commit checks, `tools/sandbox-test`, `.claude/`, `.gitignore`, git's files, binaries); a secret scan; then the full test suite and an import check in the **strict M0 sandbox** (no network at all).
-  - **Your approval, twice, on the dashboard** (Changes page): the plan, then the finished change with its diff and test report. Voice can ask, never approve. A change to security-sensitive code (`web/security.py`, `builder/`, `release.py`, `deploy/`, `core/bus.py`, secrets handling, `tools/`, `CLAUDE.md`) also needs "I've read the diff". Passing the checks only makes it reviewable.
-  - **Going live**: committed on its own branch with a message made from the approved summary (never the request), installed as a new version with automatic rollback (§10). Pip never pushes.
+- **Self-changes** (D-152, replacing D-118's sandboxed pipeline; PIP-NEW-069–076). A self-change is a **Claude Hub chat in `~/pip`, always started in plan mode** (`~/claude-hub/hub/inbox.py` enforces it): Claude reads and plans, and nothing changes until the owner approves the plan there. There's no sandbox: the owner judged plan mode, seeing the request (the chat's first message is Pip's write-up, saying who asked) and approving Claude's commands in the hub enough. Anyone may ask Pip, guests too, so Claude is told to treat a request as a wish, never above the owner's decisions, the privacy rules or the security checks. Voice can ask, never approve.
+  - **Handing over:** pip-builder writes a request file (mode 600) into Claude Hub's inbox folder (0700). The hub accepts only folders listed in its `inbox_folders`, deletes the request once the chat has started, and keeps a small state file for Pip.
+  - **Commits:** made by Claude in the chat with the normal commit checks (secrets, the map); each ends with `Pip-Change: <id>`, and Claude is told never to copy the request's words into code, docs or commits. Pip never pushes unless the owner asks.
+  - **Going live:** Claude asks the owner, then runs `deploy/install.sh`: a new version with automatic rollback (§10). Undo on the Changes page installs a revert the same way.
 - **Prompt safety:** device names, web results and calendar text are treated as data, never as instructions.
 
 ## 10. Updates, restarts and recovery
@@ -295,7 +292,7 @@ The voice engine is a setting: `voice_engine` under `[ears]` in `defaults.toml` 
 ```mermaid
 flowchart TD
     A["sh deploy/install.sh"] --> B{"Uncommitted changes<br/>in ~/pip?"}
-    S["An approved self-change<br/>(committed on its own branch)"] --> C
+    S["An Undo from the Changes page<br/>(a revert on its own branch)"] --> C
     B -- "yes" --> X["Stop (or --allow-dirty:<br/>install the last commit anyway)"]
     B -- "no" --> C["Make the version:<br/>~/pip-app/releases/(id)<br/>(git worktree + its own .venv)"]
     C --> D["Wait for a quiet moment<br/>(core/states.py quiet(): not while he talks, listens, answers or rings; ≤ 2 min)"]
@@ -313,7 +310,7 @@ flowchart TD
 
 ## 11. Testing
 
-- **Every module has its own tests.** They're run by hand (`uv run pytest`, memory-capped; see CONTRIBUTING §4), and by pip-builder before any self-change is offered to you (the agent runs them in `tools/sandbox-test`; then the whole suite runs again in the strict sandbox). The pre-commit check runs only `tools/check_secrets.py` and `tools/check_map.py` (the project map, and no module named in Pip's programs). Tests are sorted by the part they test (`tests/common`, `core`, `ears`, `thinker`, `web`, `builder`; a module's next to it). Shared test code lives in `tests/helpers.py` (fake programs, fake speech-to-text and voices, `registry()` loading real modules) and `tests/fakes/google.py` (a pretend Google); pytest puts `tests/` on the import path, so a module's own tests can use them too, and test files never import each other. Every test gets a throwaway data folder (the top-level `conftest.py`), so none can touch `~/pip-data`. Tests marked `pi_data` need the owner's recordings or models and skip elsewhere (`pytest -m 'not pi_data'`). Nothing test-only ships inside `pip_assistant/`.
+- **Every module has its own tests.** They're run by hand (`uv run pytest`, memory-capped; see CONTRIBUTING §4),, and by Claude in a self-change's Claude Hub chat before it commits (D-152). The pre-commit check runs only `tools/check_secrets.py` and `tools/check_map.py` (the project map, and no module named in Pip's programs). Tests are sorted by the part they test (`tests/common`, `core`, `ears`, `thinker`, `web`, `builder`; a module's next to it). Shared test code lives in `tests/helpers.py` (fake programs, fake speech-to-text and voices, `registry()` loading real modules) and `tests/fakes/google.py` (a pretend Google); pytest puts `tests/` on the import path, so a module's own tests can use them too, and test files never import each other. Every test gets a throwaway data folder (the top-level `conftest.py`), so none can touch `~/pip-data`. Tests marked `pi_data` need the owner's recordings or models and skip elsewhere (`pytest -m 'not pi_data'`). Nothing test-only ships inside `pip_assistant/`.
 - **Replay tests:** conversations and audio clips are fed in without anyone speaking, for listening, interruptions and alarms. Tests that use your private recordings run only on the Pi and never go to GitHub.
 - The **acceptance criteria** (`AC-*` in REQUIREMENTS) become automated tests as each feature is built.
 
@@ -333,7 +330,7 @@ flowchart TD
 | **Groq Whisper Turbo + word list** | Best in M0 (D-48); local Whisper as the offline fallback |
 | **Claude Code CLI** (Pro plan) | D-05, D-17; one fresh session per request; Opus at low effort (D-137, chosen with `tools/model_compare.py`) |
 | **llama-cpp-python + Qwen 2.5 1.5B** | Offline fallback (D-75); tested in M0, not built into Pip yet |
-| **systemd** services and sandbox, plus `unshare` | Already on the Pi; restarts, memory caps and the M0-tested sandbox; `unshare` (no root needed) takes the network and home folder away from self-change tests |
+| **systemd** services | Already on the Pi; restarts and memory caps (the M0-tested sandbox and `unshare` were used for self-changes until D-152) |
 
 ## 13. Repository layout
 
@@ -344,13 +341,13 @@ pip/                          (the repo)
 │   ├── core/                 pip-core program (conductor, scheduler, memory, trace)
 │   ├── thinker/              pip-thinker program
 │   ├── web/                  pip-web program (dashboard + TV page)
-│   ├── builder/              pip-builder (the self-change pipeline: store, sandbox, agent, pipeline)
+│   ├── builder/              pip-builder (self-changes via Claude Hub: store, hub inbox, following, undo)
 │   ├── release.py            versioned installs with automatic rollback (run with the system python3)
 │   ├── common/               shared bits: messages, settings, secrets, paths, db (opening pip.db), when (times)
 │   └── modules/              plug-in features: google, calendar, todos, screen, websearch, six_seven, recall, home_control, youtube (+ _template/)
 ├── models/                   generic, public-safe models
 ├── deploy/                   systemd service files (deploy/systemd/, incl. pip-builder.service), install.sh (installs the committed HEAD as a release); the monitor's kiosk (deploy/tv/, install-tv.sh); https (install-https.sh); the plugs' Wi-Fi network (plug-network.sh, network/)
-├── tools/                    the commit checks, sandbox-test (tests with no network and no home folder), and measuring tools (latency.py, model_compare.py, home_check.py)
+├── tools/                    the commit checks, pip-change (a self-change's stage, from its Claude Hub chat), and measuring tools (latency.py, model_compare.py, home_check.py)
 ├── tests/                    tests, sorted by the program they test (a module's own are next to it)
 ├── docs/                     PIP-SPEC, HOW-PIP-WORKS, ARCHITECTURE, DECISIONS, REQUIREMENTS, PROJECT-MAP
 └── m0/                       measurement tools (kept for re-runs)
@@ -380,8 +377,8 @@ Built in small steps. Each step ends with something you can try.
 | Part | What you'll be able to do |
 |---|---|
 | Versioned installs (PIP-NEW-080) | Every update goes live only if Pip is healthy on it, and goes back by itself if not; the dashboard header shows the running version |
-| pip-builder (PIP-NEW-069–076) | Ask Pip for a change by voice or on the Changes page; approve the plan, watch it being built, review the diff and test report, approve it, and undo it later |
-| Usage meter (PIP-NEW-089) | "Claude today: N requests (≈$X)" on the dashboard; joining in and self-changes pause when Claude's usage limit is reached |
+| pip-builder (PIP-NEW-069–076) | Ask Pip for a change by voice or on the Changes page; approve the plan, watch it being built, review the diff and test report, approve it, and undo it later (**replaced by D-152:** a Claude Hub chat) |
+| Usage meter (PIP-NEW-089) | "Claude today: N requests (≈$X)" on the dashboard; joining in pauses when Claude's usage limit is reached (self-changes too, until D-152) |
 
 **Switch-over from Ziggletron: done.** Ziggletron is off (D-82), the monitor is Pip's (D-110), and his memories and personality were brought over (D-117). Ziggletron stays installed as the owner's fallback; only the owner touches it.
 
@@ -419,6 +416,8 @@ Built in small steps. Each step ends with something you can try.
 **The dashboard redesigned (2026-11-24, D-148):** the one long page is split into pages that share a frame drawn by `web/static/pip.js`: a menu (a sidebar on a laptop, tabs at the bottom on a phone) and a status bar (Pip's state, the Listening switch, a ringing alarm's Shut off / Snooze, voice learning), on every page that has a `<main>`, module pages too, with one live stream per page (`pip.on`). pip-web serves the pages from one table (`PAGES` in `web/main.py`): the Overview (`/`), Talk (`/talk`, with `talk.js` shared with the Overview), People and each person's profile (`/people`, `/person?id=`), Memory (`/memory`), Health & trace (`/system`), Settings, Changes, Claude and the Guide (which keeps its own chapter list). `/api/modules` now lists every module that's on, with its place in the menu (`group`, `icon`, `tab` under `[dashboard]` in `module.toml`, checked by `common/modules.py`); a module without a page of its own gets `static/module.html`. Two module hooks: `person_panel` (a module's part of a profile page: Google's account settings, with the calendar's and to-dos' `account_panel`s inside) and a `home()` card of things to tick off (`check`, the to-dos). The Home module's On/Off card on the front page is gone (the owner's choice). Nothing in pip-core's behaviour changes.
 
 **Less of the calendar with each request (2026-11-25, D-151):** the calendar's `summary` gives only what's left of today; other days and the calendars' names are look-ups (`look:calendar`, `calendar_names`). Events Pip doesn't bring up are left out of it, of heads-ups (`CalendarStore.sync_alerts`) and of `api.events_on`: those muted by name (`calendar_muted`, `CalendarStore.mute`, Claude's `mute_event`, the Calendar page's Mute) and those on a calendar marked `quiet` ("only when asked"); one check for both, `CalendarStore.not_brought_up`. A look-up still shows them, marked.
+
+**Self-changes in Claude Hub (2026-11-24, D-152):** the sandboxed pipeline (`builder/pipeline.py`, `api.py`, `agent.py`, `sandbox.py`, `checks.py`, `workspace.py`, `tools/sandbox-test` and their tests) is gone. Pip's thinker offers "Want me to write that up as a change?" and, after a yes, answers `request_change` with a summary and a write-up (`details`); anyone may ask. pip-builder (`builder/changes.py`, `hub.py`) writes a request into Claude Hub's new inbox (`~/claude-hub/hub/inbox.py`), which opens a chat in `~/pip`, always in plan mode, and keeps a state file for Pip. Claude marks "building" or "dropped" with `tools/pip-change` (`builder/cli.py`, the store directly, system python3) and ends each commit with `Pip-Change: <id>`; pip-builder finds "ready" and "live" from those commits and the running release, and asks pip-core to say it once (`core.announce`, `Conversation.announce`: only when he's free and not in quiet hours). The Changes page is a status list with links to the chats, Undo for live ones (a revert installed with `release.py`, as before) and a link to a new Hub chat. The `builder_changes` table gained `hub_name`, `hub_session`, `hub_state`, `commits` and `announced`; the old changes stay as history, and any left mid-way were stopped.
 
 ## 15. Review
 

@@ -150,12 +150,10 @@ SCHEMA = {
                              "old way, e.g. without a Brave Search key.", "bool", ["thinker"]),
     "thinker.timeout_seconds": _s(B, "Give up after", "Give up on an answer after this many seconds.",
                                   "float", ["thinker"], min=10, max=180),
-    "builder.enabled": _s(B, "Self-changes", "Let Pip change his own code when asked (each change needs your "
-                          "approval twice, on the Changes page).", "bool", ["builder"]),
-    "builder.model": _s(B, "Claude model for changes", "Which Claude plans and builds self-changes.", "str",
-                        ["builder"], choices=["sonnet", "opus", "haiku"]),
-    "builder.effort": _s(B, "Effort for changes", "How hard Claude thinks while planning and building a change.",
-                         "str", ["builder"], choices=["low", "medium", "high", "xhigh", "max"]),
+    "builder.enabled": _s(B, "Self-changes", "Let Pip write up changes to himself when asked, and hand them to "
+                          "Claude Hub (you approve everything there, D-152).", "bool", ["builder"]),
+    "builder.model": _s(B, "Claude model for changes", "Which Claude the Claude Hub chat for a self-change uses.",
+                        "str", ["builder"], choices=["opus", "sonnet", "haiku"]),
     # ---- Personality (the editor is on the same part of the page)
     "pip.name": _s(P, "Name", "What Pip calls himself in his personality ({name}). It doesn't change "
                    "the names he answers to.", "str", ["thinker"], nonempty=True, max=30),
@@ -235,10 +233,10 @@ SCHEMA = {
                                  "as a service).", "bool", ["core"]),
     "trace.keep_hours": _s(A, "Keep the trace", "How many hours the decision trace (what happened, never the words) "
                            "is kept.", "int", ["core"], min=1, max=720),
-    "builder.plan_minutes": _s(A, "Planning time limit", "Give up on planning a change after this many minutes.",
-                               "int", ["builder"], min=2, max=60),
-    "builder.build_minutes": _s(A, "Building time limit", "Give up on building a change after this many minutes.",
-                                "int", ["builder"], min=5, max=120),
+    "builder.hub_inbox": _s(A, "Claude Hub's inbox", "The folder Claude Hub watches for new chats "
+                            "(~/claude-hub/hub/inbox.py).", "str", ["builder"], nonempty=True),
+    "builder.hub_url": _s(A, "Claude Hub's address", "For the Changes page's links. Empty: this Pi's name on Claude "
+                          "Hub's ports (8443 over https, 8795 over http).", "str", ["builder"]),
     "builder.keep_days": _s(A, "Keep change requests", "The words of a change request are deleted after this "
                             "many days (the record of the change stays).", "int", ["builder"], min=1, max=3650),
     "phone.no_audio_seconds": _s(A, "Phone gone after", "The phone stopped sending sound this many seconds (locked, "

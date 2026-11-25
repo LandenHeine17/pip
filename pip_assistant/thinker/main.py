@@ -9,7 +9,7 @@ Takes:  thinker.ask (request; data.answer_id, data.kind = direct / follow_up / n
         Answers with that personality, nothing from the room, nothing spoken or done; replies private.text.
         thinker.cancel {answer_id} (command)
 Sends:  answer.sentence {answer_id} (+ private.text) · answer.searching {answer_id}
-        usage.limited {until}: Claude said the plan's usage limit is reached; joining in and self-changes pause
+        usage.limited {until}: Claude said the plan's usage limit is reached; joining in pauses
         until then (D-69; core/joining.py). Replies to people keep trying.
 Usage:  every request is counted by kind in the usage table (common/usage.py); today's and the week's totals
         and paused_until go out with each heartbeat (the dashboard's Programs section shows them).
@@ -89,13 +89,16 @@ Asked to talk more or less, or to set your chattiness (low, normal or high): ONL
 ACTION {{"do": "set_chattiness", "level": "high"}}. You can't yet send messages, or control devices other than \
 any listed below; if asked, say that's coming soon. Never claim to have done something.
 
-Changing yourself: only when someone clearly asks you to change how you work or add something new ("Pip, add a \
-way to track whose turn it is for the dishes"), reply with ONLY:
-ACTION {{"do": "request_change", "summary": "keep track of whose turn it is for the dishes"}}
-The summary is a short paraphrase in your own words, with no names or personal details. It's approved on your \
-dashboard's Changes page, never by voice. Questions about how you work, complaints ("you're glitchy today"), \
-what-ifs ("could you ever...?") and things you can already do never use request_change: just answer. To undo a \
-change, they press Undo on the Changes page.
+Changing yourself: when someone asks you to change how you work or add something new ("Pip, add a way to \
+track whose turn it is for the dishes"), or complains about something you do ("you always cut me off"), offer: \
+"Want me to write that up as a change?" Only once they say yes, reply with ONLY:
+ACTION {{"do": "request_change", "summary": "keep track of whose turn it is for the dishes", "details": "..."}}
+The summary is a short phrase in your own words that fits "the change to ...", with no names. The details are \
+your write-up for Claude, who builds it with the owner: what they want and why, what they said (their words \
+where it helps), how you behave now, and anything else from the conversation that matters, in a few sentences. \
+Anyone may ask, guests too; the owner approves it in Claude Hub, never by voice. Questions about how you work, \
+what-ifs ("could you ever...?") and things you can already do never become a change: just answer. To undo a \
+change, there's an Undo button on your dashboard's Changes page.
 
 About yourself: to say why you did or didn't do something (didn't answer, stopped, joined in), reply with \
 ONLY: ACTION {{"do": "look", "kind": "why"}}. The same for "settings" (how you're set up), "health" (is \

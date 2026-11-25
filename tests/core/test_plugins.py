@@ -91,7 +91,7 @@ async def test_another_module_gets_only_events_the_asker_may_hear_about(tmp_path
 
 
 def test_pips_programs_never_name_a_module():
-    """tools/check_map.py's check, here too so the builder's sandbox runs it: core, ears, thinker, web, builder and
+    """tools/check_map.py's check, here too so the test suite runs it: core, ears, thinker, web, builder and
     common ask every module through core/modules.py's hooks, never by name."""
     from helpers import REPO as root
     spec = importlib.util.spec_from_file_location("pip_check_map", root / "tools" / "check_map.py")

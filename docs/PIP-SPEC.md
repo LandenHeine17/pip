@@ -4,7 +4,7 @@ The short, living description of Pip 2.0. Read this first.
 
 **How the docs fit together (for building):** this page says *what* Pip does → [REQUIREMENTS.md](REQUIREMENTS.md) lists every requirement, and its **Detail** link opens the exact behaviour rules in the archived proposal ([archive/pip-v2-proposals-2026-11/](archive/pip-v2-proposals-2026-11/README.md)) → [DECISIONS.md](DECISIONS.md) (`D-nn`) **overrides** anything older, and REQUIREMENTS §0 lists the archived passages that have been overridden. What Ziggletron did (for parity) is in [archive/ziggletron-discovery/](archive/ziggletron-discovery/PRODUCT-OVERVIEW.md).
 
-*Last updated 2026-11-24 · Phase: **M3 (smart home) started 2026-11-15**: home control: the lamps and the fan, switched directly on a Wi-Fi network the Pi hosts or else through Tuya's cloud (D-132, D-139, D-140), and a chat box on the dashboard (D-131). Built before: M1a (steps 1–8: hearing, answers, timers/alarms, memory, people and voices, listening to the room like Ziggletron, the calendar / to-dos / Google modules, the face and the screen by voice, the Settings page and an editable personality), M1b (Pip changing his own code with your approval twice, versioned installs that roll back by themselves, the usage meter, D-118) and M2 (explaining himself, conversation notes kept 30 days, smarter memory, conversation polish, a richer face, your data, D-128–D-130). How the code works: [HOW-PIP-WORKS.md](HOW-PIP-WORKS.md). Dashboard: `http://<pi-tailscale-ip>:8790`.*
+*Last updated 2026-11-24 · Phase: **M3 (smart home) started 2026-11-15**: home control: the lamps and the fan, switched directly on a Wi-Fi network the Pi hosts or else through Tuya's cloud (D-132, D-139, D-140), and a chat box on the dashboard (D-131). Built before: M1a (steps 1–8: hearing, answers, timers/alarms, memory, people and voices, listening to the room like Ziggletron, the calendar / to-dos / Google modules, the face and the screen by voice, the Settings page and an editable personality), M1b (Pip changing his own code with your approval, since D-152 in a Claude Hub chat; versioned installs that roll back by themselves, the usage meter, D-118) and M2 (explaining himself, conversation notes kept 30 days, smarter memory, conversation polish, a richer face, your data, D-128–D-130). How the code works: [HOW-PIP-WORKS.md](HOW-PIP-WORKS.md). Dashboard: `http://<pi-tailscale-ip>:8790`.*
 
 ## 1. In one paragraph
 
@@ -284,28 +284,27 @@ Sounds without a human voice in them (a click, a cough, a hiss) are dropped befo
 ### Web search (built 2026-11-12, D-125)
 - For current facts (news, scores, opening hours), Claude asks Pip to look it up; the `websearch` module asks the **Brave Search API** and hands Claude a few short results, and Claude answers in a sentence. About 5 s, where Claude's own web search took 10–15 s (9.7, 11.9 and 15.7 s in the trace, 2026-11-12). "Let me look that up." if it takes over a second. Nothing is kept, and only Brave is reached. Needs a key in `~/pip-data/secrets.toml` (`[websearch] api_key`); Claude's own search can be switched back on in Settings (`thinker.web_search`).
 
-### Changing himself (built in M1b, 2026-11-09)
-- **Asking:** say it to Pip ("Pip, keep track of whose turn it is for the dishes"), or type it on the dashboard's **Changes** page. By voice, only people he recognises for sure may ask; guests and voices he isn't sure of are told to ask on the dashboard. Questions about how he works never start a change (D-118).
-- **Two approvals, both on the dashboard.** Claude Code reads his code and writes a plan (what changes, why, which files, how risky, how it's tested, how to undo it). If something is unclear, its questions wait on the Changes page. You approve the plan; then it's built in a **sandbox** and tested; you see the diff and the test report and approve again. Voice can ask, never approve. A change to security-sensitive code also needs "I've read the diff".
-- **Undo:** the Undo button on a live change takes it back out (a new commit, installed the same way).
-- One change at a time; you can stop one while it's being planned, built or checked. The words of a request are private (shown only on the Changes page) and deleted after 90 days. Commit messages are made from the approved summary, never your words. Pip never pushes to GitHub.
+### Changing himself (built in M1b, 2026-11-09; in Claude Hub since D-152, 2026-11-24)
+- **Asking:** say it to Pip ("Pip, keep track of whose turn it is for the dishes"), or complain about something he does ("you always cut me off"). He offers: **"Want me to write that up as a change?"** Only after a yes does he write it up and send it. Anyone may ask, guests too. Questions about how he works and what-ifs never become a change.
+- **Everything else happens in Claude Hub.** His write-up opens a chat in his code, titled "Pip change #N: …", **in plan mode**. Its first message is the write-up, saying who asked and how. Claude reads the code, asks you its questions as question cards and shows a plan. Nothing changes until you approve it. Then it builds the change, runs the tests, commits it, and asks whether to install it. To start one yourself, the Changes page has **New change in Claude Hub**.
+- **The Changes page shows where each one is:** planning, building, ready (committed, not installed), live or dropped. It also says whether Claude is working or waiting for you, who asked and when, and has a link to its chat.
+- **When it's live** (or dropped), Pip tells the room once, when he's free and not between 23:00 and 07:00.
+- **Undo:** the Undo button on a live change takes it back out (a new commit, installed the same way, with the automatic rollback).
+- What he writes up is private. It goes only into the Claude Hub chat, it's deleted from his records after 90 days, and Claude is told never to copy it into code, docs or commit messages. Pip never pushes to GitHub unless you ask.
 
 ```mermaid
 flowchart TD
-    A["Someone asks<br/>(voice: recognised for sure;<br/>or the Changes page)"] --> P["Claude Code writes a plan<br/>(read-only, in the sandbox)"]
-    P --> Q{"Questions?"}
-    Q -- "yes" --> QA["You answer on the Changes page"] --> P
-    Q -- "no" --> AP1{"Approval 1 (dashboard):<br/>build it?"}
-    AP1 -- "no" --> R["Rejected"]
-    AP1 -- "yes" --> B["Built in the sandbox;<br/>tests run with no internet<br/>and no passwords"]
-    B --> C["Checked: forbidden files, secrets,<br/>all tests in the strict sandbox"]
-    C -- "fails" --> F["Failed (nothing changes)"]
-    C -- "passes" --> AP2{"Approval 2 (dashboard):<br/>diff + test report; go live?"}
-    AP2 -- "no" --> R
-    AP2 -- "yes" --> D["Committed and installed<br/>as a new version"]
-    D --> H{"Healthy?"}
-    H -- "yes" --> L["Live (Undo button)"]
-    H -- "no" --> RB["Rolled back by itself"]
+    A["Someone asks, or complains"] --> O{"Pip: Want me to write<br/>that up as a change?"}
+    O -- "no" --> N["Nothing happens"]
+    O -- "yes" --> H["Claude Hub opens a chat<br/>in plan mode, with his write-up"]
+    H --> Q["You answer Claude's questions<br/>and approve the plan"]
+    Q -- "no" --> R["Dropped (Pip says so)"]
+    Q -- "yes" --> B["Claude builds it, tests it,<br/>commits it (Pip-Change: N)"]
+    B --> I{"Install now? (you)"}
+    I -- "yes" --> D["Installed as a new version"]
+    D --> HL{"Healthy?"}
+    HL -- "yes" --> L["Live: Pip tells the room<br/>(Undo button)"]
+    HL -- "no" --> RB["Rolled back by itself"]
 ```
 
 - He can suggest improvements from recurring problems, but never acts on them himself (M4).
@@ -314,7 +313,7 @@ flowchart TD
 - Alarms and "stop" can never be blocked by slower work. A watchdog restarts stuck parts, and a part that stops listening or speaking restarts itself rather than carrying on deaf. A module's background job (Google sync) that fails starts again by itself.
 - **Every update rolls back by itself** (built in M1b, PIP-NEW-080): Pip runs from a separate copy (`~/pip-app`); a new version goes live only once he's healthy on it (checked for up to 2 minutes, then 30 s more), otherwise he switches back to the one before. The last 3 versions are kept. The dashboard header shows which version is running.
 - Brain: your **Claude Pro subscription** via Claude Code, using **Opus** at low effort like Ziggletron (D-137), no local model for now (D-128; PIP-NEW-081 later): when Claude is unavailable his own offline commands do the basics.
-- **Usage meter** (built in M1b, PIP-NEW-089): the dashboard shows "Claude today: N requests (≈$X)". When Claude says the plan's usage limit is reached, he stops joining in and pauses self-changes until it resets (or for an hour); replies to people keep trying (D-69). There's no early "80%" warning: the Pro plan doesn't say how much is left (D-05, D-17, D-65).
+- **Usage meter** (built in M1b, PIP-NEW-089): the dashboard shows "Claude today: N requests (≈$X)". When Claude says the plan's usage limit is reached, he stops joining in until it resets (or for an hour); replies to people keep trying (D-69). There's no early "80%" warning: the Pro plan doesn't say how much is left (D-05, D-17, D-65).
 - Heavy jobs run under a memory cap (lesson from the M0 freeze).
 
 ### Devices (M3, started 2026-11-15)

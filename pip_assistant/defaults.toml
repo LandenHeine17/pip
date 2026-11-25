@@ -133,10 +133,10 @@ allowed_hosts = []                 # Other names the dashboard may be opened by 
 https_port = 8791                  # Tailscale's https for the dashboard (deploy/install-https.sh; 443 is left to anything else, D-149).
 
 [builder]
-# Pip changing his own code (M1b): asked by voice or on the dashboard, approved by you twice on the Changes page.
+# Pip changing his own code (D-152): he writes the request up, Claude Hub opens a chat for it in plan mode, and you
+# do the rest there. The Changes page shows where each one is.
 enabled = true                     # Allow self-changes at all.
-model = "sonnet"                   # Claude model for planning and building changes.
-effort = "medium"                  # How hard Claude thinks while planning and building.
-plan_minutes = 10                  # Give up on planning after this long.
-build_minutes = 30                 # Give up on building after this long.
+hub_inbox = "~/.local/state/claude-hub/inbox"   # Where Claude Hub looks for new chats (~/claude-hub/hub/inbox.py).
+hub_url = ""                       # Claude Hub's address for the Changes page's links ("" = this Pi, ports 8443/8795).
+model = "opus"                     # Claude model for the chat.
 keep_days = 90                     # The words of a request are deleted after this many days (the change's record stays).

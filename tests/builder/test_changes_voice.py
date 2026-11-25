@@ -1,5 +1,5 @@
-"""Asking Pip to change himself by voice (M1b, PIP-NEW-069, AC-SM-01): only voices he's sure of, never guests;
-the request goes to pip-builder in the private part; voice never approves anything."""
+"""Asking Pip to change himself by voice (D-152, PIP-NEW-069, AC-SM-01): anyone may ask, guests too, once he's
+offered to write it up; the request goes to pip-builder in the private part; voice never approves anything."""
 import asyncio
 
 import pytest
@@ -12,7 +12,8 @@ from pip_assistant.core.conversation import SAYINGS
 from pip_assistant.core.people import Match
 from pip_assistant.thinker.main import RULES
 
-ASK = 'ACTION {"do": "request_change", "summary": "keep track of whose turn it is for the dishes"}'
+ASK = ('ACTION {"do": "request_change", "summary": "keep track of whose turn it is for the dishes", '
+       '"details": "They want a dishes rota: nobody knows whose turn it is."}')
 LANDEN = Match("p1", "Landen", "sure", 0.9)
 
 
@@ -36,22 +37,24 @@ async def test_a_recognised_member_can_ask(tmp_path):
     bus, conv, got, seen, tasks = await with_builder(tmp_path)
     await conv.claude_action(ASK, 0.0, asker=(LANDEN, b""))
     await asyncio.sleep(0.05)
-    assert seen == [({"source": "voice", "asked_by": "Landen", "person_id": "p1"},
-                     {"text": "keep track of whose turn it is for the dishes"})]
+    assert seen == [({"source": "voice", "asked_by": "Landen"},
+                     {"summary": "keep track of whose turn it is for the dishes",
+                      "request": "They want a dishes rota: nobody knows whose turn it is."})]
     assert says(got)[-1] == SAYINGS["change_asked"]
     # what was asked travels only in the private part: never in the trace
     assert not any("dishes" in str(r) for r in bus.trace.recent())
     await finish(bus, tasks)
 
 
-@pytest.mark.parametrize("who", [None, Match("p1", "Landen", "probably", 0.6), Match(None, "", "unknown", 0.1),
-                                 Match("g1", "Sam", "sure", 0.9, guest=True)])
-async def test_unsure_voices_and_guests_are_told_to_use_the_dashboard(tmp_path, who):
+@pytest.mark.parametrize("who,label", [(None, "someone Pip didn't recognise"),
+                                       (Match("p1", "Landen", "probably", 0.6), "Landen (Pip wasn't sure of the voice)"),
+                                       (Match(None, "", "unknown", 0.1), "someone Pip didn't recognise"),
+                                       (Match("g1", "Sam", "sure", 0.9, guest=True), "Sam (a guest)")])
+async def test_anyone_may_ask_and_the_owner_sees_who(tmp_path, who, label):
     bus, conv, got, seen, tasks = await with_builder(tmp_path)
     await conv.claude_action(ASK, 0.0, asker=(who, b""))
     await asyncio.sleep(0.05)
-    assert not seen and says(got)[-1] == SAYINGS["change_not_you"]
-    assert "Changes page" in SAYINGS["change_not_you"] and "Landen" not in SAYINGS["change_not_you"]
+    assert seen and seen[0][0]["asked_by"] == label and says(got)[-1] == SAYINGS["change_asked"]
     await finish(bus, tasks)
 
 
@@ -66,9 +69,12 @@ async def test_builder_down_or_paused_is_a_plain_refusal(tmp_path, running, repl
 
 def test_request_change_is_checked():
     assert actions.check_here([{"do": "request_change", "summary": "  add a  dishes rota "}]) == \
-        [("request_change", "add a dishes rota")]
+        [("request_change", "add a dishes rota", "add a dishes rota")]
+    assert actions.check_here([{"do": "request_change", "summary": "add a rota", "details": " the why "}]) == \
+        [("request_change", "add a rota", "the why")]
     for bad in ({"do": "request_change"}, {"do": "request_change", "summary": ""}, {"do": "request_change", "summary": "hm"},
                 {"do": "request_change", "summary": "x" * 400},
+                {"do": "request_change", "summary": "add a rota", "details": "x" * 5000},
                 {"do": "request_change", "summary": "remember the wifi password is hunter2"}):
         with pytest.raises(actions.Invalid):
             actions.check_here([bad])
@@ -99,6 +105,6 @@ async def test_joining_in_never_asks_for_a_change(tmp_path):
 def test_rules_explain_request_change():
     rules = RULES
     assert '"do": "request_change"' in rules
-    for words in ("clearly asks", "Questions about how you", "complaints", "what-ifs", "no names or personal details",
-                  "Undo on the Changes page", "never by voice"):
+    for words in ("Want me to write that up as a change?", "Only once they say yes", "complains", "Questions about how",
+                  "what-ifs", "with no names", '"details"', "guests too", "Claude Hub", "Undo button", "never by voice"):
         assert words in rules, words

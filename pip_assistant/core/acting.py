@@ -9,7 +9,7 @@ they read and set its fields like its own.
     claude_action     Claude replied with an ACTION: check all of it, then do all of it or none (D-84).
                       Ringing alarms, voice learning and change requests are done here; the rest by
                       core/actions.py.
-    request_change    asking Pip to change himself (M1b, PIP-NEW-069): passed on to pip-builder
+    request_change    asking Pip to change himself (D-152, PIP-NEW-069): passed on to pip-builder → Claude Hub
     look_up           Claude asked to see something first (ACTION look, D-102): fetch it and ask again
 """
 import asyncio
@@ -114,7 +114,7 @@ class Acting:
                     said.append(f"Snoozed for {when.say_duration((step[1] or self.schedule.snooze_min) * 60)}." if n
                                 else "Nothing's ringing.")
                 elif step[0] == "request_change":
-                    text, ok = await self.request_change(step[1], speaker)
+                    text, ok = await self.request_change(step[1], step[2], speaker)
                     said.append(text)
                     done += ok
                     continue
@@ -149,18 +149,23 @@ class Acting:
         if learning:
             await self.start_learning(learning, pcm)
 
-    async def request_change(self, summary: str, speaker) -> tuple[str, bool]:
-        """Someone asked Pip to change how he works (ACTION request_change, PIP-NEW-069, AC-SM-01). Only a voice
-        he recognises for sure, and not a guest's, may ask; pip-builder then writes a plan for the dashboard's
-        Changes page, where the owner approves it (voice never approves anything). Claude's paraphrase travels
-        only in the private part, so it's never in the trace. Returns (what to say, whether it was passed on)."""
-        if speaker is None or speaker.level != "sure" or speaker.guest or not speaker.person_id:
-            await self.bus.publish(Message("event", "change.refused", data={"why": "voice not recognised"}))
-            return self.SAYINGS["change_not_you"], False
+    async def request_change(self, summary: str, details: str, speaker) -> tuple[str, bool]:
+        """Someone asked Pip to change how he works, he offered to write it up and they said yes (ACTION
+        request_change, D-152, PIP-NEW-069, AC-SM-01). Anyone may ask, guests too: pip-builder opens a Claude Hub
+        chat for it in plan mode, where the owner sees the write-up and who asked, and approves everything (voice
+        never approves anything). The words travel only in the private part, so they're never in the trace.
+        Returns (what to say, whether it was passed on)."""
+        from .conversation import TYPED
+        if speaker is None or speaker.level == "unknown" or not speaker.name:
+            who = "someone Pip didn't recognise"
+        elif speaker.guest:
+            who = f"{speaker.name} (a guest)"
+        else:
+            who = speaker.name + ("" if speaker.level == "sure" else " (Pip wasn't sure of the voice)")
         try:
             r = await self.bus_request("builder", "builder.ask",
-                                       {"source": "voice", "asked_by": speaker.label, "person_id": speaker.person_id},
-                                       {"text": summary}, timeout=10)
+                                       {"source": "chat" if TYPED.get() else "voice", "asked_by": who},
+                                       {"summary": summary, "request": details}, timeout=10)
             ok = not r.data.get("error")
         except Exception:   # pip-builder not running, or too slow
             ok = False

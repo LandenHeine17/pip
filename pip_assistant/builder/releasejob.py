@@ -1,4 +1,5 @@
-"""Installing a change as a new version of Pip, as its own job (M1b).
+"""Installing an undo as a new version of Pip, as its own job (M1b; since D-152 only Undo uses it: a change
+itself is installed by Claude in its Claude Hub chat, with deploy/install.sh).
 
 The builder doesn't install anything itself: it starts `python3 -m pip_assistant.release install <commit>`
 (release.py, the same installer deploy/install.sh uses) as a separate systemd job, then watches for the
@@ -14,7 +15,11 @@ import subprocess
 from pathlib import Path
 
 from ..release import Releases, install_outcome
-from . import sandbox
+
+
+def unit_active(unit: str) -> bool:
+    r = subprocess.run(["systemctl", "--user", "is-active", unit], capture_output=True, text=True, timeout=10)
+    return r.stdout.strip() in ("active", "activating", "deactivating")
 
 
 class ReleaseRunner:
@@ -62,7 +67,7 @@ class ReleaseRunner:
             return None
 
     def running(self, cid, tag) -> bool:
-        return sandbox.unit_active(self.unit(cid, tag))
+        return unit_active(self.unit(cid, tag))
 
     def tail(self, cid, tag, lines: int = 6) -> str:
         try:

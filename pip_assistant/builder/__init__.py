@@ -1,1 +1,1 @@
-"""pip-builder: Pip changing his own code, with the owner's approval twice (M1b, PIP-NEW-069–076)."""
+"""pip-builder: Pip's self-changes, worked through with the owner in Claude Hub (D-152; M1b, PIP-NEW-069–076)."""

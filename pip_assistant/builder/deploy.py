@@ -1,10 +1,10 @@
-"""Putting a checked change into git (M1b): Pip's own commits in ~/pip, never pushed.
+"""Pip's self-changes in git (D-152): finding a change's commits, and undoing them. Never pushes.
 
-- commit_change(): a git worktree on a new branch (pip/change-<id>) from the code the change was planned on,
-  the checked files written in, and one commit by "Pip" made from the approved summary (never the request,
-  AC-SM-07), with the normal commit checks. If main moved meanwhile, the commit is put on top of it.
-- revert(): undoing a live change is a new commit that takes it back out (branch pip/undo-<id>).
-- fast_forward_main(): once a change is live, main moves to it, but only if ~/pip is clean and on main.
+- change_commits(): the commits on main that end with a `Pip-Change: <id>` line (Claude adds it in the Claude
+  Hub chat), by change, oldest first.
+- in_release(): whether a commit is in the version Pip is running.
+- revert(): undoing a live change is a new commit that takes all its commits back out (branch pip/undo-<id>).
+- fast_forward_main(): once the undo is live, main moves to it, but only if ~/pip is clean and on main.
 """
 import os
 import re
@@ -12,7 +12,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from .checks import Diff, forbidden
 
 
 class GitError(RuntimeError):
@@ -30,24 +29,30 @@ def git(repo: Path, *args: str, check: bool = True, env_extra: dict | None = Non
 PIP_AUTHOR = ["-c", "user.name=Pip", "-c", "user.email=pip@localhost"]
 
 
-def commit_message(change: dict) -> str:
-    """Made from the approved summary only, never the request (AC-SM-07)."""
-    summary = re.sub(r"\s+", " ", (change.get("plan") or {}).get("summary") or change.get("summary") or "").strip()
-    request = re.sub(r"\s+", " ", change.get("request") or "").strip().lower()
-    if not summary or (len(request) >= 12 and request in summary.lower()) or \
-            (len(summary) >= 12 and summary.lower() in request):
-        summary = f"Self-change #{change['id']}: " + ", ".join(change.get("files") or [])[:60]
-    return f"{summary[:100]}\n\nPip self-change #{change['id']} (approved on the dashboard)"
-
-
 class Deployer:
-    """Git work in ~/pip: a branch per change, a commit by "Pip", fast-forwarding main. Never pushes."""
+    """Git work in ~/pip: finding a change's commits, an undo branch with a commit by "Pip", fast-forwarding main.
+    Never pushes."""
 
     def __init__(self, repo: Path, scratch: Path):
         self.repo, self.scratch = Path(repo), Path(scratch)
 
     def main_sha(self) -> str:
         return git(self.repo, "rev-parse", "--verify", "main^{commit}")
+
+    def change_commits(self, days: float = 120) -> dict[str, list[str]]:
+        """{change id: [commit, …]} for the commits on main with a "Pip-Change: <id>" line, oldest first."""
+        out = git(self.repo, "log", "main", f"--since={int(days)} days ago", "--reverse",
+                  "--format=%H %(trailers:key=Pip-Change,valueonly,separator=%x2C)")
+        found: dict[str, list[str]] = {}
+        for line in out.splitlines():
+            sha, _, ids = line.partition(" ")
+            for cid in re.findall(r"\d+", ids):
+                found.setdefault(str(int(cid)), []).append(sha)
+        return found
+
+    def in_release(self, sha: str, release: str) -> bool:
+        """Is this commit in release `release` (a release id is the start of its commit's sha)?"""
+        return bool(release) and self.is_ancestor(sha, release)
 
     def is_ancestor(self, a: str, b: str) -> bool:
         r = subprocess.run(["git", "-C", str(self.repo), "merge-base", "--is-ancestor", a, b], capture_output=True)
@@ -73,59 +78,23 @@ class Deployer:
         shutil.rmtree(wt, ignore_errors=True)
         git(self.repo, "worktree", "prune", check=False)
 
-    def commit_change(self, change: dict, src: Path, diff: Diff, note) -> tuple[str, str]:
-        """Apply the change on a new branch from its base, commit it, and put it on top of main if main moved.
-        Returns (commit sha, branch)."""
-        branch = f"pip/change-{change['id']}"
-        wt = self._worktree(f"change-{change['id']}", branch, change["base"])
-        try:
-            for rel in diff.files:
-                if forbidden(rel):
-                    raise GitError(f"refusing to write {rel}")
-                target = wt / rel
-                if rel in diff.deleted:
-                    target.unlink(missing_ok=True)
-                    continue
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(diff.new_content[rel], encoding="utf-8")
-                os.chmod(target, 0o755 if os.access(src / rel, os.X_OK) else 0o644)
-            git(wt, "add", "-A")
-            staged = sorted(git(wt, "diff", "--cached", "--name-only").splitlines())
-            if staged != sorted(diff.files):
-                extra = sorted(set(diff.files) ^ set(staged))
-                raise GitError(f"git would commit different files than were checked: {', '.join(extra)[:300]}")
-            git(wt, *PIP_AUTHOR, "commit", "-q", "-m", commit_message(change))   # the hooks run here
-            main = self.main_sha()
-            if main != change["base"]:
-                note("Pip's code changed since this was planned: putting the change on top of the newest version.")
-                r = subprocess.run(["git", "-C", str(wt), *PIP_AUTHOR, "rebase", "-q", main],
-                                   capture_output=True, text=True)
-                if r.returncode != 0:
-                    git(wt, "rebase", "--abort", check=False)
-                    raise GitError("the newest version of Pip changed the same lines; ask for the change again")
-            return git(wt, "rev-parse", "HEAD"), branch
-        except BaseException:
-            self._drop_worktree(wt)
-            git(self.repo, "branch", "-D", branch, check=False)
-            raise
-        finally:
-            self._drop_worktree(wt)
-
     def revert(self, change: dict) -> tuple[str, str]:
-        """A new commit taking the change back out, on a branch from main (or from the change's branch, if it
-        was never merged). Returns (commit sha, branch)."""
-        commit = change["commit"]
-        start = "main" if self.is_ancestor(commit, "main") else commit
+        """A new commit taking all of the change's commits back out, on a branch from main. Returns (sha, branch)."""
+        commits = list(change.get("commits") or []) or ([change["commit"]] if change.get("commit") else [])
+        if not commits:
+            raise GitError("this change has no commits to take out")
+        start = "main" if all(self.is_ancestor(c, "main") for c in commits) else commits[-1]
         branch = f"pip/undo-{change['id']}"
         wt = self._worktree(f"undo-{change['id']}", branch, start)
         try:
-            r = subprocess.run(["git", "-C", str(wt), "revert", "--no-commit", commit], capture_output=True, text=True)
+            r = subprocess.run(["git", "-C", str(wt), "revert", "--no-commit", *reversed(commits)],
+                               capture_output=True, text=True)
             if r.returncode != 0:
                 git(wt, "revert", "--abort", check=False)
                 raise GitError("later changes touched the same lines, so it can't be taken out automatically")
             summary = re.sub(r"\s+", " ", change.get("summary") or "").strip()
             git(wt, *PIP_AUTHOR, "commit", "-q", "-m",
-                f"Undo: {summary[:90]}\n\nPip self-change #{change['id']} undone (approved on the dashboard)")
+                f"Undo: {summary[:90]}\n\nPip self-change #{change['id']} undone (Undo on the Changes page)")
             return git(wt, "rev-parse", "HEAD"), branch
         except BaseException:
             git(self.repo, "branch", "-D", branch, check=False)

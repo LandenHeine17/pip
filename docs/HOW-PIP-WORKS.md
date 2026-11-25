@@ -31,7 +31,7 @@ flowchart LR
 | pip-core | `pip_assistant/core/` | The hub every message goes through, and the brain. It turns speech into text, decides whether something was said to Pip, waits for you to finish, asks pip-thinker for an answer, and does the actions. It also runs timers and alarms, memory, people and voices, the modules, and **Pip's state**. |
 | pip-thinker | `pip_assistant/thinker/` | Builds the prompt and asks Claude. It streams the answer back one sentence at a time, or an `ACTION` line when Claude wants Pip to do something. |
 | pip-web | `pip_assistant/web/` | Serves the dashboard's pages (the list is `PAGES` in `web/main.py`): the Overview (`static/index.html`: what needs you, timers, the chat box, each module's card), Talk, People and each person's profile, Memory, Health & trace, Settings, Changes, Claude and the Guide; each module's own page (`/m/<name>/`, such as the Home page; a module without one gets `static/module.html`); and the monitor's face page (`static/tv.html`, which is also `/phone`, with `static/phone.js`'s button, D-149). Every page but the Guide and the monitor gets the same menu and status bar from `static/pip.js` (D-148). It stores nothing itself and asks pip-core (or, for the Changes page, pip-builder) for everything. |
-| pip-builder | `pip_assistant/builder/` | Pip changing his own code (§6): keeps the record of each change, starts the sandboxed Claude Code and test jobs, and puts an approved change live. Does nothing until someone asks. |
+| pip-builder | `pip_assistant/builder/` | Pip changing his own code (§6): hands each change to a Claude Hub chat, keeps its record, follows it there and in git, tells the room when it's live, and undoes it. Does nothing until someone asks. |
 
 `Conversation` (in `core/conversation.py`) is big, so its parts live in their own files and it takes them all in: `hearing.py` (speech-to-text, whose voice), `micctl.py` (the Listening switches, claps, prefs), `turns.py` (waiting for you to finish), `enrolment.py` (learning a voice), `context.py` (what Claude is told), `acting.py` (doing actions and Pip's own commands), `feed.py` (the dashboard's conversation feed). `conversation.py` keeps the state, `say()` and the main path from hearing to answering; its docstring has the full list.
 
@@ -293,70 +293,49 @@ Or ask Pip ("Pip, I'd like a shopping list"): his self-changes are told to follo
 
 ## 6. How Pip changes himself
 
-Someone asks for a change; Claude Code plans it and, after your first approval, builds it in a sandbox; pip-builder checks it; after your second approval it's committed and installed as a new version (§7). The owner's choices are D-118. Everything is in `pip_assistant/builder/`:
+Someone asks Pip for a change, or complains about something he does, and he offers: "Want me to write that up as a change?" If they say yes, his write-up opens a chat in **Claude Hub** (the owner's dashboard for Claude Code chats, `~/claude-hub`), in `~/pip` and **in plan mode**. The owner does the rest in that chat: answers Claude's questions, approves the plan, and says when to install. Pip only follows along and shows where each change is on the Changes page (D-152, which replaced D-118's sandboxed pipeline). Everything is in `pip_assistant/builder/`:
 
 | File | What it does |
 |---|---|
-| `main.py` | The program: answers `builder.ask` (a new request) and `builder.page` (the Changes page), reads the `[builder]` settings fresh for each job, and pauses on `usage.limited` |
-| `store.py` | The record: one row per change in the `builder_changes` table of `~/pip-data/pip.db`. `STATUSES` lists them in order. `request` (the asker's words) is private, and `forget_old` blanks it after `keep_days` (90) |
-| `pipeline.py` | The steps, in `Builder`: `_plan`, `_build`, `_check`, `_deploy`, `_watch`/`_finish_release`, `_undo`, `start` (after a restart) |
-| `api.py` | What the Changes page can do (`ChangesPage`, part of `Builder`): `ask`, `approve_plan`, `answer`, `approve`, `reject`, `stop`, `undo`, and the lists |
-| `checks.py` | `FORBIDDEN` and `SECURITY` (which files may not change, and which make a change security-risk), the diff, the secret scan, and the test run in the strict sandbox |
-| `workspace.py` | `Workspaces`: the plain copy Claude edits, and its `.venv` |
-| `deploy.py` | `Deployer` (git: branch, commit, revert, fast-forward main; never pushes) and `commit_message` |
-| `releasejob.py` | `ReleaseRunner`: runs `release.py install` as its own job and reads the outcome through `release.py` itself |
-| `agent.py` | Claude Code: `RULES` (what it's told), `PLAN_TASK` and `BUILD_TASK`, `claude_args` (planning gets read-only tools; building may also edit and run only `tools/sandbox-test`), `StreamParser` (Claude's output → the live steps on the Changes page), `parse_plan` |
-| `sandbox.py` | The two sandboxes as `systemd-run` command lines: `agent_command` and `check_command` |
+| `main.py` | The program: answers `builder.ask` (a new change) and `builder.page` (the Changes page: `list`, `undo`), and reads the `[builder]` settings fresh each time |
+| `changes.py` | `Builder`: `ask` (record it, hand it to Claude Hub), `sync` every 3 s (the hub's state file, then the commits), `_tell_the_room`, `listing`, and `undo` with its install |
+| `hub.py` | `HubInbox`: the request file in Claude Hub's inbox, and the hub's state file beside it. `prompt`: the chat's first message (Pip's write-up, then how Claude should handle a self-change) |
+| `store.py` | The record: one row per change in the `builder_changes` table of `~/pip-data/pip.db`. `request` (Pip's write-up, which may quote people) is private: it only goes into the chat, and `forget_old` blanks it after `keep_days` (90). D-118's changes stay as history |
+| `cli.py` | `tools/pip-change <id> building` or `dropped`: what Claude runs in the chat. It writes the store directly, with the system `python3` |
+| `deploy.py` | `Deployer` (git): `change_commits` (the commits with a `Pip-Change: <id>` line), `in_release`, `revert` and `fast_forward_main` for Undo. Never pushes |
+| `releasejob.py` | `ReleaseRunner`: installs an undo with `release.py install` as its own job, and reads how it went |
 
-### The steps and statuses
+### The steps
 
 ```mermaid
 stateDiagram-v2
-    [*] --> asked
-    asked --> planning
-    planning --> questions: Claude has questions
-    questions --> asked: you answer
-    planning --> plan_ready
-    plan_ready --> building: approval 1
-    building --> checking
-    checking --> ready: checks pass
-    checking --> failed: checks fail
-    ready --> deploying: approval 2
-    deploying --> live: healthy
-    deploying --> rolled_back: not healthy
-    live --> undone: Undo
-    plan_ready --> rejected
-    ready --> rejected
+    [*] --> asked: they said yes to Pip's offer
+    asked --> planning: Claude Hub opened the chat
+    asked --> failed: Claude Hub refused it
+    planning --> building: plan approved (tools/pip-change)
+    building --> ready: commits with "Pip-Change: N" on main
+    planning --> ready
+    ready --> live: they're in the running version
+    planning --> dropped: the owner said no (tools/pip-change)
+    building --> dropped
+    ready --> dropped
+    live --> undoing: Undo
+    undoing --> undone
+    undoing --> live: the undo wasn't healthy
 ```
 
-(Also `stopped`: the Stop button while planning, building or checking.)
-
-1. **Asking.** By voice: Claude answers with `ACTION {"do": "request_change", "summary": …}` (the rule is in `RULES`, `thinker/main.py`); `Conversation.request_change` (`core/acting.py`) passes it on only for a speaker Pip is **sure** of who isn't a guest, and says it'll be on the dashboard. On the dashboard: the request box on the Changes page. Either way pip-builder gets `builder.ask`, with the words in `private`.
-2. **Planning** (`_plan`): a fresh workspace (`Workspaces.prepare`): `~/pip-data/builder/work/<id>/src` is a plain export of `main` with **no `.git`**, `base/` an untouched copy to diff against, and `src/.venv` made before Claude starts. Claude Code reads the code and returns a JSON plan. `risk_for` makes it `security` if it touches a `SECURITY` path, whatever Claude said.
-3. **Building** (`_build`, after "Build it"): Claude Code edits `src/` and runs the tests with `tools/sandbox-test`.
-4. **Checking** (`_check`): `compute_diff` (text files only), `forbidden`, `secret_problems` (`tools/check_secrets.py`), then `strict_check`: the whole suite plus an import check in the strict sandbox.
-5. **Going live** (`approve` → `_deploy`): `Deployer.commit_change` copies the changed files into a git worktree on branch `pip/change-<id>`, commits with `commit_message` (from the approved summary, never the request; the normal pre-commit check runs), then `ReleaseRunner.start` runs `release.py install`. That restarts pip-builder too, so the result is read from an exit file in `~/pip-data/builder/releases/` (or `release-state.json`) when it comes back (`_recover_deploy`). When live, `fast_forward_main` moves `main` if `~/pip` is clean; otherwise the page says to merge the branch.
-6. **Undo** (`undo` → `_undo`): `Deployer.revert` makes a new commit on `pip/undo-<id>` and installs it the same way.
-
-One change at a time (`kick`). After a restart, anything that was planning, building or checking is marked failed and its workspace deleted (`start`).
-
-### The sandboxes
-
-| | Agent sandbox (`agent_command`) | `tools/sandbox-test` | Strict sandbox (`check_command`) |
-|---|---|---|---|
-| Runs | Claude Code | The tests, when Claude runs them | The builder's own test and import check |
-| Home folder | Empty, except the change's folder and the Claude login file (mounted, never copied) | Empty (no secrets, no login, no `~/.ssh`, no `~/pip`) | Empty |
-| Network | Yes (Claude needs it) | **No** (`unshare`: only loopback) | **No** (`PrivateNetwork`) |
-| Can change | The workspace (`tools/sandbox-test` and `.venv` are read-only) | The workspace | The workspace |
-| Limits | 2 GB, 2 CPUs, 10 min to plan / 30 to build | Inside the agent's | 2 GB, 15 min |
-
-`tests/builder/test_sandbox.py` checks the real sandboxes on the Pi: inside them the secrets file, the Claude login, `~/.ssh`, `~/pip` and the internet are all out of reach.
+1. **Asking.** Claude (Pip's thinker) offers to write it up (the rule is in `RULES`, `thinker/main.py`). After a yes it answers `ACTION {"do": "request_change", "summary": …, "details": …}`: the summary is a short phrase with no names, and the details are the write-up for Claude, which may quote what was said. `Acting.request_change` (`core/acting.py`) passes both on, in the private part. Anyone may ask, guests too, and `asked_by` says who it was and how sure Pip was of the voice.
+2. **Handing it over** (`Builder.ask`): a row in the store, then `HubInbox.send` writes `pip-change-<id>.request.json` (only this user can read it) into `~/.local/state/claude-hub/inbox/`. Claude Hub (`~/claude-hub/hub/inbox.py`) picks it up within seconds and opens a chat **always in plan mode** with `prompt(...)` as its first message: the write-up, who asked, and the rules for a self-change. It then deletes the request and keeps `pip-change-<id>.state.json`: the chat's id and whether Claude is working (`working`) or waiting for the owner (`waiting`, a card is open; `idle`, the owner's reply is next).
+3. **In the chat**, the owner answers Claude's question cards and approves the plan. Claude runs `tools/pip-change <id> building`, builds it the usual way (CONTRIBUTING.md), and commits on main with `Pip-Change: <id>` at the end of each commit message. It asks before installing, then runs `sh deploy/install.sh` (§7).
+4. **Following it** (`Builder.sync`, every 3 s while a change is open): the state file gives the chat's link and moves "asked" to "planning". `Deployer.change_commits` finds the change's commits: once there are some it's "ready", and once they're all in the running version (`in_release`) it's "live". `tools/pip-change <id> dropped` ends one the owner said no to. A status set by `tools/pip-change` is noticed on the next look.
+5. **Telling the room** (`_tell_the_room`): a change that went live or was dropped is said once ("Heads up: the change to … is live now."), through pip-core's `core.announce` (`Conversation.announce`), only when Pip is free and not in quiet hours. It's tried every 30 s, for up to two days.
+6. **Undo** (the Changes page's button → `undo`): `Deployer.revert` makes one new commit taking all the change's commits back out, on branch `pip/undo-<id>`, and `ReleaseRunner` installs it. That restarts pip-builder too, so a marker file in `~/pip-data/builder/releases/` lets `start` pick the result up again. Once it's live, `main` is fast-forwarded if `~/pip` is clean; otherwise the page says to merge the branch.
 
 ### Where to look
 
-- **The Changes page** (`/changes`, under System in the dashboard's menu; a badge counts changes waiting for you): ask, answer questions, approve, read the diff and test report, watch the live log, Stop, Undo. pip-web forwards `/api/changes` to `builder.page`.
-- **The dashboard:** "Claude today: N requests" on the Health & trace page (the usage meter, `common/usage.py`), and a notice there and in the Overview's Needs you when Claude's usage limit has paused joining in and self-changes.
-- **Settings → `[builder]`:** on/off, model, effort, time limits, how long requests are kept.
+- **The Changes page** (`/changes`, under System in the dashboard's menu; a badge counts changes waiting for the owner): each change's stage, whether Claude is working or waiting for you, who asked and when, **Open chat** (Claude Hub), **Undo** for a live one, and **New change in Claude Hub** (a new chat in `~/pip`).
+- **Claude Hub**: the chats, titled "Pip change #N: …".
+- **Settings → `[builder]`:** on/off, the Claude model for the chat, Claude Hub's inbox and address, how long requests are kept.
 
 ## 7. How an update goes live (and comes back)
 
@@ -403,6 +382,6 @@ Exit codes: **0** live, **1** rolled back (healthy again), **2** stopped before 
 | his name in the words, claps, cutting up speech | `core/names.py`, `ears/clap.py` (switching off needs two short claps with nobody talking just before, D-135), `ears/segmenter.py` |
 | YouTube videos | `modules/youtube/module.py` (`control_in`, `control`, `show`), its `static/monitor.js` (the player), `modules/screen/module.py` (`ScreenApi`: covering the monitor) |
 | the lamps and the fan | `modules/home_control/module.py` (`find`, `switch`, `locate`), `deploy/plug-network.sh` (the `pip-plugs` network), `tools/home_check.py` (checks every device) |
-| self-changes | `builder/pipeline.py` (`Builder`), `builder/checks.py`, `builder/sandbox.py`, `tools/sandbox-test` |
+| self-changes | `builder/changes.py` (`Builder`), `builder/hub.py` (Claude Hub's inbox, the chat's first message), `tools/pip-change`; Claude Hub's side: `~/claude-hub/hub/inbox.py` |
 | installs and rollback | `release.py`, `deploy/install.sh` |
 | the usage meter | `common/usage.py`, `thinker/main.py` |

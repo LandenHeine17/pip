@@ -65,7 +65,7 @@ async function loadNeeds(){
   const progs = h.programs || {}, bad = Object.keys(progs).filter(n => progs[n].state !== "ok");
   if (bad.length) need("🩺", `${bad.map(n => "pip-" + n).join(", ")} ${bad.length === 1 ? "isn't" : "aren't"} running right`, "/system");
   const until = (progs.thinker || {}).paused_until;
-  if (until && until * 1000 > Date.now()) need("✳️", `Claude's usage limit reached: joining in and self-changes paused until ${new Date(until * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}`, "/system");
+  if (until && until * 1000 > Date.now()) need("✳️", `Claude's usage limit reached: joining in paused until ${new Date(until * 1000).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"})}`, "/system");
   if (ppl.voice_model) for (const p of ppl.people || []) if (!p.voice_samples) need("🎙️", `${p.name}'s voice isn't learned yet`, `/person?id=${encodeURIComponent(p.id)}`);
   $("needlist").innerHTML = out.join("");
   $("needs").hidden = !out.length;
