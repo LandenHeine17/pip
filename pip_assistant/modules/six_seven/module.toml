@@ -1,5 +1,5 @@
 # Six seven (D-35, D-121, D-142): when someone says it (a six straight followed by a seven), to Pip or in the
-# room, whatever he's doing, Pip chants "six seven, six seven, six fucking seven", his face on the monitor freaks
+# room, whatever he's doing, Pip chants it (setting `chant`), his face on the monitor freaks
 # out and the lamps flash like a disco, at any hour. It's all done on the Pi at once, never by Claude. It hears
 # everything through the room_heard hook in core/modules.py, keeps nothing of the words, and has no page, tables
 # or box on the monitor.
@@ -12,6 +12,10 @@ offline = true                      # needs no internet
 permissions = []
 needs = []
 uses = ["home_control"]             # to flash the lamps, if home control is on (six seven works without it)
+
+[settings.chant]
+default = "six seven! six seven! six seven, let's go!"
+explain = "What Pip shouts at six seven."
 
 [settings.pause_seconds]
 default = 0

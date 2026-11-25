@@ -40,7 +40,7 @@ def test_not_otherwise(text):
 
 def test_the_room_and_pip_both_get_the_chant(reg):
     assert reg.room_heard("six seven", Call(kind="room")) == CHANT
-    assert CHANT == "six seven, six seven, six fucking seven"
+    assert CHANT == "six seven! six seven! six seven, let's go!"   # no swearing (D-153)
     said = reg.room_heard("Pip, six seven!", Call(kind="direct"))
     assert said == CHANT and isinstance(said, Done)   # Claude is never asked about it, even when he's busy
 
@@ -118,3 +118,8 @@ async def test_the_face_and_the_lamps_freak_out(tmp_path):
 async def test_without_home_control_it_still_goes_off(reg):
     assert "home_control" not in reg.modules
     assert reg.room_heard("six seven", Call(kind="room")) == CHANT
+
+
+def test_the_chant_is_a_setting(tmp_path):
+    r = Registry.load({}, infos=[read(ROOT / "six_seven", {"chant": "six seven, baby!"})], db_path=tmp_path / "pip.db")
+    assert r.room_heard("67", Call(kind="room")) == "six seven, baby!"

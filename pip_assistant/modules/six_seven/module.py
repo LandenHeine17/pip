@@ -1,5 +1,6 @@
 """The six-seven module (D-35, D-121, D-142): when someone says six-seven, Pip freaks out, at any hour: he chants
-it, his face on the monitor freaks out (the hands), and the lamps flash on and off like a disco.
+it ("six seven! six seven! six seven, let's go!", the `chant` setting), his face on the monitor freaks out (the
+hands), and the lamps flash on and off like a disco.
 
 It uses one part only, `room_heard(text, call)`: pip-core offers everything heard, room talk and what's said to
 Pip alike, whatever he's doing (idle, listening for a reply, thinking, talking), so it's all done here on the Pi
@@ -24,7 +25,7 @@ from pip_assistant.core.modules import Call, Done, Module
 
 log = logging.getLogger(__name__)
 
-CHANT = "six seven, six seven, six fucking seven"
+CHANT = "six seven! six seven! six seven, let's go!"   # the default; the `chant` setting changes it (D-153)
 # A six straight followed by a seven. Between them: nothing ("67"), spaces, or the marks speech-to-text writes for
 # a little pause ("six, seven", "6-7", "6...7", "6'7"). Not part of a bigger number or a time ("167", "6:07",
 # "6.7", "67.5", "6/7"), and whole words ("sixty seven" and "seventy" don't count).
@@ -59,7 +60,7 @@ class SixSeven(Module):
         self.freak_out()
         if call.kind == "direct" and not call.follow_up and not only_six_seven(text):
             return None   # a request to him (by name, or typed): the face and the lamps freak out, and it's answered as usual
-        return Done(CHANT)   # said to Pip, it's his whole answer: never Claude's, even when he can't chant right now
+        return Done(str(self.ctx.settings.get("chant") or CHANT))   # said to Pip, it's his whole answer: never Claude's, even when he can't chant right now
 
     def freak_out(self) -> None:
         """The face freaks out on the monitor and the lamps flash, at the same moment (both run in the background)."""
