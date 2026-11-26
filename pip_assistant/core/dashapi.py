@@ -140,7 +140,7 @@ async def memory_move(memory: Memory, people: People, modules: Registry, m: Mess
 
 
 def memory_action(memory: Memory, people: People, m: Message):
-    """The Memory Center: inbox approvals, add, edit, private/household, archive, delete (PIP-NEW-029/030)."""
+    """The Memory Center: add, edit, private/household, archive, delete (PIP-NEW-029/030)."""
     act, mid = m.data.get("action"), str(m.data.get("id") or "")
     try:
         if act == "add":
@@ -151,9 +151,7 @@ def memory_action(memory: Memory, people: People, m: Message):
             return {"ok": True, "outcome": outcome}
         if act == "edit":
             memory.update(mid, text=m.private.get("text", ""))
-        elif act == "approve":
-            memory.approve(mid)
-        elif act in ("reject", "delete"):
+        elif act == "delete":
             memory.delete(mid)
         elif act == "keep_both":     # a flagged pair (M2, D-128): both stay
             memory.update(mid, review="")

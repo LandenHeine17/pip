@@ -30,9 +30,6 @@ textarea:focus{border-color:var(--accent);outline:none}
 .version .when{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.86rem;min-width:11em}
 .answer{white-space:pre-wrap;padding:10px 13px;border-radius:14px;background:var(--accentbg);margin-top:8px}
 .answer:empty{display:none}
-.counts{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0}
-.counts .card{min-width:9em}
-.counts .big{font-size:1.3rem;font-weight:700;font-variant-numeric:tabular-nums}
 .jump{position:sticky;top:52px;z-index:5;display:flex;gap:6px;overflow-x:auto;padding:6px 0 10px;margin-bottom:6px;background:var(--bg);scrollbar-width:none}
 .jump a{flex:none;padding:5px 12px;border-radius:999px;background:var(--card);box-shadow:var(--shadow);color:var(--ink);font-size:.84rem;font-weight:600;text-decoration:none;white-space:nowrap}
 .jump a:hover{background:var(--accentbg);color:var(--accent)}
@@ -176,11 +173,6 @@ details.adv[open]>summary h2::before{content:"▾ "}
     <button class="ghost" id="dwipe" style="color:var(--bad)">Delete everything…</button><span class="sub" id="dmsg"></span></div>
   <div class="sub" style="margin-top:6px">"Delete everything" forgets every memory, every voice (people stay by name and can learn their voice again),
     the conversation notes and what's been said lately. Settings, the personality, timers and the calendar stay.</div>
-</section>
-
-<section>
-  <div class="head"><h2>Bring over from Ziggletron</h2></div>
-  <div id="migrate"><div class="empty">Checking…</div></div>
 </section>
 
 <section>
@@ -581,7 +573,6 @@ function renderPrefs(p){ if (!p || p.error) return;
     + (p.clap_mic && !others.some(m => m.name === p.clap_mic) ? `<option value="${esc(p.clap_mic)}" selected>(unplugged) ${esc(p.clap_mic)}</option>` : "");
   $("clapnote").textContent = others.length ? "" : "No second microphone plugged in yet.";
 }
-async function loadPrefs(){ try { renderPrefs(await getJSON("/api/prefs")); } catch (e) {} }
 async function setPref(key, value){
   try { const r = await postJSON("/api/prefs", {key, value}); if (r.error) alert(r.error); renderPrefs(r); }
   catch (e) { alert("Couldn't reach Pip"); } }
@@ -648,50 +639,6 @@ $("dwipe").onclick = async () => {
   catch (e) { $("dmsg").textContent = "Couldn't reach Pip"; }
 };
 
-// ------------------------------------------------------------------ bring over from Ziggletron (read-only there)
-const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-async function loadMigrate(){
-  let m;
-  try { m = await getJSON("/api/migrate"); } catch (e) { m = {error: "Couldn't reach Pip"}; }
-  renderMigrate(m);
-}
-function renderMigrate(m, report){
-  const box = $("migrate");
-  if (!m || m.error) { box.innerHTML = `<div class="empty">${esc((m && m.error) || "Couldn't check.")}</div>`; return; }
-  if (!m.available) { box.innerHTML = `<div class="empty">Ziggletron's data wasn't found on this Pi, so there's nothing to bring over.</div>`; return; }
-  const c = m.memories || {};
-  box.innerHTML = `<div class="sub">Pip can copy two things from Ziggletron: his <b>memories</b> and his <b>personality</b>. Ziggletron's files are only read, never changed.</div>
-    <div class="counts">
-      <div class="card"><div class="big">${esc(c.new ?? 0)}</div><div class="sub">new memories to bring over</div></div>
-      <div class="card"><div class="big">${esc(c.duplicate ?? 0)}</div><div class="sub">already in Pip's memory</div></div>
-      <div class="card"><div class="big">${esc(c.refused ?? 0)}</div><div class="sub">left out (look like passwords or codes)</div></div>
-      <div class="card"><div class="big">${m.personality ? "Yes" : "No"}</div><div class="sub">personality found</div></div>
-    </div>
-    <div class="sub">Of ${esc(plural(c.total ?? 0, "memory", "memories"))} in Ziggletron. <b>Memories</b> go to the <a href="/memory">memory inbox</a>, waiting for you to approve each one; nothing is used until you do.
-      <b>The personality</b> replaces Pip's current one; his current text stays in the version list above, so "Use this one" undoes it.</div>
-    ${m.done_at ? `<div class="sub" style="margin-top:6px">Last imported ${esc(new Date(m.done_at * 1000).toLocaleString())}. Importing again skips what's already here.</div>` : ""}
-    <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="primary" id="mimport">Import from Ziggletron</button><span class="sub" id="mmsg"></span></div>
-    ${report ? reportHTML(report) : ""}`;
-  $("mimport").onclick = doImport;
-}
-function reportHTML(r){
-  const mm = r.memories || {};
-  return `<div class="card" style="margin-top:12px"><div class="name">Imported</div>
-    <div>${esc(plural(mm.imported ?? 0, "memory", "memories"))} added to the memory inbox · ${esc(mm.duplicate ?? 0)} already here · ${esc(mm.refused ?? 0)} left out</div>
-    <div>Personality: ${r.personality === "imported" ? "imported and now in use (undo: use the previous version above)" : "skipped"}</div>
-    ${r.error ? `<div style="color:var(--bad)">${esc(r.error)}</div>` : ""}</div>`;
-}
-async function doImport(){
-  if (!confirm("Bring over Ziggletron's memories (to the memory inbox, for you to approve) and his personality (it replaces Pip's current one, which stays in the version list)?")) return;
-  $("mimport").disabled = true; $("mmsg").textContent = "Importing…";
-  let r;
-  try { r = await postJSON("/api/migrate", {action: "import"}); } catch (e) { r = {error: "Couldn't reach Pip"}; }
-  let m; try { m = await getJSON("/api/migrate"); } catch (e) { m = null; }
-  if (m && !m.error) renderMigrate(m, r);
-  else $("migrate").innerHTML = reportHTML(r);
-  pDirty = false; loadPersonality();
-}
-
 // The row of section shortcuts at the top: one per section, named by its title
 function jumpBar(){
   const secs = [...document.querySelectorAll("main > section")].filter(x => x.querySelector("h2"));
@@ -706,7 +653,7 @@ load().then(s => {
   // /settings#mod-<name> (a module's page links here): its settings, once they're drawn
   if (location.hash) { const el = document.querySelector(location.hash); if (el) el.scrollIntoView({block: "start"}); }
 });
-loadPersonality(); loadMigrate();
+loadPersonality();
 </script>
 </body>
 </html>

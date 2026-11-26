@@ -22,15 +22,13 @@ def test_memory_saves_merges_duplicates_and_refuses_secrets(mem):
     assert len(mem.items()) == 1
 
 
-def test_sensitive_memories_are_saved_straight_away_and_nothing_is_silently_lost(mem):
+def test_sensitive_memories_are_saved_straight_away_and_archiving_keeps_them(mem):
     row, outcome = mem.add("Sam is allergic to peanuts", "personal", sensitive=True)   # D-119: no inbox
     assert outcome == "saved" and "Sam is allergic to peanuts" in mem.for_claude()
     mem.update(row["id"], status="archived")
     assert "peanuts" not in mem.for_claude() and mem.items("archived")    # archived: kept, not used
-    pend, _ = mem.add("Jordan's birthday is 3 May", "personal", pending_because="about someone else")
-    mem.clock.t += 15 * 86400
-    mem.prune()
-    assert mem.get(pend["id"]) is None and mem.get(row["id"]) is not None  # only unapproved suggestions expire
+    with pytest.raises(ValueError):
+        mem.update(row["id"], status="pending")                             # no inbox any more (D-154)
 
 
 def test_private_memories_only_for_their_owner_when_sure(mem):
@@ -96,22 +94,6 @@ def test_household_facts_and_unknown_voices_personal_facts_are_saved(ctx, mem):
     said, _ = actions.apply(cmds, 'ACTION {"do": "remember", "text": "Someone likes jazz", "category": "preference"}', c)
     [jazz] = [m for m in mem.items() if "jazz" in m["text"]]
     assert said == "Saved: Someone likes jazz." and jazz["status"] == "active"
-
-
-def test_a_private_memory_waiting_in_the_inbox_is_only_for_its_owner(ctx, mem):
-    """Memories still waiting from before D-119 (or from the Ziggletron import) keep their privacy."""
-    cmds, c, alex, sam = ctx
-    row, _ = mem.add("Alex is planning a surprise party for Sam on Saturday", "personal", [alex["id"], sam["id"]],
-                     owner=alex["id"], private=True, pending_because="about someone else")
-    assert row["status"] == "pending" and row["visibility"] == "private"
-    assert "surprise" not in mem.for_claude(sam["id"], "sure", speaker_name="Sam")       # Sam isn't shown it (D-88)
-    s = {**c, "speaker": Match(sam["id"], "Sam", "sure", 0.7)}
-    assert actions.apply(cmds, f'ACTION {{"do": "approve_memory", "id": "{mem.short(row["id"])}"}}', s) == (actions.FAILED, 0)
-    actions.apply(cmds, 'ACTION {"do": "remember", "text": "Alex is planning a surprise party for Sam on Saturday", '
-                        '"category": "personal", "about": ["Sam"]}', s)                  # nor confirms it by saying it
-    assert mem.items("pending")[0]["id"] == row["id"]
-
-
 def test_anything_invalid_means_nothing_is_done(ctx, mem):
     cmds, c, *_ = ctx
     said, n = actions.apply(cmds, 'ACTION [{"do":"add","kind":"timer","seconds":600,"label":"pasta"},'

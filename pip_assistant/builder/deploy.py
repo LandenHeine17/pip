@@ -36,9 +36,6 @@ class Deployer:
     def __init__(self, repo: Path, scratch: Path):
         self.repo, self.scratch = Path(repo), Path(scratch)
 
-    def main_sha(self) -> str:
-        return git(self.repo, "rev-parse", "--verify", "main^{commit}")
-
     def change_commits(self, days: float = 120) -> dict[str, list[str]]:
         """{change id: [commit, …]} for the commits on main with a "Pip-Change: <id>" line, oldest first."""
         out = git(self.repo, "log", "main", f"--since={int(days)} days ago", "--reverse",

@@ -1,4 +1,4 @@
-// The calendar's part of a Google account's settings page (modules/google/static/account.html; module.toml
+// The calendar's part of a Google account's settings, on the person's page (loaded by modules/google/static/person.js; module.toml
 // account_panel). This account's calendars: use or ignore, on the calendar page, in the two-week list, heads-ups;
 // the household calendar; no heads-ups at night (D-109). Its requests go to this module (module.py
 // _account_settings).

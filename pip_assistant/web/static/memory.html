@@ -11,13 +11,12 @@ main{max-width:980px}
 </style>
 </head>
 <body>
-<!-- Memory (D-148): the Memory Center (PIP-NEW-029/030): the inbox waiting for approval, search, kinds, archived,
+<!-- Memory (D-148): the Memory Center (PIP-NEW-029/030): search, kinds, archived,
      memories to review (D-128, D-147), add one. /memory?person=<id> shows only memories that are theirs or about
      them (a person's profile links here); /memory?review=1 starts on "to review". -->
 <main>
 <div class="pagehead"><h1>Memory</h1><span class="sub" id="memsum"></span></div>
 <section>
-  <div id="inbox"></div>
   <div id="who" style="margin-bottom:10px" hidden></div>
   <form id="memsearch" style="margin-top:0"><input id="memq" placeholder="Search memories" style="flex:1;min-width:10em">
     <select id="memcat"><option value="">All kinds</option></select>
@@ -48,17 +47,12 @@ function renderMemory(){
   const takers = mem.takers || [];
   const q = $("memq").value.toLowerCase(), cat = $("memcat").value, arch = $("memarch").checked;
   const mine = m => !person || m.owner === person || (m.about || []).includes(person);
-  const pend = mem.memories.filter(m => m.status === "pending" && mine(m));
-  $("inbox").innerHTML = pend.length ? `<div class="label">Inbox · waiting for approval</div><div class="items" style="margin-bottom:14px">${pend.map(m => `
-    <div class="item" style="background:var(--warnbg)"><div><b>${esc(m.text)}</b><div class="sub">${esc(m.why_pending || "")}${m.source ? " · " + esc(m.source) : ""}</div></div>
-    <span style="display:flex;gap:6px"><button class="primary" onclick="memAct({action:'approve',id:${js(m.id)}})">Approve</button>
-    <button onclick="memEdit(${js(m.id)})">Edit</button><button class="ghost" onclick="memAct({action:'reject',id:${js(m.id)}})">Reject</button></span></div>`).join("")}</div>` : "";
   const who = person && (mem.memories.find(m => m.owner === person) || {}).owner_name
     || (person && (() => { for (const m of mem.memories) { const i = (m.about || []).indexOf(person); if (i >= 0) return m.about_names[i]; } })()) || "";
   $("who").hidden = !person;
   $("who").innerHTML = person ? `<span class="chip">Theirs or about ${esc(who || "this person")}<button class="ghost" style="padding:2px 8px" onclick="showAll()" title="Show everyone's">✕</button></span>` : "";
   const rev = $("memrev").checked, old = Date.now() / 1000 - 182 * 86400;
-  const rows = mem.memories.filter(m => m.status !== "pending" && mine(m) && (arch ? m.status === "archived" : m.status === "active")
+  const rows = mem.memories.filter(m => mine(m) && (arch ? m.status === "archived" : m.status === "active")
     && (!cat || m.category === cat) && (!q || m.text.toLowerCase().includes(q)) && (!rev || m.review || m.created < old));
   $("memories").innerHTML = rows.map(m => `<div class="item"><div style="min-width:0"><span class="tag">${esc(mem.categories[m.category] || m.category)}</span><b>${esc(m.text)}</b>
       <div class="sub">${VIS(m.visibility)}${m.owner_name ? " · " + esc(m.owner_name) + "'s" : ""}${m.about_names.length ? " · about " + esc(m.about_names.join(", ")) : ""} · <span title="Why Pip remembers this">from ${esc(m.source || "unknown")}, ${new Date(m.created * 1000).toLocaleDateString()}</span></div>
@@ -73,9 +67,8 @@ function renderMemory(){
       <button class="ghost" title="Delete" onclick="if(confirm('Delete this memory for good?')) memAct({action:'delete',id:${js(m.id)}})">✕</button></span></div>`).join("")
     || `<div class="empty">${arch ? "Nothing archived." : rev ? "Nothing to review." : "Nothing remembered yet. Say \"Pip, remember…\""}</div>`;
   const n = mem.memories.filter(m => m.status === "active").length;
-  const allPend = mem.memories.filter(m => m.status === "pending").length;
   const flagged = mem.memories.filter(m => m.status === "active" && m.review).length;
-  $("memsum").textContent = `${n} remembered${allPend ? ` · ${allPend} waiting` : ""}${flagged ? ` · ${flagged} to check` : ""}`;
+  $("memsum").textContent = `${n} remembered${flagged ? ` · ${flagged} to check` : ""}`;
 }
 function showAll(){ person = ""; history.replaceState(null, "", "/memory"); renderMemory(); }
 async function loadMemory(){

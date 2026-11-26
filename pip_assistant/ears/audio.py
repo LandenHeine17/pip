@@ -13,7 +13,7 @@ import numpy as np
 from ..common import messages
 
 RATE = 16000
-FRAME = 1280  # 80 ms at 16 kHz: the size openWakeWord expects
+FRAME = 1280  # 80 ms at 16 kHz (first chosen for the wake-word detector, removed in D-134; kept as the frame size)
 
 
 def level_dbfs(frame: np.ndarray) -> float:

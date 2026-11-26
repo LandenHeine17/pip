@@ -90,8 +90,7 @@ class PeopleCommands:
                 row, outcome = self.memory.add(m.group(1).rstrip(" .!"), "household", source=f"{who}, by voice (offline)")
             except Refused:
                 return "I can't keep passwords, card or phone numbers in my memory."
-            return "I already knew that." if outcome == "duplicate" else "That's waiting in the memory inbox." \
-                if outcome == "waiting" else f"Saved: {row['text'].rstrip('.!')}."
+            return "I already knew that." if outcome == "duplicate" else f"Saved: {row['text'].rstrip('.!')}."
         return None
 
     async def introduced(self, name: str, learn: bool, speaker, pcm: bytes):

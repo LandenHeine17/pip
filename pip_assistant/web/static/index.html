@@ -57,8 +57,7 @@ async function loadNeeds(){
   const [mem, ch, h, ppl] = await Promise.all(["/api/memory", "/api/changes", "/api/health", "/api/people"].map(u => getJSON(u).catch(() => ({}))));
   const out = [], need = (icon, text, href) => out.push(`<a class="need" href="${href}"><span>${icon}</span><span>${esc(text)}</span><span class="go">›</span></a>`);
   const mems = mem.memories || [];
-  const pend = mems.filter(m => m.status === "pending").length, flagged = mems.filter(m => m.status === "active" && m.review).length;
-  if (pend) need("🧠", `${pend} ${pend === 1 ? "memory waits" : "memories wait"} for your OK`, "/memory");
+  const flagged = mems.filter(m => m.status === "active" && m.review).length;
   if (flagged) need("🧠", `${flagged} ${flagged === 1 ? "memory" : "memories"} to check (may contradict another, or belong elsewhere)`, "/memory?review=1");
   const waiting = (ch.changes || []).filter(c => c.waiting).length;
   if (waiting) need("🛠️", `${waiting} ${waiting === 1 ? "change to Pip waits" : "changes to Pip wait"} for you`, "/changes");

@@ -446,7 +446,6 @@ def build_app(bus, state: State, cfg: dict | None = None) -> Starlette:
                              Route("/api/data", passed_to_core("core.data", 60), methods=["GET", "POST"]),
                              Route("/api/chat", passed_to_core("core.chat", 120), methods=["POST"]),
                              Route("/api/personality", passed_to_core("core.personality", 70), methods=["GET", "POST"]),
-                             Route("/api/migrate", passed_to_core("core.migrate", 60), methods=["GET", "POST"]),
                              Route("/api/source", source_api),
                              Route("/api/prompts", passed_to_core("thinker.prompt", 10, target="thinker")),
                              Route("/api/changes", passed_to_core("builder.page", 30, target="builder", get="list"),

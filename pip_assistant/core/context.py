@@ -27,7 +27,7 @@ class Context:
             schedule = " ".join(x for x in (schedule, self.modules.summary(Call(speaker=sp, kind=kind))) if x)
         people = self.people.summary(sp) if self.people is not None else ""
         memories = self.memory.for_claude(sp.person_id if sp else None, sp.level if sp else "unknown",
-                                          speaker_name=sp.name if sp else "", split=True, **self.who_is_present(sp)) \
+                                          split=True, **self.who_is_present(sp)) \
             if self.memory is not None else ""
         # The memories that go whoever is talking (rules, household facts): pip-thinker keeps them in the fixed,
         # cached part of what Claude is told (D-146). Sent with every request so it always has the current ones.

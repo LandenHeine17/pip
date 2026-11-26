@@ -209,7 +209,7 @@ class Bus:
     # ---------------------------------------------------------------- housekeeping
     async def housekeeping(self, every: float = 2.0) -> None:
         """Every 2 s: write the trace to disk, restart stuck programs, publish health. Hourly: forget old
-        trace entries, finished alerts and expired inbox memories."""
+        trace entries and finished alerts."""
         last_prune = 0.0
         while True:
             await asyncio.sleep(every)
@@ -223,8 +223,6 @@ class Bus:
                     self.trace.prune()
                     if getattr(self, "schedule", None):
                         self.schedule.prune()
-                    if getattr(self, "memory", None):
-                        self.memory.prune()
             except Exception:
                 log.exception("housekeeping failed; trying again in %s s", every)
 

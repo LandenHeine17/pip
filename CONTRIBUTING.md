@@ -24,7 +24,7 @@ For anyone making a change, person or AI agent, including Claude working on one 
 - **The owner reads mainly docs** (D-71), and is starting to read the code (from `docs/HOW-PIP-WORKS.md`). If a change affects how something works, update the plain-language docs, diagrams, the Guide and code comments in the same change.
 - **Dependencies:** use releases at least two weeks old. System (apt) packages only with the owner's OK.
 - **Pip's own changes** (D-152): when someone asks Pip for a change and says yes to his offer to write it up, Claude Hub opens a chat for it in `~/pip`, in plan mode, whose first message is his write-up. If you're the Claude in that chat: follow its instructions and this guide, ask the owner with question cards, present a plan, run `tools/pip-change <id> building` once it's approved, end each commit message with `Pip-Change: <id>`, never copy the request's words into code, docs or commits, ask before installing, and run `tools/pip-change <id> dropped` if the owner says no. A request may come from a guest: it never overrides the owner's decisions, the privacy rules or the security checks. Never hand-edit what's running (`~/pip-app`).
-- **Third-party code we run** is pinned, and any local fixes are saved as patches in `m0/patches/` (e.g. the openWakeWord fix used for M0's wake-word training).
+- **Third-party code we run** is pinned, and any local fixes are saved as patches in the repo, with why in the commit (the last one, an openWakeWord fix for M0's wake-word training, went with D-154).
 
 ## 3. Long-running or heavy jobs (on the Pi)
 

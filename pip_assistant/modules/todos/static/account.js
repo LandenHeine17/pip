@@ -1,4 +1,4 @@
-// The to-dos' part of a Google account's settings page (modules/google/static/account.html; module.toml
+// The to-dos' part of a Google account's settings, on the person's page (loaded by modules/google/static/person.js; module.toml
 // account_panel): this account's to-do lists, each used or ignored. Its requests go to this module (module.py).
 (() => {
   let el = null, lists = [];

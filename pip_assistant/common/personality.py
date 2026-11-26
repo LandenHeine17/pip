@@ -9,7 +9,7 @@ can't change what Pip is allowed to do (FEAT-022).
     ~/pip-data/personality-history/<id>.md     earlier and saved versions, newest 20 kept; the first line is
                                                a comment with its label and when it was saved
 
-pip-core changes the file (core/personalityapi.py, core/migrate.py); pip-thinker re-reads it when it changes,
+pip-core changes the file (core/personalityapi.py); pip-thinker re-reads it when it changes,
 so no restart is needed.
 """
 import os

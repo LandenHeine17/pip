@@ -180,7 +180,7 @@ const pip = {
     if (enrolling) poll = setInterval(loadEnrol, 1500);
   }
 
-  // Changes waiting for the owner (questions, plans to approve, finished changes): a badge on Changes
+  // Changes to Pip that wait for the owner (D-152: worked through in Claude Hub): a badge on Changes
   async function loadChanges() {
     try { const r = await getJSON("/api/changes"); waiting = (r.changes || []).filter(c => c.waiting).length; }
     catch (e) { waiting = 0; }

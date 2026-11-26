@@ -1,11 +1,11 @@
-"""What Pip remembers, and the memory inbox (M1a step 5; PIP-NEW-028–032, D-15, D-16, D-54).
+"""What Pip remembers (M1a step 5; PIP-NEW-028–032, D-15, D-16, D-54; no inbox since D-154).
 
 Claude asks for changes with memory ACTIONs (core/actions.py); the dashboard's Memory Center
 changes them through core/dashapi.py. Claude sees the memories it may use with each request (for_claude).
 
     "Pip, remember the bins go out Tuesday night"   → saved now, confirmed with the exact wording
     "Pip, remember Sam is allergic to peanuts"      → saved now too (D-119: everything asked is saved at
-                                                       once; the inbox only held Ziggletron's import)
+                                                       once; the inbox was removed with the import, D-154)
     "Pip, forget that I like mushrooms"             → that exact memory is deleted, and Pip says which
 
 Rules (from the memory policy, docs/archive/.../06-MEMORY-AND-DATA-POLICY.md):
@@ -45,11 +45,11 @@ CREATE TABLE IF NOT EXISTS memories (
     about      TEXT NOT NULL DEFAULT '[]',   -- JSON list of person ids it's about
     owner      TEXT NOT NULL DEFAULT '',     -- person id (private memories) or '' (household)
     visibility TEXT NOT NULL DEFAULT 'household',   -- household / private (D-16)
-    status     TEXT NOT NULL,                -- active / pending / archived
+    status     TEXT NOT NULL,                -- active / archived ('pending' was the inbox, removed in D-154)
     confirmed  INTEGER NOT NULL DEFAULT 1,   -- 1 = someone said it; 0 = Pip inferred it
     sensitive  INTEGER NOT NULL DEFAULT 0,
     source     TEXT NOT NULL DEFAULT '',     -- who asked and how ("Landen, by voice"); never a transcript
-    why_pending TEXT NOT NULL DEFAULT '',
+    why_pending TEXT NOT NULL DEFAULT '',    -- unused since D-154 (the inbox); kept so old databases load
     created    REAL NOT NULL,
     updated    REAL NOT NULL
 );
@@ -144,40 +144,33 @@ class Memory:
 
     # ---------------------------------------------------------------- changing memories
     def add(self, text: str, category: str = "household", about: list[str] | None = None, owner: str = "",
-            private: bool = False, sensitive: bool = False, pending_because: str = "", source: str = "",
+            private: bool = False, sensitive: bool = False, source: str = "",
             confirmed: bool = True, own: bool = False) -> tuple[dict, str]:
-        """Save one memory. Returns (row, outcome) with outcome 'saved', 'pending', 'duplicate' (already
-        remembered) or 'waiting' (already in the inbox). By voice everything is saved straight away (D-119);
-        only `pending_because` (the one-off Ziggletron import) puts a memory in the inbox. A private memory with
-        no owner stays private (used for nobody until it gets one). Raises Refused for credentials and empty text."""
+        """Save one memory, straight away (D-119). Returns (row, outcome) with outcome 'saved' or 'duplicate'
+        (already remembered). A private memory with no owner stays private (used for nobody until it gets
+        one). Raises Refused for credentials and empty text."""
         text = re.sub(r"\s+", " ", (text or "")).strip()[:300]
         if len(text) < 3:
             raise Refused("nothing to remember")
         if CREDENTIAL.search(text):
             raise Refused("credential")
         if (dup := self.duplicate_of(text)) is not None:
-            return dup, "waiting" if dup["status"] == "pending" else "duplicate"
+            return dup, "duplicate"
         category = category if category in CATEGORIES else "household"
-        status = "pending" if pending_because else "active"
-        other = self.similar_to(text, category, about) if status == "active" else None
+        other = self.similar_to(text, category, about)
         review = f"May contradict or repeat: \"{other['text']}\" ({self.short(other['id'])})" if other else ""
         now = self.clock()
         mid = new_id()
         self.db.execute("INSERT INTO memories (id, text, category, about, owner, visibility, status, confirmed, sensitive, "
                         "source, why_pending, review, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (mid, text, category, json.dumps(about or []), owner,
-                         "private" if private else "household", status, int(confirmed), int(sensitive),
-                         source[:80], pending_because, review, now, now))
+                         "private" if private else "household", "active", int(confirmed), int(sensitive),
+                         source[:80], "", review, now, now))
         self.db.commit()
         row = self.get(mid)
         if not row:
             raise RuntimeError("memory was not saved")
-        return row, "pending" if status == "pending" else "saved"
-
-    def is_about(self, row: dict, person_id: str, name: str = "") -> bool:
-        """Is this memory about that person? (Listed in "about", or, for older wordings like "Landen says
-        Sam is…" that didn't list anyone, their name is in it.)"""
-        return person_id in row["about"] or bool(name and re.search(rf"\b{re.escape(name)}\b", row["text"], re.I))
+        return row, "saved"
 
     @staticmethod
     def relevant(row: dict, present: dict[str, str], household: list[str] = ()) -> bool:
@@ -190,21 +183,9 @@ class Memory:
 
     @staticmethod
     def may_see(row: dict, person_id: str | None) -> bool:
-        """A private memory is only for its owner, even while it waits in the inbox (D-88): Sam is never shown,
-        and can't approve, Alex's private note about Sam's surprise party."""
+        """A private memory is only for its owner (D-88): Sam is never shown Alex's private note about Sam's
+        surprise party."""
         return row["visibility"] != "private" or bool(person_id and row["owner"] == person_id)
-
-    def confirm_pending(self, text: str, person_id: str, name: str = "") -> dict | None:
-        """The person a waiting memory is about says the same thing: approve that one (with their wording)."""
-        t = text.lower().strip(" .")
-        for r in self.items("pending"):
-            if not self.is_about(r, person_id, name) or not self.may_see(r, person_id):
-                continue
-            old = r["text"].lower().strip(" .")
-            if t in old or old in t or difflib.SequenceMatcher(None, t, old).ratio() >= 0.75:
-                self.update(r["id"], text=text)
-                return self.approve(r["id"])
-        return None
 
     def update(self, mid: str, **fields) -> dict:
         allowed = {k: v for k, v in fields.items()
@@ -219,7 +200,7 @@ class Memory:
             allowed["about"] = json.dumps(allowed["about"])
         if allowed.get("visibility") not in (None, "household", "private"):
             raise ValueError("visibility")
-        if allowed.get("status") not in (None, "active", "pending", "archived"):
+        if allowed.get("status") not in (None, "active", "archived"):
             raise ValueError("status")
         allowed["updated"] = self.clock()
         self.db.execute(f"UPDATE memories SET {', '.join(f'{k} = ?' for k in allowed)} WHERE id = ?", (*allowed.values(), mid))
@@ -228,10 +209,6 @@ class Memory:
         if not row:
             raise ValueError("No such memory")
         return row
-
-    def approve(self, mid: str) -> dict:
-        self.db.execute("UPDATE memories SET why_pending = '' WHERE id = ?", (mid,))
-        return self.update(mid, status="active")
 
     def delete(self, mid: str) -> None:
         self.db.execute("DELETE FROM memories WHERE id = ?", (mid,))
@@ -244,10 +221,6 @@ class Memory:
             self.delete(r["id"])
         return len(rows)
 
-    def prune(self, pending_days: float = 14) -> None:
-        """Unapproved suggestions expire; nothing else is ever deleted automatically (no silent loss)."""
-        self.db.execute("DELETE FROM memories WHERE status = 'pending' AND created < ?", (self.clock() - pending_days * 86400,))
-        self.db.commit()
 
     # ---------------------------------------------------------------- what Claude sees
     @staticmethod
@@ -269,7 +242,7 @@ class Memory:
         return "What you always remember: " + "; ".join(f"{self.short(r['id'])} {r['text']}" for r in rows) + "."
 
     def for_claude(self, speaker_id: str | None = None, speaker_level: str = "unknown", limit: int = 200,
-                   speaker_name: str = "", present: dict[str, str] | None = None, household: list[str] = (),
+                   present: dict[str, str] | None = None, household: list[str] = (),
                    split: bool = False) -> str:
         """Active memories Pip may use right now: household ones, plus the speaker's private ones if
         they're recognised "sure" (memory policy §4.2). Rules for Pip come first.
@@ -278,7 +251,7 @@ class Memory:
         Ziggletron (D-137: all 90 went with every message); rules and the rest always go.
         `split` (D-146): leave out the ones `fixed_for_claude` already gives (the conversation does this), so
         what's left is only what depends on who's talking: memories about the people in the conversation, the
-        speaker's private ones and their inbox."""
+        speaker's private ones."""
         rows = [r for r in self.items("active")
                 if r["visibility"] == "household" or (speaker_level == "sure" and r["owner"] == speaker_id)]
         if split:
@@ -296,11 +269,6 @@ class Memory:
         if hidden:
             out = (out + " " if out else "") + f"({hidden} more memories about people not in this conversation, not shown.)" \
                 if split else out + f" ({hidden} more about people not in this conversation, not shown.)"
-        if speaker_level == "sure" and speaker_id:   # the speaker may approve what's waiting about them (D-107)
-            waiting = [f"{self.short(r['id'])} {r['text']}" for r in self.items("pending")
-                       if self.is_about(r, speaker_id, speaker_name) and self.may_see(r, speaker_id)]
-            if waiting:
-                out = (out + " " if out else "") + "Waiting in the inbox, about the speaker: " + "; ".join(waiting[:10]) + "."
         return out
 
     def counts(self) -> dict:

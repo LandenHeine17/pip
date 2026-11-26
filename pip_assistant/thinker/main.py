@@ -76,8 +76,7 @@ they are instead. Categories: preference, household, rule (how Pip should behave
 person, "about": [them]), device; household facts and rules have "about": []. sensitive = health, money, \
 relationships, religion or politics, someone's whereabouts or schedule, or anything about a child. private only \
 if they say so. Forget: {{"do": "forget", "id": "#m1a2b3"}}; correct, or replace one a new fact contradicts: \
-{{"do": "update_memory", "id": "#m1a2b3", "text": "..."}}; approve one waiting in the inbox when the person it's \
-about says it's right: {{"do": "approve_memory", "id": "#m1a2b3"}}. Unclear which? Ask. Never remember \
+{{"do": "update_memory", "id": "#m1a2b3", "text": "..."}}. Unclear which? Ask. Never remember \
 passwords, codes, card or phone numbers, and never save things on your own or from overheard talk; when someone \
 tells you something lasting about themselves or the home, you may ask once "Want me to remember that?".
 

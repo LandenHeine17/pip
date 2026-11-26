@@ -14,7 +14,6 @@ import json
 import os
 import re
 import statistics
-import subprocess
 import sys
 import time
 import tomllib
@@ -230,9 +229,6 @@ def summary(name, s, local):
 
 # ------------------------------------------------------------------ main
 
-def ziggletron(action: str):
-    subprocess.run(["systemctl", "--user", action, "ziggletron.service"], capture_output=True, timeout=30)
-
 
 def main(argv):
     limit = None
@@ -247,44 +243,37 @@ def main(argv):
     print(f"{len(ids)} recordings")
     audio = {i: load(i) for i in ids}
     RESULTS.mkdir(parents=True, exist_ok=True)
-    zigg_was = subprocess.run(["systemctl", "--user", "is-active", "ziggletron.service"], capture_output=True, text=True).stdout.strip()
-    try:
-        for n in names:
-            rid, label, make = ENGINES[n]
-            is_local = n.startswith(("whisper", "moonshine"))
-            if is_local and zigg_was == "active":
-                ziggletron("stop")  # fair CPU timing (D-44); restarted in finally
-            print(f"== {label}", flush=True)
-            eng = make()
-            if is_local:  # warm-up
-                eng(audio[ids[0]])
-            rows = []
-            for k, i in enumerate(ids, 1):
-                p = phrases[i]
-                text, secs = eng(audio[i])
-                rows.append({"id": i, "category": p["category"], "session": p["session"], "wake": p["wake"],
-                             "entities": p["entities"], "ref": p["text"], "hyp": text.strip(),
-                             "ref_n": normalise(p["text"]), "hyp_n": normalise(text), "seconds": round(secs, 3),
-                             "audio_s": round(len(audio[i]) / 16000, 2)})
-                if k % 25 == 0:
-                    print(f"   {k}/{len(ids)}", flush=True)
-            overall = score(rows)
-            by_cat = {c: score([r for r in rows if r["category"] == c]) for c in sorted({r["category"] for r in rows})}
-            worst = sorted((r for r in rows if r["ref_n"] != r["hyp_n"]), key=lambda r: r["category"])
-            result = {"id": rid, "engine": n, "name": label, "ran_at": time.strftime("%Y-%m-%d %H:%M"),
-                      "passed": verdict(is_local, overall), "summary": summary(label, overall, is_local),
-                      "details": {"overall": overall, "by_category": by_cat,
-                                  "mistakes": [{"id": r["id"], "said": r["ref"], "heard": r["hyp"]} for r in worst],
-                                  "clips": [{k: r[k] for k in ("id", "hyp", "seconds", "audio_s")} for r in rows]}}
-            if limit:
-                print("   (trial run, not saved)"); del eng; continue
-            tmp = RESULTS / f"{rid}.tmp"
-            tmp.write_text(json.dumps(result, indent=1)); os.replace(tmp, RESULTS / f"{rid}.json")
-            print("   " + result["summary"], flush=True)
-            del eng
-    finally:
-        if zigg_was == "active":
-            ziggletron("start")
+    for n in names:
+        rid, label, make = ENGINES[n]
+        is_local = n.startswith(("whisper", "moonshine"))
+        print(f"== {label}", flush=True)
+        eng = make()
+        if is_local:  # warm-up
+            eng(audio[ids[0]])
+        rows = []
+        for k, i in enumerate(ids, 1):
+            p = phrases[i]
+            text, secs = eng(audio[i])
+            rows.append({"id": i, "category": p["category"], "session": p["session"], "wake": p["wake"],
+                         "entities": p["entities"], "ref": p["text"], "hyp": text.strip(),
+                         "ref_n": normalise(p["text"]), "hyp_n": normalise(text), "seconds": round(secs, 3),
+                         "audio_s": round(len(audio[i]) / 16000, 2)})
+            if k % 25 == 0:
+                print(f"   {k}/{len(ids)}", flush=True)
+        overall = score(rows)
+        by_cat = {c: score([r for r in rows if r["category"] == c]) for c in sorted({r["category"] for r in rows})}
+        worst = sorted((r for r in rows if r["ref_n"] != r["hyp_n"]), key=lambda r: r["category"])
+        result = {"id": rid, "engine": n, "name": label, "ran_at": time.strftime("%Y-%m-%d %H:%M"),
+                  "passed": verdict(is_local, overall), "summary": summary(label, overall, is_local),
+                  "details": {"overall": overall, "by_category": by_cat,
+                              "mistakes": [{"id": r["id"], "said": r["ref"], "heard": r["hyp"]} for r in worst],
+                              "clips": [{k: r[k] for k in ("id", "hyp", "seconds", "audio_s")} for r in rows]}}
+        if limit:
+            print("   (trial run, not saved)"); del eng; continue
+        tmp = RESULTS / f"{rid}.tmp"
+        tmp.write_text(json.dumps(result, indent=1)); os.replace(tmp, RESULTS / f"{rid}.json")
+        print("   " + result["summary"], flush=True)
+        del eng
 
 
 if __name__ == "__main__":

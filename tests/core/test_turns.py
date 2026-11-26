@@ -138,41 +138,6 @@ def test_a_ten_minute_timer_is_not_a_timer_timer(tmp_path):
     assert said == "Timer's on, 10 minutes."
 
 
-# ---------------------------------------------------------------- D-107: approving your own memory by voice
-def test_the_person_a_memory_is_about_can_approve_it(tmp_path):
-    """Memories still waiting in the inbox (from before D-119, or the Ziggletron import) can be approved by voice."""
-    people = People(tmp_path / "pip.db", embedder=FakeEmbedder())
-    landen, sam = people.add_person("Landen", "admin"), people.add_person("Sam")
-    mem = Memory(tmp_path / "pip.db")
-
-    class Cmds:
-        class s:
-            @staticmethod
-            def find(ref):
-                return None
-
-        @staticmethod
-        def now():
-            from datetime import datetime
-            return datetime.now()
-    sure = lambda p: Match(p["id"], p["name"], "sure", 0.9)
-    ctx = lambda sp: {"memory": mem, "people": people, "speaker": sp}
-    raw = ('ACTION {"do": "remember", "text": "Sam is allergic to peanuts", "category": "personal", '
-           '"about": ["Sam"], "sensitive": true}')
-    mem.add("Sam is allergic to peanuts", "personal", [sam["id"]], sensitive=True, pending_because="from Ziggletron")
-    [row] = mem.items("pending")
-    # Someone else saying it again: it's waiting, not "already known"
-    assert actions.apply(Cmds, raw, ctx(sure(landen)))[0] == "That's waiting in the memory inbox."
-    # Claude sees it only when it's Sam speaking, and only Sam may approve it
-    assert "allergic" in mem.for_claude(sam["id"], "sure") and "allergic" not in mem.for_claude(landen["id"], "sure")
-    ref = mem.short(row["id"])
-    approve = f'ACTION {{"do": "approve_memory", "id": "{ref}"}}'
-    assert actions.apply(Cmds, approve, ctx(sure(landen))) == (actions.FAILED, 0)
-    assert actions.apply(Cmds, approve, ctx(Match(sam["id"], "Sam", "probably", 0.6))) == (actions.FAILED, 0)
-    assert actions.apply(Cmds, approve, ctx(sure(sam)))[0] == "Saved: Sam is allergic to peanuts."
-    assert mem.items("pending") == [] and mem.items("active")[0]["text"] == "Sam is allergic to peanuts"
-
-
 # ---------------------------------------------------------------- D-91: claps on their own microphone
 async def test_the_clap_microphone_is_chosen_on_the_dashboard(tmp_path):
     prefs = Prefs(tmp_path / "pip.db")
@@ -241,27 +206,6 @@ async def test_ears_hears_claps_only_on_the_clap_microphone(monkeypatch):
     await asyncio.sleep(0.05)
     assert Claps.fed == 0
     e.clap_task.cancel()
-
-
-def test_what_the_owner_saw_one_memory_not_two(tmp_path):
-    """Test 8: Landen's wording "Landen says Sam is…" (no 'about'), then Sam saying it himself."""
-    people = People(tmp_path / "pip.db", embedder=FakeEmbedder())
-    _, sam = people.add_person("Landen", "admin"), people.add_person("Sam")
-    mem = Memory(tmp_path / "pip.db")
-
-    class Cmds:
-        class s:
-            find = staticmethod(lambda ref: None)
-        now = staticmethod(__import__("datetime").datetime.now)
-    sure = lambda p: Match(p["id"], p["name"], "sure", 0.9)
-    ctx = lambda sp: {"memory": mem, "people": people, "speaker": sp}
-    mem.add("Landen says Sam is allergic to peanuts", "household", sensitive=True, pending_because="from Ziggletron")
-    assert len(mem.items("pending")) == 1   # (waiting from before D-119)
-    assert "allergic" in mem.for_claude(sam["id"], "sure", speaker_name="Sam")      # Sam is asked about it
-    said, _ = actions.apply(Cmds, 'ACTION {"do": "remember", "text": "Sam is allergic to peanuts", "category": "personal", '
-                                  '"about": ["Sam"], "sensitive": true}', ctx(sure(sam)))
-    assert said == "Saved: Sam is allergic to peanuts."
-    assert mem.items("pending") == [] and [r["text"] for r in mem.items("active")] == ["Sam is allergic to peanuts"]
 
 
 def test_every_memory_is_saved_straight_away(tmp_path):
